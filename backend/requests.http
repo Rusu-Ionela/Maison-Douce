@@ -1,0 +1,10 @@
+POST http://localhost:5000/api/calendar/availability/default
+Content-Type: application/json
+
+{
+  "slots": [
+    {"date":"2025-10-16","time":"10:00","capacity":2},
+    {"date":"2025-10-16","time":"11:00","capacity":1},
+    {"date":"2025-10-17","time":"15:00","capacity":3}
+  ]
+}
