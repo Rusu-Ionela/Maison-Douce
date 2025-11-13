@@ -1,19 +1,67 @@
 // backend/middleware/auth.js
 const jwt = require("jsonwebtoken");
+const Utilizator = require("../models/Utilizator");
 
-function auth(req, res, next) {
+/**
+ * Middleware: verifică dacă utilizatorul este autentificat (Bearer <token>)
+ */
+async function authRequired(req, res, next) {
   try {
-    const h = req.headers.authorization || "";
-    const token = h.startsWith("Bearer ") ? h.slice(7) : null;
-    if (!token) return res.status(401).json({ message: "Lipsă token" });
+    const authHeader = req.headers.authorization || "";
 
-    const payload = jwt.verify(token, process.env.JWT_SECRET || "dev_secret");
-    // atașează user pe req pentru route-urile admin
-    req.user = payload; // ex: { _id, email, role }
+    if (!authHeader.startsWith("Bearer ")) {
+      return res.status(401).json({ message: "Token lipsă sau invalid" });
+    }
+
+    const token = authHeader.split(" ")[1];
+
+    // Verificăm și decodăm token-ul
+    const payload = jwt.verify(token, process.env.JWT_SECRET);
+
+    // payload poate avea id sau _id
+    const userId = payload.id || payload._id;
+
+    const user = await Utilizator.findById(userId).select("-parola");
+    if (!user) {
+      return res.status(401).json({ message: "Utilizator inexistent" });
+    }
+
+    // atașăm userul la request pentru rutele următoare
+    req.user = user;
     next();
-  } catch (e) {
-    return res.status(401).json({ message: "Token invalid" });
+  } catch (err) {
+    console.error("Eroare authRequired:", err.message);
+    return res.status(401).json({ message: "Autentificare eșuată" });
   }
 }
 
-module.exports = auth;             // ⬅️ exportă direct funcția (nu { auth })
+/**
+ * Middleware: verifică rolul utilizatorului.
+ * Ex: roleCheck("admin"), roleCheck("admin", "manager")
+ */
+function roleCheck(...roles) {
+  return (req, res, next) => {
+    if (!req.user) {
+      return res.status(401).json({ message: "Neautentificat" });
+    }
+
+    // adaptează aici dacă în model ai alt nume pentru rol
+    const userRole =
+      req.user.rol || req.user.role || req.user.tip || req.user.tipUtilizator;
+
+    if (!userRole) {
+      return res.status(403).json({ message: "Rol utilizator neconfigurat" });
+    }
+
+    if (roles.length > 0 && !roles.includes(userRole)) {
+      return res.status(403).json({ message: "Acces interzis" });
+    }
+
+    next();
+  };
+}
+
+module.exports = {
+  authRequired,
+  roleCheck,
+};
