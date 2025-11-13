@@ -380,5 +380,40 @@ router.get("/export/csv", async (req, res) => {
         res.status(500).json({ message: "Eroare server la export CSV." });
     }
 });
+// PATCH /api/comenzi/:id/cancel – anulează comanda și eliberează slotul (used−1)
+router.patch("/:id/cancel", async (req, res) => {
+  try {
+    const { id } = req.params;
+    const doc = await Comanda.findById(id);
+    if (!doc) return res.status(404).json({ message: "Comanda nu există" });
+
+    // dacă deja anulată, returnează
+    if (doc.status === "anulata" || doc.status === "cancelled") {
+      return res.json({ ok: true, status: doc.status });
+    }
+
+    // marchează anulată
+    doc.status = "anulata";
+    await doc.save();
+
+    // dacă are data/ora și prestator => decrementăm used în CalendarPrestator
+    if (doc.dataLivrare && doc.oraLivrare && doc.prestatorId) {
+      const CalendarPrestator = require("../models/CalendarPrestator");
+      const cal = await CalendarPrestator.findOne({ prestatorId: doc.prestatorId });
+      if (cal && Array.isArray(cal.slots)) {
+        const idx = cal.slots.findIndex(s => s.date === doc.dataLivrare && s.time === doc.oraLivrare);
+        if (idx !== -1) {
+          cal.slots[idx].used = Math.max(0, Number(cal.slots[idx].used || 0) - 1);
+          await cal.save();
+        }
+      }
+    }
+
+    res.json({ ok: true, status: doc.status });
+  } catch (e) {
+    console.error("cancel comanda error:", e);
+    res.status(500).json({ message: e.message });
+  }
+});
 
 module.exports = router;

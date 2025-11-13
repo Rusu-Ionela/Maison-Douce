@@ -1,70 +1,56 @@
-// backend/models/Comanda.js
-const mongoose = require("mongoose");
-
-const ItemSchema = new mongoose.Schema(
-    {
-        productId: { type: mongoose.Schema.Types.Mixed }, // ObjectId sau string
-        name: { type: String, required: true },
-        qty: { type: Number, required: true, min: 1 },
-        price: { type: Number, required: true, min: 0 }, // preț unitar
-        lineTotal: { type: Number, default: 0 },         // se poate recalcula
-    },
-    { _id: false }
-);
+const mongoose = require('mongoose');
 
 const ComandaSchema = new mongoose.Schema(
     {
-        clientId: { type: mongoose.Schema.Types.ObjectId, ref: "Utilizator", required: true },
-
-        // Poziții
-        items: { type: [ItemSchema], default: [] },
-
-        // Sume
-        subtotal: { type: Number, default: 0 },
-        taxaLivrare: { type: Number, default: 0 },
-        total: { type: Number, default: 0 },
-
-        // Livrare / ridicare
-        metodaLivrare: { type: String, enum: ["ridicare", "livrare"], default: "ridicare" },
-        adresaLivrare: { type: String },
-
-        // Calendar
-        dataLivrare: { type: String },   // "YYYY-MM-DD"
-        oraLivrare: { type: String },    // "HH:mm"
-        prestatorId: { type: String, default: "default" },
-
-        // Diverse
-        status: {
-            type: String,
-            enum: [
-                "plasata",
-                "in_asteptare",
-                "platita",
-                "predat_curierului",
-                "ridicat_client",
-                "livrata",
-                "anulata",
-            ],
-            default: "plasata",
+        numeroComanda: { type: String, unique: true, required: true },
+        utilizatorId: { type: mongoose.Schema.Types.ObjectId, ref: 'Utilizator', required: true },
+        items: [{
+            tortId: { type: mongoose.Schema.Types.ObjectId, ref: 'Tort' },
+            numeCustom: String,
+            cantitate: Number,
+            pret: Number,
+            personalizari: {
+                blat: String,
+                crema: String,
+                decor: String,
+                mesaj: String
+            }
+        }],
+        calendarSlot: {
+            date: String,
+            time: String
         },
-        note: String,
-        preferinte: String,
-        imagineGenerata: String,
+        detaliiLivrare: {
+            metoda: {
+                type: String,
+                enum: ['pickup', 'delivery', 'courier'],
+                default: 'pickup'
+            },
+            adresa: String,
+            taxa: { type: Number, default: 0 },
+            status: {
+                type: String,
+                enum: ['pending', 'in_progress', 'ready', 'in_delivery', 'delivered'],
+                default: 'pending'
+            }
+        },
+        statusComanda: {
+            type: String,
+            enum: ['pending', 'confirmed', 'in_progress', 'ready', 'completed', 'cancelled'],
+            default: 'pending'
+        },
+        totalPret: { type: Number, required: true },
+        punteFidelizare: { type: Number, default: 0 },
+        metodaPlata: {
+            type: String,
+            enum: ['card', 'cash', 'transfer'],
+            default: 'card'
+        },
+        stripePaymentId: String,
+        notesClient: String,
+        notesAdmin: String
     },
     { timestamps: true }
 );
 
-// recalcul automat lineTotal + subtotal înainte de save
-ComandaSchema.pre("save", function (next) {
-    if (Array.isArray(this.items)) {
-        this.items = this.items.map((it) => ({
-            ...it.toObject?.() ?? it,
-            lineTotal: Number(it.price || 0) * Number(it.qty || 0),
-        }));
-    }
-    this.subtotal = (this.items || []).reduce((s, it) => s + Number(it.lineTotal || 0), 0);
-    this.total = Number(this.subtotal || 0) + Number(this.taxaLivrare || 0);
-    next();
-});
-
-module.exports = mongoose.model("Comanda", ComandaSchema);
+module.exports = mongoose.model('Comanda', ComandaSchema);

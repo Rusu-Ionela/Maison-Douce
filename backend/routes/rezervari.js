@@ -1,41 +1,30 @@
-const express = require('express');
-const Rezervare = require('../models/Rezervare');
-const router = express.Router();
+// backend/routes/rezervari.js
+const router = require("express").Router();
+const { authRequired } = require("../utils/auth");
+const Rezervare = require("../models/Rezervare");
 
-
-router.get('/', async (_req, res) => {
-    const items = await Rezervare.find().sort({ createdAt: -1 });
-    res.json(items);
+// GET /api/rezervari (admin poate filtra)
+router.get("/", async (req, res) => {
+  const q = {};
+  if (req.query.clientId) q.clientId = req.query.clientId;
+  if (req.query.status) q.status = req.query.status;
+  const list = await Rezervare.find(q).sort({ createdAt: -1 }).lean();
+  res.json(list);
 });
 
-
-router.get('/:id', async (req, res) => {
-    const r = await Rezervare.findById(req.params.id);
-    if (!r) return res.status(404).json({ message: 'Nu există' });
-    res.json(r);
+// GET /api/rezervari/:id
+router.get("/:id", async (req, res) => {
+  const r = await Rezervare.findById(req.params.id).lean();
+  if (!r) return res.status(404).json({ message: "Rezervare inexistentă" });
+  res.json(r);
 });
 
-
-router.post('/', async (req, res) => {
-    try {
-        const r = await Rezervare.create(req.body);
-        res.status(201).json(r);
-    } catch (e) {
-        res.status(400).json({ message: e.message });
-    }
+// PATCH /api/rezervari/:id/status
+router.patch("/:id/status", authRequired, async (req, res) => {
+  const { status } = req.body;
+  const r = await Rezervare.findByIdAndUpdate(req.params.id, { $set: { status } }, { new: true });
+  if (!r) return res.status(404).json({ message: "Rezervare inexistentă" });
+  res.json(r);
 });
-
-
-router.patch('/:id', async (req, res) => {
-    const r = await Rezervare.findByIdAndUpdate(req.params.id, req.body, { new: true });
-    res.json(r);
-});
-
-
-router.delete('/:id', async (req, res) => {
-    await Rezervare.findByIdAndDelete(req.params.id);
-    res.json({ ok: true });
-});
-
 
 module.exports = router;

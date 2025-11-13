@@ -198,28 +198,51 @@ async function updateHandoffStatus(req, res) {
  * PATCH /api/rezervari/:id/status
  * Body: { status } // "pending" | "confirmed" | "cancelled"
  */
+// backend/controllers/rezervariController.js (doar funcția updateRezervareStatus)
 async function updateRezervareStatus(req, res) {
-    try {
-        const { id } = req.params;
-        const { status } = req.body;
-        const allowed = ["pending", "confirmed", "cancelled"];
+  try {
+    const { id } = req.params;
+    const { status } = req.body;
+    const allowed = ["pending", "confirmed", "cancelled"];
 
-        if (!allowed.includes(status)) {
-            return res.status(400).json({ error: "Invalid status" });
-        }
-
-        const doc = await Rezervare.findByIdAndUpdate(
-            id,
-            { status },
-            { new: true }
-        );
-
-        if (!doc) return res.status(404).json({ error: "Not found" });
-        res.json(doc);
-    } catch (e) {
-        res.status(500).json({ error: e.message });
+    if (!allowed.includes(status)) {
+      return res.status(400).json({ error: "Invalid status" });
     }
+
+    const doc = await Rezervare.findByIdAndUpdate(
+      id,
+      { status },
+      { new: true }
+    );
+
+    if (!doc) return res.status(404).json({ error: "Not found" });
+
+    // dacă NOUL status e "cancelled" => eliberăm slotul în CalendarPrestator
+    if (status === "cancelled" && doc.prestatorId && doc.date && doc.timeSlot) {
+      try {
+        const CalendarPrestator = require("../models/CalendarPrestator");
+        const startHour = (ts = "") => String(ts).split("-")[0] || "";
+        const cal = await CalendarPrestator.findOne({ prestatorId: doc.prestatorId });
+        if (cal && Array.isArray(cal.slots)) {
+          const idx = cal.slots.findIndex(
+            s => s.date === doc.date && s.time === startHour(doc.timeSlot)
+          );
+          if (idx !== -1) {
+            cal.slots[idx].used = Math.max(0, Number(cal.slots[idx].used || 0) - 1);
+            await cal.save();
+          }
+        }
+      } catch (err) {
+        console.warn("[rezervare cancel] eliberare slot warning:", err?.message || err);
+      }
+    }
+
+    res.json(doc);
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
 }
+
 
 module.exports = {
     getAvailability,

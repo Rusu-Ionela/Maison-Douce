@@ -1,175 +1,153 @@
-// backend/routes/rapoarte.js
 const express = require('express');
 const router = express.Router();
-
-const { Parser } = require('json2csv');
 const Comanda = require('../models/Comanda');
-const Rezervare = require('../models/Rezervare');
-const Utilizator = require('../models/Utilizator');
+const CalendarSlot = require('../models/CalendarSlot');
+const { authRequired, roleCheck } = require('../middleware/auth');
 
-const { authRequired, role } = require('../utils/auth');
+try {
+    const json2csv = require('json2csv').Parser;
+    var hasJson2csv = true;
+} catch (e) {
+    var hasJson2csv = false;
+}
 
-// Protecție: doar admin
-router.use(authRequired, role('admin'));
-
-/**
- * GET /api/rapoarte/comenzi-lunare
- * Returnează [{ _id:'YYYY-MM', nrComenzi, totalVanzari }]
- */
-router.get('/comenzi-lunare', async (req, res) => {
+// GET - Raport rezervări period
+router.get('/reservations/:startDate/:endDate', authRequired, roleCheck('admin'), async (req, res) => {
     try {
-        const data = await Comanda.aggregate([
-            { $match: {} },
-            {
-                $group: {
-                    _id: {
-                        $dateToString: {
-                            format: '%Y-%m',
-                            date: { $toDate: '$createdAt' }
-                        }
-                    },
-                    nrComenzi: { $sum: 1 },
-                    totalVanzari: { $sum: '$total' }
-                }
-            },
-            { $sort: { _id: 1 } }
-        ]);
+        const { startDate, endDate } = req.params;
 
-        // normalizare (exact câmpurile cerute de front)
-        res.json(
-            data.map(d => ({
-                _id: d._id,
-                nrComenzi: d.nrComenzi,
-                totalVanzari: d.totalVanzari
-            }))
-        );
-    } catch (e) {
-        console.error('rapoarte/comenzi-lunare:', e);
-        res.status(500).json({ message: e.message });
-    }
-});
-
-/**
- * GET /api/rapoarte/top-produse?limit=10
- * Returnează [{ nume, count, revenue }]
- *  - count = cantitate totală vândută
- *  - revenue = sum(items.qty * items.price)
- */
-router.get('/top-produse', async (req, res) => {
-    try {
-        const limit = Math.min(Math.max(parseInt(req.query.limit) || 10, 1), 100);
-
-        const agg = await Comanda.aggregate([
-            { $unwind: '$items' },
-            {
-                $group: {
-                    _id: '$items.name',
-                    count: { $sum: '$items.qty' },
-                    revenue: { $sum: { $multiply: ['$items.qty', '$items.price'] } }
-                }
-            },
-            { $sort: { count: -1 } },
-            { $limit: limit }
-        ]);
-
-        res.json(agg.map(x => ({
-            nume: x._id,
-            count: x.count,
-            revenue: x.revenue
-        })));
-    } catch (e) {
-        console.error('rapoarte/top-produse:', e);
-        res.status(500).json({ message: e.message });
-    }
-});
-
-/**
- * GET /api/rapoarte/top-clienti?limit=10
- * Returnează [{ clientId, nume, count, total }]
- *  - nume este completat din colecția Utilizator, dacă există (nume + prenume), altfel fallback la clientId
- */
-router.get('/top-clienti', async (req, res) => {
-    try {
-        const limit = Math.min(Math.max(parseInt(req.query.limit) || 10, 1), 100);
-
-        const agg = await Comanda.aggregate([
-            { $match: { clientId: { $ne: null } } },
-            {
-                $group: {
-                    _id: '$clientId',
-                    count: { $sum: 1 },
-                    total: { $sum: '$total' }
-                }
-            },
-            { $sort: { total: -1 } },
-            { $limit: limit }
-        ]);
-
-        // mapare nume clienți din colecția Utilizator (dacă există)
-        const ids = agg.map(a => a._id).filter(Boolean);
-        const users = await Utilizator.find({ _id: { $in: ids } }, { nume: 1, prenume: 1 }).lean();
-        const usersById = new Map(users.map(u => [String(u._id), u]));
-
-        const out = agg.map(a => {
-            const u = usersById.get(String(a._id));
-            const name = u ? `${u.nume || ''} ${u.prenume || ''}`.trim() : null;
-            return {
-                clientId: a._id,
-                nume: name || String(a._id),
-                count: a.count,
-                total: a.total
-            };
+        const calendars = await CalendarSlot.find({
+            date: { $gte: startDate, $lte: endDate }
         });
 
-        res.json(out);
-    } catch (e) {
-        console.error('rapoarte/top-clienti:', e);
-        res.status(500).json({ message: e.message });
+        let totalReservations = 0;
+        const reservationDetails = [];
+        const deliveryMethods = { pickup: 0, delivery: 0, courier: 0 };
+
+        calendars.forEach(cal => {
+            cal.slots.forEach(slot => {
+                slot.orders.forEach(order => {
+                    totalReservations++;
+                    if (deliveryMethods[order.deliveryMethod] !== undefined) {
+                        deliveryMethods[order.deliveryMethod]++;
+                    }
+
+                    reservationDetails.push({
+                        data: cal.date,
+                        ora: slot.time,
+                        client: order.clientName,
+                        tort: order.tortName,
+                        cantitate: order.quantity,
+                        livrare: order.deliveryMethod,
+                        adresa: order.address || '-',
+                        status: order.status
+                    });
+                });
+            });
+        });
+
+        res.json({
+            totalReservations,
+            deliveryMethods,
+            details: reservationDetails,
+            period: { startDate, endDate }
+        });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
     }
 });
 
-/* =========================================================================
-   BONUS: Export CSV rezervări (poți muta în routes/rapoarteRezervariRoutes.js)
-   GET /api/rapoarte/rezervari/export?from=YYYY-MM-DD&to=YYYY-MM-DD&prestator=<id>
-   Returnează CSV cu rezervările din interval și (opțional) pentru un prestator.
-   ========================================================================= */
-router.get('/rezervari/export', async (req, res) => {
+// GET - Export CSV
+router.get('/export/csv/:startDate/:endDate', authRequired, roleCheck('admin'), async (req, res) => {
     try {
-        const { from, to, prestator } = req.query;
-
-        const q = {};
-        if (from || to) {
-            q.data = {};
-            if (from) q.data.$gte = from;
-            if (to) q.data.$lte = to;
+        if (!hasJson2csv) {
+            return res.status(400).json({ error: 'json2csv nu este instalat' });
         }
-        if (prestator) q.prestatorId = prestator;
 
-        const rezervari = await Rezervare.find(q).lean();
+        const { startDate, endDate } = req.params;
 
-        const rows = rezervari.map(r => ({
-            'ID Rezervare': r._id?.toString(),
-            'Prestator ID': r.prestatorId || '',
-            'Data': r.data || '',
-            'Ora Start': r.startTime || '',
-            'Ora End': r.endTime || '',
-            'Client ID': r.clientId || '',
-            'Status': r.status || '',
-            'Total': (Number(r.total || 0)).toFixed(2),
-            'Creat la': r.createdAt ? new Date(r.createdAt).toISOString() : ''
-        }));
+        const calendars = await CalendarSlot.find({
+            date: { $gte: startDate, $lte: endDate }
+        });
 
-        const parser = new Parser({ withBOM: true });
-        const csv = parser.parse(rows);
+        const data = [];
 
-        const file = `rezervari_${from || 'all'}_${to || 'all'}${prestator ? '_' + prestator : ''}.csv`;
-        res.setHeader('Content-Type', 'text/csv; charset=utf-8');
-        res.setHeader('Content-Disposition', `attachment; filename="${file}"`);
-        res.status(200).send(csv);
-    } catch (e) {
-        console.error('rapoarte/rezervari/export:', e);
-        res.status(500).json({ message: 'Eroare server la export CSV rezervări.' });
+        calendars.forEach(cal => {
+            cal.slots.forEach(slot => {
+                slot.orders.forEach(order => {
+                    data.push({
+                        'Data': cal.date,
+                        'Ora': slot.time,
+                        'Client': order.clientName,
+                        'Produs': order.tortName,
+                        'Cantitate': order.quantity,
+                        'Metoda Livrare': order.deliveryMethod,
+                        'Adresa': order.address || '-',
+                        'Status': order.status
+                    });
+                });
+            });
+        });
+
+        if (data.length === 0) {
+            return res.json({ message: 'Nu sunt date pentru export' });
+        }
+
+        const csv = new json2csv({ fields: Object.keys(data[0]) }).parse(data);
+
+        res.setHeader('Content-Type', 'text/csv');
+        res.setHeader('Content-Disposition', 'attachment; filename=raport-rezervari.csv');
+        res.send(csv);
+    } catch (err) {
+        res.status(500).json({ error: err.message });
     }
 });
+
+// GET - Statistici vânzări
+router.get('/sales/:startDate/:endDate', authRequired, roleCheck('admin'), async (req, res) => {
+    try {
+        const { startDate, endDate } = req.params;
+
+        const comenzi = await Comanda.find({
+            createdAt: { $gte: new Date(startDate), $lte: new Date(endDate) }
+        });
+
+        const totalRevenue = comenzi.reduce((sum, cmd) => sum + (cmd.totalPret || 0), 0);
+        const avgOrder = comenzi.length > 0 ? totalRevenue / comenzi.length : 0;
+        const deliveryRevenue = comenzi.reduce((sum, cmd) => sum + (cmd.detaliiLivrare?.taxa || 0), 0);
+
+        const methodBreakdown = {
+            pickup: comenzi.filter(c => c.detaliiLivrare?.metoda === 'pickup').length,
+            delivery: comenzi.filter(c => c.detaliiLivrare?.metoda === 'delivery').length,
+            courier: comenzi.filter(c => c.detaliiLivrare?.metoda === 'courier').length
+        };
+
+        res.json({
+            period: { startDate, endDate },
+            totalOrders: comenzi.length,
+            totalRevenue,
+            averageOrder: avgOrder.toFixed(2),
+            deliveryRevenue,
+            deliveryMethodBreakdown: methodBreakdown,
+            topProducts: getTopProducts(comenzi)
+        });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+function getTopProducts(comenzi) {
+    const products = {};
+    comenzi.forEach(cmd => {
+        cmd.items.forEach(item => {
+            const name = item.numeCustom || item.tortId || 'Necunoscut';
+            products[name] = (products[name] || 0) + item.cantitate;
+        });
+    });
+    return Object.entries(products)
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 5)
+        .map(([name, qty]) => ({ product: name, quantity: qty }));
+}
 
 module.exports = router;
