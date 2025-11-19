@@ -45,39 +45,170 @@ router.get("/client/:userId", authRequired, async (req, res) => {
 
 /**
  * POST /api/fidelizare/add-points
- * Body: { utilizatorId, puncte, sursa, comandaId, descriere }
+// ...existing code...
+
+/**
+ * POST /api/fidelizare/add-points
+ * ✅ ADAUGĂ PUNCTE ȘI SALVEAZĂ ÎN DB
  */
-// POST /api/fidelizare/add-points
-// Rută simplificată: nu mai dă 500, doar întoarce ce a primit
 router.post("/add-points", async (req, res) => {
   try {
-    const { utilizatorId, puncte, sursa, comandaId, descriere } = req.body;
+    const { utilizatorId, puncte, sursa = "comanda", comandaId } = req.body;
 
-    // validări simple, ca să nu intre direct în 500
-    if (!utilizatorId || !puncte) {
-      return res
-        .status(400)
-        .json({ message: "utilizatorId și puncte sunt necesare" });
+    if (!utilizatorId || !puncte || puncte <= 0) {
+      return res.status(400).json({
+        ok: false,
+        message: "utilizatorId și puncte (> 0) sunt necesare"
+      });
     }
 
-    // Aici în mod normal ai actualiza cardul de fidelizare în DB.
-    // Deocamdată doar confirmăm datele primite, ca să nu existe erori server.
+    // ✅ Găsește sau crează cardul de fidelizare
+    let fidelizare = await Fidelizare.findOne({ utilizatorId });
+    if (!fidelizare) {
+      fidelizare = new Fidelizare({
+        utilizatorId,
+        puncteCurent: 0,
+        puncteTotal: 0,
+        istoric: [],
+        reduceriDisponibile: [],
+        nivelLoyalitate: "bronze"
+      });
+    }
+
+    // ✅ Adaugă puncte
+    fidelizare.puncteCurent += puncte;
+    fidelizare.puncteTotal += puncte;
+
+    // ✅ Adaugă în istoric
+    fidelizare.istoric.push({
+      data: new Date(),
+      tip: "earn",
+      puncte,
+      sursa,
+      comandaId,
+      descriere: `Puncte câștigate de la comanda ${comandaId || 'N/A'}`
+    });
+
+    // ✅ Determină nivel
+    if (fidelizare.puncteTotal >= 500) {
+      fidelizare.nivelLoyalitate = "gold";
+    } else if (fidelizare.puncteTotal >= 200) {
+      fidelizare.nivelLoyalitate = "silver";
+    } else {
+      fidelizare.nivelLoyalitate = "bronze";
+    }
+
+    await fidelizare.save();
+
     return res.json({
       ok: true,
-      message: "Request primit. Logica de actualizare puncte poate fi extinsă.",
-      dataPrimita: {
-        utilizatorId,
-        puncte,
-        sursa,
-        comandaId,
-        descriere,
-      },
+      message: "✅ Puncte adăugate cu succes",
+      fidelizare: {
+        puncteCurent: fidelizare.puncteCurent,
+        puncteTotal: fidelizare.puncteTotal,
+        nivel: fidelizare.nivelLoyalitate
+      }
     });
   } catch (err) {
-    console.error("Eroare la /api/fidelizare/add-points:", err);
-    return res.status(500).json({ error: "Eroare server" });
+    console.error("Eroare POST /add-points:", err.message);
+    res.status(500).json({ ok: false, error: "Eroare server la adăugare puncte" });
   }
 });
+
+/**
+ * POST /api/fidelizare/redeem
+ * ✅ FOLOSIRE PUNCTE PENTRU REDUCERE
+ */
+router.post("/redeem", async (req, res) => {
+  try {
+    const { utilizatorId, puncteDeUtilizat } = req.body;
+
+    if (!utilizatorId || !puncteDeUtilizat || puncteDeUtilizat <= 0) {
+      return res.status(400).json({ ok: false, message: "Parametri obligatori lipsă" });
+    }
+
+    let fidelizare = await Fidelizare.findOne({ utilizatorId });
+    if (!fidelizare || fidelizare.puncteCurent < puncteDeUtilizat) {
+      return res.status(400).json({
+        ok: false,
+        message: "Puncte insuficiente"
+      });
+    }
+
+    // ✅ Scade puncte
+    fidelizare.puncteCurent -= puncteDeUtilizat;
+
+    // ✅ Crează voucher (100 puncte = 50 MDL)
+    const discountValue = Math.floor(puncteDeUtilizat / 2);
+    const codigPromo = "PROMO-" + Date.now();
+
+    fidelizare.reduceriDisponibile.push({
+      procent: 0,
+      valoareMinima: 0,
+      valoareFixa: discountValue,
+      codigPromo,
+      dataExpirare: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
+      folosita: false
+    });
+
+    // ✅ Adaugă în istoric
+    fidelizare.istoric.push({
+      data: new Date(),
+      tip: "redeem",
+      puncte: puncteDeUtilizat,
+      sursa: "manual",
+      descriere: `Voucher ${codigPromo}: ${discountValue} MDL`
+    });
+
+    await fidelizare.save();
+
+    return res.json({
+      ok: true,
+      message: "✅ Voucher generat",
+      voucher: {
+        cod: codigPromo,
+        valoare: discountValue,
+        expira: fidelizare.reduceriDisponibile[fidelizare.reduceriDisponibile.length - 1].dataExpirare
+      },
+      puncteCurent: fidelizare.puncteCurent
+    });
+  } catch (err) {
+    console.error("Eroare POST /redeem:", err.message);
+    res.status(500).json({ ok: false, error: "Eroare server" });
+  }
+});
+
+/**
+ * GET /api/fidelizare/:utilizatorId
+ * ✅ PRELUARE PORTOFEL FIDELIZARE
+ */
+router.get("/:utilizatorId", async (req, res) => {
+  try {
+    const { utilizatorId } = req.params;
+    let fidelizare = await Fidelizare.findOne({ utilizatorId });
+
+    if (!fidelizare) {
+      fidelizare = new Fidelizare({
+        utilizatorId,
+        puncteCurent: 0,
+        puncteTotal: 0,
+        istoric: [],
+        reduceriDisponibile: [],
+        nivelLoyalitate: "bronze"
+      });
+      await fidelizare.save();
+    }
+
+    return res.json({
+      ok: true,
+      ...fidelizare.toObject()
+    });
+  } catch (err) {
+    console.error("Eroare GET fidelizare:", err.message);
+    res.status(500).json({ ok: false, error: "Eroare server" });
+  }
+});
+
 
 
 /**
