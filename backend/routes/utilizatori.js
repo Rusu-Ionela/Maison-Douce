@@ -1,90 +1,155 @@
 // backend/routes/utilizatori.js
-const router = require("express").Router();
+const express = require("express");
+const jwt = require("jsonwebtoken");
 const Utilizator = require("../models/Utilizator");
-const { signUser } = require("../utils/auth");
-const requireAuth = require("../middleware/requireAuth");
 
-/* ================== LOGIN ================== */
+const router = express.Router();
+const JWT_SECRET = process.env.JWT_SECRET || "dev-secret-123";
+
+/* ==== helperi ==== */
+function createToken(user) {
+    return jwt.sign(
+        {
+            id: user._id,
+            email: user.email,
+            rol: user.rol,
+            nume: user.nume,
+        },
+        JWT_SECRET,
+        { expiresIn: "7d" }
+    );
+}
+
+function authRequired(req, res, next) {
+    const auth = req.headers.authorization || "";
+    const token = auth.startsWith("Bearer ")
+        ? auth.slice(7)
+        : null;
+
+    if (!token) {
+        return res.status(401).json({ message: "Lipsă token" });
+    }
+
+    try {
+        const payload = jwt.verify(token, JWT_SECRET);
+        req.user = payload;
+        next();
+    } catch (e) {
+        return res.status(401).json({ message: "Token invalid sau expirat" });
+    }
+}
+
+/* ==== LOGIN ==== */
 // POST /api/utilizatori/login
 router.post("/login", async (req, res) => {
-    const { email, parola } = req.body;
-    if (!email || !parola) {
-        return res.status(400).json({ message: "Email și parolă sunt necesare" });
-    }
+    try {
+        const { email, parola, password } = req.body;
+        const plain = parola || password;
 
-    const u = await Utilizator.findOne({ email }).select("+parolaHash +parola");
-    if (!u) {
-        return res.status(401).json({ message: "Email sau parolă incorecte" });
-    }
-
-    const ok = await u.comparePassword(parola);
-    if (!ok) {
-        return res.status(401).json({ message: "Email sau parolă incorecte" });
-    }
-
-    const token = signUser(u);
-    res.json({
-        token,
-        user: {
-            _id: u._id,
-            nume: u.nume,
-            email: u.email,
-            rol: u.rol,
-        },
-    });
-});
-
-/* ================== ME ================== */
-// GET /api/utilizatori/me
-router.get("/me", requireAuth, async (req, res) => {
-    const me = await Utilizator.findById(req.user.id).select("-parola -parolaHash");
-    if (!me) {
-        return res.status(404).json({ message: "User inexistent" });
-    }
-    res.json(me);
-});
-
-/* ================== DEV UTILS ================== */
-// Rute disponibile DOAR când NU suntem în production
-if (process.env.NODE_ENV !== "production") {
-    // POST /api/utilizatori/reset-dev-password
-    router.post("/reset-dev-password", async (req, res) => {
-        const { email, parola } = req.body;
-        const u = await Utilizator.findOne({ email }).select("+parolaHash +parola");
-        if (!u) return res.status(404).json({ message: "User inexistent" });
-        await u.setPassword(parola);
-        await u.save();
-        res.json({ ok: true });
-    });
-
-    // ✅ POST /api/utilizatori/dev-create-admin
-    router.post("/dev-create-admin", async (req, res) => {
-        const { email, parola, nume } = req.body;
-
-        if (!email || !parola) {
-            return res.status(400).json({ message: "Email și parolă sunt necesare" });
+        if (!email || !plain) {
+            return res
+                .status(400)
+                .json({ message: "Email și parolă sunt necesare" });
         }
 
-        let u = await Utilizator.findOne({ email }).select("+parolaHash +parola");
-        if (!u) {
-            u = new Utilizator({
-                email,
-                nume: nume || "Admin Maison Douce",
-                rol: "admin",
+        const user = await Utilizator.findOne({ email }).select(
+            "+parolaHash +parola"
+        );
+        if (!user) {
+            return res
+                .status(401)
+                .json({ message: "Email sau parolă greșite" });
+        }
+
+        const ok = await user.comparePassword(plain);
+        if (!ok) {
+            return res
+                .status(401)
+                .json({ message: "Email sau parolă greșite" });
+        }
+
+        const token = createToken(user);
+
+        res.json({
+            token,
+            user: {
+                id: user._id,
+                nume: user.nume,
+                email: user.email,
+                rol: user.rol,
+            },
+        });
+    } catch (e) {
+        console.error("login error:", e.message);
+        res
+            .status(500)
+            .json({ message: "Eroare server la login" });
+    }
+});
+
+/* ==== /me ==== */
+// GET /api/utilizatori/me
+router.get("/me", authRequired, async (req, res) => {
+    try {
+        const user = await Utilizator.findById(req.user.id);
+        if (!user) {
+            return res.status(404).json({ message: "Utilizator inexistent" });
+        }
+
+        res.json({
+            id: user._id,
+            nume: user.nume,
+            email: user.email,
+            rol: user.rol,
+        });
+    } catch (e) {
+        console.error("/me error:", e.message);
+        res.status(500).json({ message: "Eroare server" });
+    }
+});
+
+/* ==== RESET PAROLĂ ==== */
+// POST /api/utilizatori/reset-password
+// Body: { email, newPassword }
+router.post("/reset-password", async (req, res) => {
+    try {
+        const { email, newPassword } = req.body;
+
+        if (!email || !newPassword) {
+            return res.status(400).json({
+                message: "Email și parolă nouă sunt necesare",
             });
         }
 
-        u.rol = "admin";
-        await u.setPassword(parola);
-        await u.save();
+        const user = await Utilizator.findOne({ email }).select(
+            "+parolaHash +parola"
+        );
+        if (!user) {
+            return res.status(404).json({
+                message: "Nu există utilizator cu acest email",
+            });
+        }
+
+        await user.setPassword(newPassword);
+        await user.save();
 
         res.json({
             ok: true,
-            id: u._id,
-            email: u.email,
-            rol: u.rol,
+            message: "Parola a fost resetată cu succes",
         });
-    });
-}
+    } catch (e) {
+        console.error("reset-password error:", e.message);
+        res
+            .status(500)
+            .json({ message: "Eroare server la resetare parolă" });
+    }
+});
+
+/* ==== LOGOUT – opțional ==== */
+// POST /api/utilizatori/logout
+router.post("/logout", (req, res) => {
+    // doar pentru simetrie; frontend șterge token-ul
+    res.json({ ok: true });
+});
 
 module.exports = router;
