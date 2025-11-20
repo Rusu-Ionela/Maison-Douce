@@ -14,15 +14,16 @@ router.get("/", async (req, res) => {
                 .json({ message: "Parametrul 'date' e obligatoriu (YYYY-MM-DD)" });
         }
 
+        // acceptăm fie `dataLivrare` (vechi) fie `dataRezervare` (noul câmp)
         const [comenzi, rezervari] = await Promise.all([
-            Comanda.find({ dataLivrare: date }).lean(),
+            Comanda.find({ $or: [{ dataLivrare: date }, { dataRezervare: date }] }).lean(),
             Rezervare.find({ date }).lean(),
         ]);
 
         const agenda = [];
         for (const c of comenzi) {
             agenda.push({
-                hour: c.oraLivrare || "00:00",
+                hour: c.oraLivrare || c.oraRezervare || "00:00",
                 type: "order",
                 item: c,
             });

@@ -44,4 +44,25 @@ router.post("/checkout-session", async (req, res) => {
   res.json({ id: session.id, url: session.url });
 });
 
+/**
+ * DEBUG ROUTE: GET /api/stripe/webhook-test
+ * Only for local testing with Stripe CLI.
+ * Shows webhook config status.
+ */
+router.get("/webhook-test", (req, res) => {
+  const hasSecret = !!process.env.STRIPE_WEBHOOK_SECRET;
+  const hasKey = !!process.env.STRIPE_SECRET_KEY || !!process.env.STRIPE_SECRET || !!process.env.STRIPE_SK;
+  res.json({
+    status: hasSecret && hasKey ? "✓ configured" : "⚠ missing config",
+    webhook_secret: hasSecret ? "✓ set" : "❌ MISSING",
+    stripe_key: hasKey ? "✓ set" : "❌ MISSING",
+    instructions: [
+      "1. Ensure .env has STRIPE_SECRET_KEY and STRIPE_WEBHOOK_SECRET",
+      "2. Run: stripe listen --forward-to localhost:5000/api/stripe/webhook",
+      "3. Trigger test event: stripe trigger checkout.session.completed",
+      "4. Check backend logs for '[stripe webhook]' messages"
+    ]
+  });
+});
+
 module.exports = router;

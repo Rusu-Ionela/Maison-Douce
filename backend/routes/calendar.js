@@ -3,6 +3,7 @@ const express = require("express");
 const router = express.Router();
 
 const CalendarPrestator = require("../models/CalendarPrestator");
+const CalendarSlotEntry = require("../models/CalendarSlotEntry");
 const Rezervare = require("../models/Rezervare");
 const Comanda = require("../models/Comanda");
 
@@ -26,34 +27,27 @@ async function availabilityHandler(req, res) {
     const { prestatorId } = req.params;
     const { from, to, hideFull } = req.query;
 
-    const cal = await CalendarPrestator.findOne({ prestatorId });
-    if (!cal) return res.json({ slots: [] });
+    // Query CalendarSlotEntry (after migration, this is the single source of truth)
+    const query = { prestatorId };
+    if (from && to) query.date = { $gte: from, $lte: to };
+    else if (from) query.date = { $gte: from };
+    else if (to) query.date = { $lte: to };
 
-    let slots = cal.slots || [];
+    const entries = await CalendarSlotEntry.find(query).lean();
+    let mapped = entries.map((s) => ({
+      date: s.date,
+      time: s.time,
+      capacity: Number(s.capacity || 0),
+      used: Number(s.used || 0),
+      free: Math.max(0, Number((s.capacity || 0)) - Number((s.used || 0)))
+    }));
 
-    if (from) slots = slots.filter((s) => s.date >= from);
-    if (to) slots = slots.filter((s) => s.date <= to);
+    if (String(hideFull).toLowerCase() === "true") {
+      mapped = mapped.filter(s => s.free > 0);
+    }
 
-    const mapped = slots.map((s) => {
-      const capacity = Number(s.capacity || 0);
-      const used = Number(s.used || 0);
-      return {
-        date: s.date,
-        time: s.time,
-        capacity,
-        used,
-        free: Math.max(0, capacity - used),
-      };
-    });
-
-    const final =
-      String(hideFull).toLowerCase() === "true"
-        ? mapped.filter((s) => s.free > 0)
-        : mapped;
-
-    final.sort((a, b) => (a.date + a.time).localeCompare(b.date + b.time));
-
-    res.json({ slots: final });
+    mapped.sort((a, b) => (a.date + a.time).localeCompare(b.date + b.time));
+    res.json({ slots: mapped });
   } catch (e) {
     console.error(e);
     res.status(500).json({ message: e.message });
@@ -68,6 +62,7 @@ router.get("/disponibilitate/:prestatorId", availabilityHandler);
 /*
   POST /api/calendar/availability/:prestatorId
   Body: { slots: [{ date, time, capacity }] }
+  Note: After migration, creates CalendarSlotEntry docs exclusively.
 */
 router.post("/availability/:prestatorId", async (req, res) => {
   try {
@@ -78,40 +73,24 @@ router.post("/availability/:prestatorId", async (req, res) => {
       return res.status(400).json({ message: "slots trebuie să fie array" });
     }
 
-    let cal = await CalendarPrestator.findOne({ prestatorId });
-    if (!cal) cal = new CalendarPrestator({ prestatorId, slots: [] });
+    let upsertedCount = 0;
 
-    const map = new Map(cal.slots.map((s) => [`${s.date}|${s.time}`, s]));
-
+    // Upsert each slot as CalendarSlotEntry document
     for (const s of slots) {
       if (!s?.date || !s?.time) continue;
-      const key = `${s.date}|${s.time}`;
-      const existing = map.get(key);
 
-      if (existing) {
-        if (typeof s.capacity === "number") {
-          existing.capacity = s.capacity;
-          if (existing.used > existing.capacity) {
-            existing.used = existing.capacity;
-          }
-        }
-      } else {
-        map.set(key, {
-          date: s.date,
-          time: s.time,
-          capacity: Number(s.capacity || 1),
-          used: 0,
-        });
-      }
+      await CalendarSlotEntry.updateOne(
+        { prestatorId, date: s.date, time: s.time },
+        {
+          $set: { capacity: Number(s.capacity || 1) },
+          $setOnInsert: { used: 0 }
+        },
+        { upsert: true }
+      );
+      upsertedCount++;
     }
 
-    cal.slots = Array.from(map.values()).sort((a, b) =>
-      (a.date + a.time).localeCompare(b.date + b.time)
-    );
-
-    await cal.save();
-
-    res.json({ ok: true, count: cal.slots.length });
+    res.json({ ok: true, count: upsertedCount });
   } catch (e) {
     console.error(e);
     res.status(500).json({ message: e.message });
@@ -162,31 +141,27 @@ router.post("/reserve", async (req, res) => {
     const sb = Number(subtotal || 0);
     const total = sb + deliveryFee;
 
-    // 1️⃣ Verificăm calendarul & rezervăm slotul
-    const cal = await CalendarPrestator.findOne({ prestatorId });
-    if (!cal) {
-      return res.status(404).json({ message: "Calendar inexistent" });
+    // 1️⃣ Atomic reservation using CalendarSlotEntry (required after migration)
+    const slotEntry = await CalendarSlotEntry.findOne({ prestatorId, date, time });
+    if (!slotEntry) {
+      return res.status(404).json({ message: 'Slot not found. Ensure calendar is set up for this prestator.' });
     }
 
-    const idx = (cal.slots || []).findIndex(
-      (s) => s.date === date && s.time === time
+    if (slotEntry.used >= slotEntry.capacity) {
+      return res.status(409).json({ message: 'Slot is full' });
+    }
+
+    // Atomic increment with condition: only if used < capacity
+    const upd = await CalendarSlotEntry.updateOne(
+      { _id: slotEntry._id, used: { $lt: slotEntry.capacity } },
+      { $inc: { used: 1 } }
     );
-    if (idx === -1) {
-      return res.status(404).json({ message: "Slot inexistent" });
+
+    if (!upd || upd.modifiedCount === 0) {
+      return res.status(409).json({ message: 'Slot unavailable or occupied' });
     }
 
-    const slot = cal.slots[idx];
-    const cap = Number(slot.capacity || 0);
-    const used = Number(slot.used || 0);
-
-    if (used >= cap) {
-      return res
-        .status(409)
-        .json({ message: "Slot indisponibil (ocupat)" });
-    }
-
-    cal.slots[idx].used = used + 1;
-    await cal.save();
+    const incremented = { type: 'entry', id: slotEntry._id };
 
     // calculăm timeSlot "HH:mm-HH:mm+1h"
     const [h, m] = time.split(":").map(Number);
@@ -211,32 +186,56 @@ router.post("/reserve", async (req, res) => {
       customDetails: customDetails || null,
     };
 
-    const comanda = await Comanda.create(comandaPayload);
+    let comanda;
+    let doc;
+    try {
+      comanda = await Comanda.create(comandaPayload);
 
-    // 3️⃣ Creăm REZERVAREA
-    const doc = await Rezervare.create({
-      clientId,
-      prestatorId,
-      comandaId: comanda._id,
-      tortId: tortId || undefined,
-      customDetails: customDetails || undefined,
-      date,
-      timeSlot,
-      handoffMethod: metoda === "livrare" ? "delivery" : "pickup",
-      deliveryFee,
-      deliveryAddress: metoda === "livrare" ? adresaLivrare : undefined,
-      subtotal: sb,
-      total,
-      paymentStatus: "unpaid",
-      status: "pending",
-      handoffStatus: "scheduled",
-    });
+      // 3️⃣ Creăm REZERVAREA
+      doc = await Rezervare.create({
+        clientId,
+        prestatorId,
+        comandaId: comanda._id,
+        tortId: tortId || undefined,
+        customDetails: customDetails || undefined,
+        date,
+        timeSlot,
+        handoffMethod: metoda === "livrare" ? "delivery" : "pickup",
+        deliveryFee,
+        deliveryAddress: metoda === "livrare" ? adresaLivrare : undefined,
+        subtotal: sb,
+        total,
+        paymentStatus: "unpaid",
+        status: "pending",
+        handoffStatus: "scheduled",
+      });
+    } catch (e) {
+      // dacă crearea comenzii sau rezervării eșuează, revenim (decrementăm used)
+      try {
+        await CalendarSlotEntry.updateOne(
+          { _id: incremented.id, used: { $gt: 0 } },
+          { $inc: { used: -1 } }
+        );
+        console.log('[reserve rollback] ✓ Rolled back slot increment');
+      } catch (re) {
+        console.error("Rollback failed for slot used decrement:", re);
+      }
+      throw e;
+    }
+
+    // read slot info for response
+    let slotInfo = null;
+    try {
+      slotInfo = await CalendarSlotEntry.findById(incremented.id).lean();
+    } catch (e) {
+      console.warn('Could not read slot info for response', e.message || e);
+    }
 
     return res.json({
       ok: true,
       rezervareId: doc._id,
       comandaId: comanda._id,
-      slot: cal.slots[idx],
+      slot: slotInfo,
       fees: { delivery: deliveryFee },
       total,
     });

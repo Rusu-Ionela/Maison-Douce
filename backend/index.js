@@ -167,16 +167,9 @@ const errorHandler = (err, _req, res, _next) => {
 app.use(errorHandler);
 
 // --- SOCKET.IO ---
-const io = new Server(server, {
-  cors: { origin: CORS_ORIGINS, methods: ["GET", "POST"], credentials: true },
-});
-
-io.of("/user-chat").on("connection", (socket) => {
-  console.log("user-chat connected:", socket.id);
-  socket.on("sendMessage", (data) =>
-    io.of("/user-chat").emit("receiveMessage", data)
-  );
-});
+// Socket.io initialization is deferred until after MongoDB connects
+// to ensure persistence (MesajChat) is available. It will be initialized
+// below inside the startup routine once the DB connection succeeds.
 
 // --- MONGO + LISTEN ---
 const PORT = process.env.PORT || 5000;
@@ -196,6 +189,14 @@ console.log("MONGO_URI =", MONGO_URI);
       mongoose.connection.on("error", (err) => {
         console.error("MongoDB error:", err);
       });
+      // init sockets after mongo connected so we can persist messages reliably
+      try {
+        const socketModule = require("./socket");
+        socketModule.init(server);
+        console.log("✓ Socket.io initialized after MongoDB connection");
+      } catch (e) {
+        console.warn("Socket.io init failed after Mongo connect:", e?.message || e);
+      }
     } else {
       console.warn("MONGODB_URI lipsă/placeholder — sar peste Mongo (DEV)");
     }

@@ -100,18 +100,35 @@ async function createRezervare(req, res) {
             paymentStatus: "unpaid"
         });
 
-        // ✅ Marchează slotul în CalendarPrestator (non-fatal dacă eșuează)
+        // ✅ Marchează slotul în CalendarSlotEntry (atomic) sau fallback la CalendarPrestator
         try {
-            const { startTime, endTime } = toStartEnd(timeSlot);
-            const BASE = process.env.BASE_SERVER_URL || "http://localhost:5000";
-            await axios.patch(
-                `${BASE}/api/calendar/availability/${prestatorId}/book`,
-                { date, startTime, endTime, qty: 1 },
-                { timeout: 5000 }
-            );
+            const CalendarSlotEntry = require('../models/CalendarSlotEntry');
+            // try atomic increment on per-slot entry
+            const start = toStartEnd(timeSlot).startTime || timeSlot;
+            const entry = await CalendarSlotEntry.findOne({ prestatorId, date, time: start });
+            if (entry) {
+                const upd = await CalendarSlotEntry.updateOne({ _id: entry._id, used: { $lt: entry.capacity } }, { $inc: { used: 1 } });
+                if (!upd || upd.modifiedCount === 0) {
+                    console.warn('[calendar/book] slot full or could not increment entry');
+                }
+            } else {
+                // fallback to legacy calendar array
+                try {
+                    const CalendarPrestator = require('../models/CalendarPrestator');
+                    const cal = await CalendarPrestator.findOne({ prestatorId });
+                    if (cal && Array.isArray(cal.slots)) {
+                        const idx = cal.slots.findIndex(s => s.date === date && s.time === start);
+                        if (idx !== -1) {
+                            cal.slots[idx].used = Number(cal.slots[idx].used || 0) + 1;
+                            await cal.save();
+                        }
+                    }
+                } catch (inner) {
+                    console.warn('[calendar/book] fallback warning:', inner?.message || inner);
+                }
+            }
         } catch (patchErr) {
-            console.warn("[calendar/book] warning:", patchErr?.message || patchErr);
-            // nu aruncăm 500 la client; doar log (calendarul e un plus de consistență)
+            console.warn('[calendar/book] warning:', patchErr?.message || patchErr);
         }
 
         res.status(201).json(rezervare);
@@ -200,47 +217,58 @@ async function updateHandoffStatus(req, res) {
  */
 // backend/controllers/rezervariController.js (doar funcția updateRezervareStatus)
 async function updateRezervareStatus(req, res) {
-  try {
-    const { id } = req.params;
-    const { status } = req.body;
-    const allowed = ["pending", "confirmed", "cancelled"];
+    try {
+        const { id } = req.params;
+        const { status } = req.body;
+        const allowed = ["pending", "confirmed", "cancelled"];
 
-    if (!allowed.includes(status)) {
-      return res.status(400).json({ error: "Invalid status" });
-    }
-
-    const doc = await Rezervare.findByIdAndUpdate(
-      id,
-      { status },
-      { new: true }
-    );
-
-    if (!doc) return res.status(404).json({ error: "Not found" });
-
-    // dacă NOUL status e "cancelled" => eliberăm slotul în CalendarPrestator
-    if (status === "cancelled" && doc.prestatorId && doc.date && doc.timeSlot) {
-      try {
-        const CalendarPrestator = require("../models/CalendarPrestator");
-        const startHour = (ts = "") => String(ts).split("-")[0] || "";
-        const cal = await CalendarPrestator.findOne({ prestatorId: doc.prestatorId });
-        if (cal && Array.isArray(cal.slots)) {
-          const idx = cal.slots.findIndex(
-            s => s.date === doc.date && s.time === startHour(doc.timeSlot)
-          );
-          if (idx !== -1) {
-            cal.slots[idx].used = Math.max(0, Number(cal.slots[idx].used || 0) - 1);
-            await cal.save();
-          }
+        if (!allowed.includes(status)) {
+            return res.status(400).json({ error: "Invalid status" });
         }
-      } catch (err) {
-        console.warn("[rezervare cancel] eliberare slot warning:", err?.message || err);
-      }
-    }
 
-    res.json(doc);
-  } catch (e) {
-    res.status(500).json({ error: e.message });
-  }
+        const doc = await Rezervare.findByIdAndUpdate(
+            id,
+            { status },
+            { new: true }
+        );
+
+        if (!doc) return res.status(404).json({ error: "Not found" });
+
+        // dacă NOUL status e "cancelled" => eliberăm slotul în CalendarSlotEntry sau legacy CalendarPrestator
+        if (status === "cancelled" && doc.prestatorId && doc.date && doc.timeSlot) {
+            try {
+                const CalendarSlotEntry = require('../models/CalendarSlotEntry');
+                const startHour = (ts = "") => String(ts).split("-")[0] || "";
+                const start = startHour(doc.timeSlot);
+                const entry = await CalendarSlotEntry.findOne({ prestatorId: doc.prestatorId, date: doc.date, time: start });
+                if (entry) {
+                    await CalendarSlotEntry.updateOne({ _id: entry._id, used: { $gt: 0 } }, { $inc: { used: -1 } });
+                } else {
+                    try {
+                        const CalendarPrestator = require('../models/CalendarPrestator');
+                        const cal = await CalendarPrestator.findOne({ prestatorId: doc.prestatorId });
+                        if (cal && Array.isArray(cal.slots)) {
+                            const idx = cal.slots.findIndex(
+                                s => s.date === doc.date && s.time === start
+                            );
+                            if (idx !== -1) {
+                                cal.slots[idx].used = Math.max(0, Number(cal.slots[idx].used || 0) - 1);
+                                await cal.save();
+                            }
+                        }
+                    } catch (err) {
+                        console.warn('[rezervare cancel] legacy eliberare slot warning:', err?.message || err);
+                    }
+                }
+            } catch (err) {
+                console.warn('[rezervare cancel] eliberare slot warning:', err?.message || err);
+            }
+        }
+
+        res.json(doc);
+    } catch (e) {
+        res.status(500).json({ error: e.message });
+    }
 }
 
 

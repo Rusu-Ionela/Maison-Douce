@@ -145,16 +145,34 @@ router.post("/creeaza-cu-slot", async (req, res) => {
         if (!clientId) throw new Error("clientId obligatoriu.");
         if (!dataLivrare || !oraLivrare) throw new Error("dataLivrare și oraLivrare sunt obligatorii.");
 
-        // 1) Blochează slotul în CalendarPrestator
-        const cal = await CalendarPrestator.findOne({ prestatorId }).session(session);
-        if (!cal) throw new Error("Calendar inexistent pentru prestator.");
-        const idx = (cal.slots || []).findIndex((s) => s.date === dataLivrare && s.time === oraLivrare);
-        if (idx === -1) throw new Error("Slot indisponibil.");
-        const slot = cal.slots[idx];
-        if (Number(slot.used || 0) >= Number(slot.capacity || 0)) throw new Error("Slot epuizat.");
+        // 1) Blochează slotul — preferăm CalendarSlotEntry (atomic), fallback la CalendarPrestator
+        const CalendarSlotEntry = require('../models/CalendarSlotEntry');
+        // try to increment entry atomically within the session
+        let entryUpdated = false;
+        try {
+            const entry = await CalendarSlotEntry.findOne({ prestatorId, date: dataLivrare, time: oraLivrare }).session(session);
+            if (entry) {
+                const upd = await CalendarSlotEntry.updateOne({ _id: entry._id, used: { $lt: entry.capacity } }, { $inc: { used: 1 } }).session(session);
+                if (!upd || upd.modifiedCount === 0) throw new Error('Slot indisponibil.');
+                entryUpdated = true;
+            }
+        } catch (err) {
+            // if entry exists but cannot be incremented, abort
+            if (err.message && err.message.includes('Slot indisponibil')) throw err;
+        }
 
-        cal.slots[idx].used = Number(slot.used || 0) + 1;
-        await cal.save({ session });
+        if (!entryUpdated) {
+            // fallback to legacy CalendarPrestator array
+            const cal = await CalendarPrestator.findOne({ prestatorId }).session(session);
+            if (!cal) throw new Error('Calendar inexistent pentru prestator.');
+            const idx = (cal.slots || []).findIndex((s) => s.date === dataLivrare && s.time === oraLivrare);
+            if (idx === -1) throw new Error('Slot indisponibil.');
+            const slot = cal.slots[idx];
+            if (Number(slot.used || 0) >= Number(slot.capacity || 0)) throw new Error('Slot epuizat.');
+
+            cal.slots[idx].used = Number(slot.used || 0) + 1;
+            await cal.save({ session });
+        }
 
         // 2) Totaluri
         const items = normalizeItems(rawItems, produse);
@@ -380,40 +398,65 @@ router.get("/export/csv", async (req, res) => {
         res.status(500).json({ message: "Eroare server la export CSV." });
     }
 });
-// PATCH /api/comenzi/:id/cancel – anulează comanda și eliberează slotul (used−1)
+// PATCH /api/comenzi/:id/cancel – anulează comanda și eliberează slotul (used−1) din CalendarSlotEntry + fallback legacy
 router.patch("/:id/cancel", async (req, res) => {
-  try {
-    const { id } = req.params;
-    const doc = await Comanda.findById(id);
-    if (!doc) return res.status(404).json({ message: "Comanda nu există" });
+    try {
+        const { id } = req.params;
+        const doc = await Comanda.findById(id);
+        if (!doc) return res.status(404).json({ message: "Comanda nu există" });
 
-    // dacă deja anulată, returnează
-    if (doc.status === "anulata" || doc.status === "cancelled") {
-      return res.json({ ok: true, status: doc.status });
-    }
-
-    // marchează anulată
-    doc.status = "anulata";
-    await doc.save();
-
-    // dacă are data/ora și prestator => decrementăm used în CalendarPrestator
-    if (doc.dataLivrare && doc.oraLivrare && doc.prestatorId) {
-      const CalendarPrestator = require("../models/CalendarPrestator");
-      const cal = await CalendarPrestator.findOne({ prestatorId: doc.prestatorId });
-      if (cal && Array.isArray(cal.slots)) {
-        const idx = cal.slots.findIndex(s => s.date === doc.dataLivrare && s.time === doc.oraLivrare);
-        if (idx !== -1) {
-          cal.slots[idx].used = Math.max(0, Number(cal.slots[idx].used || 0) - 1);
-          await cal.save();
+        // dacă deja anulată, returnează
+        if (doc.status === "anulata" || doc.status === "cancelled") {
+            return res.json({ ok: true, status: doc.status });
         }
-      }
-    }
 
-    res.json({ ok: true, status: doc.status });
-  } catch (e) {
-    console.error("cancel comanda error:", e);
-    res.status(500).json({ message: e.message });
-  }
+        // marchează anulată
+        doc.status = "anulata";
+        await doc.save();
+
+        // dacă are data/ora și prestator => decrementăm used în CalendarSlotEntry (preferred) sau legacy CalendarPrestator
+        if (doc.dataLivrare && doc.oraLivrare && doc.prestatorId) {
+            try {
+                // Încearcă CalendarSlotEntry (preferred)
+                const CalendarSlotEntry = require("../models/CalendarSlotEntry");
+                const entry = await CalendarSlotEntry.findOne({
+                    prestatorId: doc.prestatorId,
+                    date: doc.dataLivrare,
+                    time: doc.oraLivrare
+                });
+                if (entry && entry.used > 0) {
+                    await CalendarSlotEntry.updateOne(
+                        { _id: entry._id, used: { $gt: 0 } },
+                        { $inc: { used: -1 } }
+                    );
+                } else {
+                    // Fallback: legacy CalendarPrestator array
+                    try {
+                        const CalendarPrestator = require("../models/CalendarPrestator");
+                        const cal = await CalendarPrestator.findOne({ prestatorId: doc.prestatorId });
+                        if (cal && Array.isArray(cal.slots)) {
+                            const idx = cal.slots.findIndex(
+                                s => s.date === doc.dataLivrare && s.time === doc.oraLivrare
+                            );
+                            if (idx !== -1) {
+                                cal.slots[idx].used = Math.max(0, Number(cal.slots[idx].used || 0) - 1);
+                                await cal.save();
+                            }
+                        }
+                    } catch (legacyErr) {
+                        console.warn('[comanda cancel] legacy eliberare slot warning:', legacyErr?.message || legacyErr);
+                    }
+                }
+            } catch (err) {
+                console.warn('[comanda cancel] eliberare slot warning:', err?.message || err);
+            }
+        }
+
+        res.json({ ok: true, status: doc.status });
+    } catch (e) {
+        console.error("cancel comanda error:", e);
+        res.status(500).json({ message: e.message });
+    }
 });
 
 module.exports = router;
