@@ -18,18 +18,20 @@ const server = http.createServer(app);
 const ORIGIN = process.env.BASE_CLIENT_URL || "http://localhost:5173";
 const CORS_ORIGINS = [ORIGIN, "http://localhost:5173", "http://localhost:5174"];
 
-app.use(cors({
-  origin: CORS_ORIGINS,
-  credentials: true,
-  methods: ['GET', 'POST', 'PUT', 'DELETE'],
-  allowedHeaders: ['Content-Type', 'Authorization']
-}));
+app.use(
+  cors({
+    origin: CORS_ORIGINS,
+    credentials: true,
+    methods: ["GET", "POST", "PUT", "DELETE"],
+    allowedHeaders: ["Content-Type", "Authorization"],
+  })
+);
 
 // --- SECURITY MIDDLEWARE ---
 app.use(helmet());
 app.use((req, res, next) => {
-  res.setHeader('X-Content-Type-Options', 'nosniff');
-  res.setHeader('X-Frame-Options', 'DENY');
+  res.setHeader("X-Content-Type-Options", "nosniff");
+  res.setHeader("X-Frame-Options", "DENY");
   next();
 });
 app.use(morgan("dev"));
@@ -41,10 +43,16 @@ app.get("/api/health", (_req, res) => res.send("ok"));
 // --- STRIPE WEBHOOK: RAW ---
 try {
   const stripeWebhookHandler = require("./routes/stripeWebhook");
-  app.post("/api/stripe/webhook", express.raw({ type: "application/json" }), stripeWebhookHandler);
+  app.post(
+    "/api/stripe/webhook",
+    express.raw({ type: "application/json" }),
+    stripeWebhookHandler
+  );
   console.log("✓ Mounted /api/stripe/webhook (RAW)");
 } catch {
-  console.warn("⚠ Stripe webhook route not mounted (routes/stripeWebhook missing?)");
+  console.warn(
+    "⚠ Stripe webhook route not mounted (routes/stripeWebhook missing?)"
+  );
 }
 
 // --- BODY PARSERS ---
@@ -92,16 +100,12 @@ function mount(mountPath, routePath) {
   }
 }
 
-// --- ROUTES ---
+// --- DEV ROUTES ---
 if (process.env.NODE_ENV !== "production") {
   mount("/api/dev-payments", "./routes/devPayments");
 }
 
-// --- ROUTES ---
-if (process.env.NODE_ENV !== "production") {
-  mount("/api/dev-payments", "./routes/devPayments");
-}
-
+// --- CORE ROUTES ---
 mount("/api/utilizatori", "./routes/utilizatori");
 mount("/api/torturi", "./routes/torturi");
 mount("/api/produse-studio", "./routes/produseStudio");
@@ -116,21 +120,36 @@ mount("/api/albume", "./routes/albumeRoutes");
 mount("/api/notificari", "./routes/notificari");
 mount("/api/notificari-foto", "./routes/notificariFotoRoutes");
 
-// 🆕 NOILE RUTE - CALENDAR, FIDELIZARE, RAPOARTE
+// --- FIDELIZARE, RECOMANDĂRI, EXTRA ---
 mount("/api/fidelizare", "./routes/fidelizare");
+mount("/api/recommendations", "./routes/recommendations");
+mount("/api/personalizare", "./routes/personalizare");
+mount("/api/coupon", "./routes/coupon");
+mount("/api/comenzi-personalizate", "./routes/comenziPersonalizate");
+mount("/api/cutie-lunara", "./routes/cutieLunara");
 
-// ... rest of routes
-const stripeKey = process.env.STRIPE_SECRET_KEY || process.env.STRIPE_SECRET || process.env.STRIPE_SK || "";
+// --- CHAT / MESAJE ---
+mount("/api/mesaje-chat", "./routes/mesajChat");
+mount("/api/chat", "./routes/chat");
+
+// --- RESET PAROLĂ ---
+mount("/api/reset-parola", "./routes/resetParola");
+
+// --- STRIPE NORMAL ---
+const stripeKey =
+  process.env.STRIPE_SECRET_KEY ||
+  process.env.STRIPE_SECRET ||
+  process.env.STRIPE_SK ||
+  "";
 if (stripeKey) {
   mount("/api/stripe", "./routes/stripe");
 } else {
   console.warn("⚠ STRIPE_SECRET_KEY missing — skipping /api/stripe");
 }
 
-[
-  "mesaje-chat", "chat", "comenzi-personalizate", "fidelizare",
-  "recommendations", "personalizare", "reset-parola", "cutie-lunara", "coupon"
-].forEach((rp) => mount(`/api/${rp}`, "./routes/notImplemented"));
+// ❌ NU MAI MONTĂM notImplemented PESTE RUTELE REALE ❌
+// Dacă ai vreo rută care chiar nu e gata, poți să o lași explicit, de ex.:
+// mount("/api/ceva-nerealizat", "./routes/notImplemented");
 
 // --- 404 ---
 app.use((_req, res) => res.status(404).json({ message: "Ruta nu există." }));
@@ -141,7 +160,7 @@ const errorHandler = (err, _req, res, _next) => {
   res.status(err.status || 500).json({
     success: false,
     message: err.message || "Eroare server",
-    error: process.env.NODE_ENV === 'development' ? err.message : undefined
+    error: process.env.NODE_ENV === "development" ? err.message : undefined,
   });
 };
 
@@ -154,12 +173,17 @@ const io = new Server(server, {
 
 io.of("/user-chat").on("connection", (socket) => {
   console.log("user-chat connected:", socket.id);
-  socket.on("sendMessage", (data) => io.of("/user-chat").emit("receiveMessage", data));
+  socket.on("sendMessage", (data) =>
+    io.of("/user-chat").emit("receiveMessage", data)
+  );
 });
 
 // --- MONGO + LISTEN ---
 const PORT = process.env.PORT || 5000;
-const MONGO_URI = process.env.MONGODB_URI || process.env.MONGO_URI || "mongodb://127.0.0.1:27017/torturi?directConnection=true&family=4";
+const MONGO_URI =
+  process.env.MONGODB_URI ||
+  process.env.MONGO_URI ||
+  "mongodb://127.0.0.1:27017/torturi?directConnection=true&family=4";
 
 console.log("MONGO_URI =", MONGO_URI);
 
@@ -169,8 +193,8 @@ console.log("MONGO_URI =", MONGO_URI);
       await mongoose.connect(MONGO_URI);
       console.log("MongoDB conectat");
 
-      mongoose.connection.on('error', err => {
-        console.error('MongoDB error:', err);
+      mongoose.connection.on("error", (err) => {
+        console.error("MongoDB error:", err);
       });
     } else {
       console.warn("MONGODB_URI lipsă/placeholder — sar peste Mongo (DEV)");
@@ -178,18 +202,24 @@ console.log("MONGO_URI =", MONGO_URI);
 
     server.on("error", (err) => {
       if (err.code === "EADDRINUSE") {
-        console.error(`❌ Portul ${PORT} este deja folosit. Schimbă PORT în .env`);
+        console.error(
+          `❌ Portul ${PORT} este deja folosit. Schimbă PORT în .env`
+        );
         process.exit(1);
       } else throw err;
     });
 
     server.listen(PORT, () => {
-      console.log(`API server pe http://localhost:${PORT} (origin: ${ORIGIN})`);
+      console.log(
+        `API server pe http://localhost:${PORT} (origin: ${ORIGIN})`
+      );
     });
   } catch (err) {
-    console.error('MongoDB connection error:', err);
+    console.error("MongoDB connection error:", err);
     process.exit(1);
   }
 })();
 
-process.on("unhandledRejection", (err) => console.error("Unhandled rejection:", err));
+process.on("unhandledRejection", (err) =>
+  console.error("Unhandled rejection:", err)
+);

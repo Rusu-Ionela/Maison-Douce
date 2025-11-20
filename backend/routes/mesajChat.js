@@ -3,7 +3,7 @@ const express = require("express");
 const router = express.Router();
 const MesajChat = require("../models/MesajChat");
 
-// GET /api/mesaje-chat – toate mesajele (pt istoric)
+// GET /api/mesaje-chat – toate mesajele (istoric chat)
 router.get("/", async (_req, res) => {
     try {
         const mesaje = await MesajChat.find().sort({ data: 1 }).lean();
@@ -14,10 +14,11 @@ router.get("/", async (_req, res) => {
     }
 });
 
-// POST /api/mesaje-chat – salvează un mesaj simplu
+// POST /api/mesaje-chat – salvează un mesaj
 router.post("/", async (req, res) => {
     try {
         const { autor, text } = req.body;
+
         if (!text) {
             return res
                 .status(400)
