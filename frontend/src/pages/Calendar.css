@@ -1,0 +1,59 @@
+@import url("../styles/tokens.css");
+
+.cal {
+    padding: 64px 0
+}
+
+.cal-pane {
+    background: var(--paper);
+    border: 1px solid rgba(0, 0, 0, .06);
+    border-radius: 20px;
+    box-shadow: var(--shadow-soft);
+    padding: 14px
+}
+
+.cal-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 10px
+}
+
+.cal-month {
+    font-family: var(--font-serif);
+    font-size: 20px
+}
+
+.cal-grid {
+    display: grid;
+    grid-template-columns: repeat(7, 1fr);
+    gap: 8px
+}
+
+.dow {
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: .12em;
+    color: #6f6a61;
+    text-align: center;
+    padding: 4px 0
+}
+
+.cell {
+    background: #fff;
+    border: 1px solid var(--chip-border);
+    border-radius: 14px;
+    padding: 12px 0;
+    cursor: pointer;
+    transition: .2s
+}
+
+.cell:hover {
+    background: #fff;
+    border-color: #e9cec0;
+    box-shadow: var(--shadow-soft)
+}
+
+.cell.wkend {
+    background: #fdf9f3
+}

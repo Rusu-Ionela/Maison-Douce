@@ -1,0 +1,355 @@
+/* src/components/Navbar.css */
+@import url("../styles/tokens.css");
+
+.nav-root {
+    position: sticky;
+    top: 0;
+    z-index: 60;
+    background: rgba(252, 247, 239, .92);
+    backdrop-filter: blur(8px);
+    border-bottom: 1px solid var(--chip-border);
+    box-shadow: 0 2px 10px rgba(0, 0, 0, .04);
+}
+
+.nav-bar {
+    height: 62px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between
+}
+
+.brand {
+    display: flex;
+    flex-direction: column;
+    line-height: 1
+}
+
+.brand .brand-top {
+    font-family: var(--font-serif);
+    letter-spacing: .12em;
+    font-size: 18px
+}
+
+.brand .brand-sub {
+    font-family: var(--font-script);
+    font-size: 12px;
+    opacity: .7;
+    margin-top: 2px
+}
+
+
+.menu-link {
+    padding: 9px 14px;
+    border-radius: 16px;
+    background: var(--chip);
+    border: 1px solid var(--chip-border);
+    transition: .2s;
+}
+
+.menu-link:hover {
+    background: #fff;
+    border-color: #e9cec0;
+    box-shadow: var(--shadow-soft)
+}
+
+.menu-link.active {
+    background: var(--mint);
+    border-color: var(--gold);
+    color: #233221
+}
+
+/* dreapta */
+.right.desktop {
+    display: flex;
+    gap: 10px
+}
+
+.btn-ghost {
+    padding: 10px 14px;
+    border-radius: 16px;
+    background: #fff;
+    border: 1px solid var(--chip-border)
+}
+
+.btn-ghost:hover {
+    background: #f7f2ea
+}
+
+.btn-solid {
+    padding: 10px 14px;
+    border-radius: 16px;
+    background: var(--mint);
+    border: 1px solid var(--gold);
+    color: #233221
+}
+
+.btn-solid:hover {
+    background: var(--mint-deep)
+}
+
+.btn-ghost.full {
+    width: 100%;
+    text-align: left
+}
+
+/* dropdown admin */
+.admin-wrap {
+    position: relative
+}
+
+.dropdown {
+    position: absolute;
+    right: 0;
+    top: 100%;
+    margin-top: 8px;
+    width: 230px;
+    background: #fff;
+    border: 1px solid var(--chip-border);
+    border-radius: 14px;
+    box-shadow: var(--shadow-soft);
+    padding: 6px;
+    display: grid;
+    gap: 4px;
+    z-index: 70;
+}
+
+.drop-link {
+    padding: 10px;
+    border-radius: 10px
+}
+
+.drop-link:hover {
+    background: #f6f2ea
+}
+
+/* hamburger + drawer */
+.hamburger {
+    display: none;
+    width: 44px;
+    height: 44px;
+    background: transparent;
+    border: 0;
+    border-radius: 14px;
+    position: relative
+}
+
+.hamburger:hover {
+    background: #f7f2ea
+}
+
+.hamburger span {
+    position: absolute;
+    left: 10px;
+    right: 10px;
+    height: 2px;
+    background: var(--ink);
+    transition: .25s
+}
+
+.hamburger span:nth-child(1) {
+    top: 14px
+}
+
+.hamburger span:nth-child(2) {
+    top: 21px
+}
+
+.hamburger span:nth-child(3) {
+    top: 28px
+}
+
+.hamburger.is-open span:nth-child(1) {
+    transform: translateY(7px) rotate(45deg)
+}
+
+.hamburger.is-open span:nth-child(2) {
+    opacity: 0
+}
+
+.hamburger.is-open span:nth-child(3) {
+    transform: translateY(-7px) rotate(-45deg)
+}
+
+.drawer.mobile {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, .25)
+}
+
+.drawer-panel {
+    position: absolute;
+    right: 0;
+    top: 0;
+    bottom: 0;
+    width: 86%;
+    max-width: 360px;
+    background: var(--paper);
+    border-top-left-radius: 22px;
+    border-bottom-left-radius: 22px;
+    box-shadow: var(--shadow-soft);
+    padding: 14px;
+}
+
+.drawer-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between
+}
+
+.brand-mini .b1 {
+    font-weight: 600;
+    letter-spacing: .08em
+}
+
+.brand-mini .b2 {
+    font-size: 12px;
+    opacity: .7
+}
+
+.close {
+    background: transparent;
+    border: 0;
+    font-size: 28px;
+    line-height: 1;
+    cursor: pointer
+}
+
+.drawer-links {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin-top: 8px
+}
+
+.drawer-link {
+    padding: 12px 14px;
+    border-radius: 14px;
+    background: var(--chip);
+    border: 1px solid var(--chip-border)
+}
+
+.drawer-link:hover {
+    background: #fff;
+    border-color: #e9cec0
+}
+
+.zones-toggle {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 12px 14px;
+    border-radius: 14px;
+    background: #fff;
+    border: 1px solid var(--chip-border)
+}
+
+.zones-toggle.expanded {
+    background: #fff;
+    border-color: #e9cec0
+}
+
+.zones {
+    display: grid;
+    gap: 8px;
+    padding: 6px 0 2px 10px
+}
+
+.zone-link {
+    padding: 10px 12px;
+    border-radius: 12px;
+    background: #fff;
+    border: 1px dashed #eadfcd
+}
+
+.section-h {
+    margin-top: 8px;
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: .12em;
+    color: #6a5a5a
+}
+
+/* responsive */
+@media (max-width:1024px) {
+    .desktop {
+        display: none
+    }
+
+    .mobile {
+        display: block
+    }
+
+    .hamburger {
+        display: block
+    }
+}
+
+/* bară generală */
+.nav-bar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+}
+
+/* brandul și dreapta nu se micșorează */
+.brand,
+.right.desktop {
+    flex: 0 0 auto;
+}
+
+/* zona centrală – NU rupe rândul, permite scroll orizontal */
+.menu.desktop {
+    flex: 1 1 auto;
+    min-width: 0;
+    /* important ca flex-ul central să aibă voie să se micșoreze */
+    display: flex;
+    justify-content: center;
+    gap: 10px;
+    white-space: nowrap;
+    /* nu rupe rândul */
+    overflow-x: auto;
+    /* derulare orizontală dacă nu încape */
+    -webkit-overflow-scrolling: touch;
+    scrollbar-gutter: stable both-edges;
+}
+
+.menu.desktop {
+    flex-wrap: nowrap !important;
+}
+
+/* opțional: scrollbar discret */
+.menu.desktop::-webkit-scrollbar {
+    height: 6px;
+}
+
+.menu.desktop::-webkit-scrollbar-thumb {
+    border-radius: 9999px;
+}
+
+/* link-urile – puțin mai compacte */
+.menu-link {
+    display: inline-flex;
+    align-items: center;
+    padding: 8px 12px;
+    border-radius: 9999px;
+    line-height: 1;
+}
+
+/* butoanele din dreapta să nu forțeze ruperea rândului */
+.btn-ghost,
+.btn-solid {
+    padding: 8px 12px;
+}
+
+/* breakpoint mai generos pentru hamburger:
+   pe ecrane sub 1100px ascundem versiunea desktop */
+@media (max-width: 1100px) {
+    .desktop {
+        display: none;
+    }
+
+    .mobile {
+        display: flex;
+    }
+}
