@@ -1,179 +1,272 @@
-// src/pages/Home.jsx
-import { useEffect } from "react";
+import React, { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import "./Home.css";
+import { ProductsAPI } from "/src/api/products.js";
+import { useAuth } from "/src/context/AuthContext.jsx";
+
+const iconics = [
+  { img: "/images/image.png", title: "Tort personalizat pentru bebeluET", price: "57 EUR" },
+  { img: "/images/easther cake.jpg", title: "Tort personalizat de PaETte", price: "60 EUR" },
+  { img: "/images/lambeth.jpg", title: "Tort Arn stil Lambeth", price: "26 EUR" },
+  { img: "/images/royalcake.jpg", title: "Tort Royal", price: "170 EUR" },
+];
+
+const tailor = [
+  { img: "/images/umplutura bicuiti.jpg", title: "Pistachio" },
+  { img: "/images/umplutura bounty.jpg", title: "Rose" },
+  { img: "/images/umplutura lemon.jpg", title: "Lemon" },
+  { img: "/images/umplutura ferero rochen.jpg", title: "Vanilla" },
+];
 
 export default function Home() {
+  const { user } = useAuth();
+  const [loadingRec, setLoadingRec] = useState(true);
+  const [recs, setRecs] = useState([]);
+
+  useEffect(() => {
+    async function loadRecs() {
+      try {
+        setLoadingRec(true);
+        const data = await ProductsAPI.recommendAi({
+          userId: user?._id,
+          preferCategorie: "torturi",
+          excludePurchased: true,
+        });
+        setRecs(data?.recomandate || []);
+      } catch (e) {
+        console.warn("AI recommendations failed", e?.message);
+        setRecs([]);
+      } finally {
+        setLoadingRec(false);
+      }
+    }
+
+    loadRecs();
+  }, [user?._id]);
+
   useEffect(() => {
     const io = new IntersectionObserver(
       (entries) => entries.forEach((e) => e.isIntersecting && e.target.classList.add("show")),
-      { threshold: 0.12 }
+      { threshold: 0.15 }
     );
-    document.querySelectorAll(".reveal").forEach((el) => io.observe(el));
+    document.querySelectorAll(".reveal").forEach((el) => {
+      io.observe(el);
+    });
     return () => io.disconnect();
   }, []);
 
   return (
-    <>
+    <div className="bg-cream min-h-screen">
       {/* HERO */}
-      <header className="hero">
-        <div className="hero-inner reveal">
-          <div className="kicker">Arta Delicateselor</div>
-          <h1 className="display">DESERTURI<br />PERSONALIZATE</h1>
-          <div className="sub">since 1862 — vibe clasic, elegant</div>
-          <p style={{ marginTop: 22 }}>
-            <Link to="/catalog" className="btn btn--mint">Comandă online →</Link>
-          </p>
+      <header className="bg-gradient-to-br from-pink-50 via-rose-50 to-purple-50">
+        <div className="max-w-6xl mx-auto px-4 py-16 md:py-24 flex flex-col md:flex-row items-center gap-10 reveal">
+          <div className="flex-1 space-y-4">
+            <p className="uppercase tracking-[0.2em] text-sm text-pink-600">Arta delicateselor</p>
+            <h1 className="text-4xl md:text-5xl font-bold text-gray-900 leading-tight">
+              DESERTURI<br />PERSONALIZATE
+            </h1>
+            <p className="text-gray-600 text-lg">Rafinament pastel si eleganta clasica, create pe gustul tau.</p>
+            <div className="flex gap-3">
+              <Link to="/catalog" className="px-4 py-3 rounded-lg bg-pink-500 text-white hover:bg-pink-600 shadow">
+                Comanda online
+              </Link>
+              <Link to="/constructor" className="px-4 py-3 rounded-lg border border-pink-200 text-pink-600 hover:bg-pink-50">
+                Creeaza tortul tau
+              </Link>
+            </div>
+          </div>
+          <div className="flex-1">
+            <div className="rounded-3xl overflow-hidden shadow-xl border border-pink-100">
+              <img src="/images/royalcake.jpg" alt="Tort pastel" className="w-full h-full object-cover" />
+            </div>
+          </div>
         </div>
       </header>
 
-      <div className="greek" />
-
-      {/* DESPRE MINE */}
-      <section className="container" id="about-me">
-        <div className="title-major reveal">
-          <div className="over">La Maison</div>
-          <h2>Despre mine</h2>
+      {/* RECOMANDATE AI */}
+      <section className="max-w-6xl mx-auto px-4 py-12 md:py-16">
+        <div className="mb-8 reveal flex items-center justify-between gap-3">
+          <div>
+            <p className="text-pink-500 font-semibold uppercase tracking-wide">AI picks</p>
+            <h2 className="text-3xl font-bold text-gray-900">Recomandate pentru tine</h2>
+            <p className="text-gray-600">Combinatie hibrida: trenduri + istoricul tau + preferinte.</p>
+          </div>
+          <Link to="/catalog" className="px-4 py-2 rounded-lg border border-pink-200 text-pink-600 hover:bg-pink-50">
+            Vezi catalogul
+          </Link>
         </div>
-        <figure className="arch reveal">
-          <img src="/images/despre mine.jpg" alt="Ionela Rusu – portret" />
-        </figure>
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+          {loadingRec &&
+            Array.from({ length: 3 }).map((_, i) => (
+              <div key={i} className="reveal bg-white rounded-2xl shadow-md p-4 border border-rose-100 animate-pulse h-44" />
+            ))}
+
+          {!loadingRec && recs.length === 0 && (
+            <div className="reveal col-span-full bg-white border border-rose-100 rounded-2xl p-6 text-gray-700">
+              Nu avem suficiente date pentru recomandari. Exploreaza catalogul si revin mai multe sugestii dupa primele comenzi.
+            </div>
+          )}
+
+          {!loadingRec &&
+            recs.map((r) => (
+              <article
+                key={r._id}
+                data-cy="rec-card"
+                className="reveal bg-white rounded-2xl shadow-md overflow-hidden border border-rose-100 hover:shadow-lg transition"
+              >
+                <div className="h-44 w-full bg-gradient-to-br from-rose-50 via-pink-50 to-purple-50 flex items-center justify-center">
+                  <span className="text-pink-500 font-semibold text-lg">{r.nume}</span>
+                </div>
+                <div className="p-4 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <h3 className="font-semibold text-gray-900">{r.nume}</h3>
+                    {r.pret ? <span className="text-pink-600 font-bold">{r.pret} MDL</span> : null}
+                  </div>
+                  <p className="text-gray-600 text-sm overflow-hidden text-ellipsis">
+                    {r.descriere || "Deliciu maison personalizat"}
+                  </p>
+                  {r.reasons?.length ? (
+                    <div className="flex flex-wrap gap-2">
+                      {r.reasons.slice(0, 3).map((reason, idx) => (
+                        <span key={idx} className="px-3 py-1 rounded-full bg-rose-50 text-pink-700 text-xs font-semibold">
+                          {reason}
+                        </span>
+                      ))}
+                    </div>
+                  ) : null}
+                  <div className="pt-2 flex gap-2">
+                    <Link to={`/tort/${r._id}`} className="px-3 py-2 rounded-lg bg-pink-500 text-white text-sm hover:bg-pink-600">
+                      Detalii
+                    </Link>
+                    <Link to="/constructor" className="px-3 py-2 rounded-lg border border-pink-200 text-pink-600 text-sm hover:bg-pink-50">
+                      Personalizeaza
+                    </Link>
+                  </div>
+                </div>
+              </article>
+            ))}
+        </div>
       </section>
 
-      {/* COLECȚIE – Split */}
-      <section className="container">
-        <div className="title-major reveal">
-          <div className="over">IONELA CAKE & the V&A</div>
-          <h2>Collection <span style={{ letterSpacing: ".06em" }}>MARIE-ANTOINETTE</span></h2>
-        </div>
-
-        <div className="split">
-          <div className="frame reveal">
-            <img src="/images/royalcake.jpg" alt="colectie" />
-          </div>
-          <div className="split-text reveal">
-            Maison Douce se inspiră din rafinamentul secolului XVIII: cutii pastel, panglici
-            aurii și deserturi fine – o poveste despre eleganță și art de vivre.
-            <p style={{ marginTop: 18 }}>
-              <Link to="/catalog" className="btn">Descoperă acum</Link>
+      {/* DESPRE */}
+      <section className="max-w-6xl mx-auto px-4 py-12 md:py-16">
+        <div className="grid md:grid-cols-2 gap-10 items-center">
+          <div className="reveal space-y-3">
+            <p className="text-pink-500 font-semibold uppercase tracking-wide">La Maison</p>
+            <h2 className="text-3xl font-bold text-gray-900">Despre mine</h2>
+            <p className="text-gray-700 leading-relaxed">
+              Maison Douce se inspira din rafinamentul secolului XVIII: cutii pastel, panglici aurii si deserturi fine.
+              Fiecare tort este creat manual, cu atentie la detalii si ingrediente de top.
             </p>
+            <Link to="/despre" className="inline-block px-4 py-2 rounded-lg border border-pink-200 text-pink-600 hover:bg-pink-50">
+              Afla povestea
+            </Link>
+          </div>
+          <div className="reveal">
+            <div className="rounded-[32px] overflow-hidden shadow-lg border border-rose-100">
+              <img src="/images/despre mine.jpg" alt="Ionela Rusu" className="w-full h-full object-cover" />
+            </div>
           </div>
         </div>
       </section>
 
       {/* ICONICS */}
-      <section id="iconics" className="container">
-        <div className="title-major reveal">
-          <h2>IONELA’s Iconics</h2>
-          <div className="over">Cakes • Assortments</div>
+      <section className="max-w-6xl mx-auto px-4 py-12 md:py-16">
+        <div className="mb-8 reveal">
+          <h2 className="text-3xl font-bold text-gray-900">Iconics</h2>
+          <p className="text-gray-600">Selectia noastra de deserturi preferate</p>
         </div>
-
-        <div className="grid">
-          {[{ img: "/images/image.png", title: "Tort personalizat pentru bebeluș", price: "57 EUR" },
-          { img: "/images/easther cake.jpg", title: "Tort personalizat de Paști", price: "60 EUR" },
-          { img: "/images/lambeth.jpg", title: "Tort în stil Lambeth", price: "26 EUR" },
-          { img: "/images/royalcake.jpg", title: "Tort Royal", price: "170 EUR" }].map((p, i) => (
-            <article key={i} className="card reveal">
-              <div className="thumb"><img src={p.img} alt={p.title} /></div>
-              <div className="body">
-                <h3>{p.title}</h3>
-                <div className="price">{p.price}</div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+          {iconics.map((p, i) => (
+            <article key={i} className="reveal bg-white rounded-2xl shadow-md overflow-hidden border border-rose-100">
+              <div className="h-48 w-full overflow-hidden">
+                <img src={p.img} alt={p.title} className="h-full w-full object-cover" />
+              </div>
+              <div className="p-4">
+                <h3 className="font-semibold text-gray-900">{p.title}</h3>
+                <div className="text-pink-600 font-bold mt-1">{p.price}</div>
               </div>
             </article>
           ))}
         </div>
       </section>
 
-      {/* BACK TO SCHOOL */}
-      <section className="container" style={{ paddingTop: 10 }}>
-        <div className="title-major reveal">
-          <div className="over">Back to school</div>
-          <h2 style={{ color: "#5a2d34" }}>IONELA CAKE × CĂPȘUNI ÎN CIOCOLATĂ</h2>
-        </div>
-
-        <div className="split">
-          <div className="frame reveal" style={{ borderColor: "var(--rose)" }}>
-            <img src="/images/capusuni in ciocolata.jpg" alt="capsuni in ciocolata" />
+      {/* GIFT / BACK TO SCHOOL */}
+      <section className="max-w-6xl mx-auto px-4 py-12 md:py-16">
+        <div className="grid md:grid-cols-2 gap-10 items-center">
+          <div className="reveal">
+            <div className="rounded-[28px] overflow-hidden shadow-lg border border-rose-100">
+              <img src="/images/capusuni in ciocolata.jpg" alt="capsuni in ciocolata" className="w-full h-full object-cover" />
+            </div>
           </div>
-          <div className="split-text reveal">
-            O colecție jucăușă și poetică, cu ilustrații calde și cutii arcuite – perfectă pentru cadouri dulci.
-          </div>
-        </div>
-      </section>
-
-      <div className="greek" />
-
-      {/* GIFT IDEAS */}
-      <section id="gift" className="container">
-        <div className="title-major reveal">
-          <div className="over">Art of gifting</div>
-          <h2>Gift ideas to personalise</h2>
-        </div>
-
-        <div className="split">
-          <div className="split-text reveal">
-            Un cadou de mulțumire? O aniversare? Personalizează cutia gourmet cu selecția ta
-            preferată de macarons și ciocolate — exclusiv online.
-            <p style={{ marginTop: 18 }}>
-              <Link to="/constructor" className="btn btn--mint">Personalizează</Link>
+          <div className="reveal space-y-3">
+            <p className="text-pink-500 font-semibold uppercase tracking-wide">Art of gifting</p>
+            <h2 className="text-3xl font-bold text-gray-900">Idei de cadou personalizate</h2>
+            <p className="text-gray-700 leading-relaxed">
+              O colectie jucausa si poetica: cutii gourmet, deserturi fine si personalizare completa. Perfecte pentru multumiri,
+              aniversari sau evenimente speciale.
             </p>
-          </div>
-          <div className="frame reveal">
-            <img src="/images/tort lambeth.jpg" alt="gift" />
+            <div className="flex gap-3">
+              <Link to="/constructor" className="px-4 py-3 rounded-lg bg-pink-500 text-white hover:bg-pink-600 shadow">
+                Personalizeaza
+              </Link>
+              <Link to="/catalog" className="px-4 py-3 rounded-lg border border-pink-200 text-pink-600 hover:bg-pink-50">
+                Descopera colectia
+              </Link>
+            </div>
           </div>
         </div>
       </section>
 
-      {/* TAILOR MADE */}
-      <section id="tailor" className="container" style={{ paddingTop: 0 }}>
-        <div className="title-major reveal">
-          <div className="over">Tailor-made box</div>
-          <h2>Creează desertul tău</h2>
+      {/* Tailor-made */}
+      <section className="max-w-6xl mx-auto px-4 py-12 md:py-16">
+        <div className="mb-8 reveal">
+          <p className="text-pink-500 font-semibold uppercase tracking-wide">Tailor-made box</p>
+          <h2 className="text-3xl font-bold text-gray-900">Creeaza desertul tau</h2>
         </div>
-
-        <div className="grid">
-          {[{ img: "/images/umplutura bicuiti.jpg", title: "Pistachio" },
-          { img: "/images/umplutura bounty.jpg", title: "Rose" },
-          { img: "/images/umplutura lemon.jpg", title: "Lemon" },
-          { img: "/images/umplutura ferero rochen.jpg", title: "Vanilla" }].map((p, i) => (
-            <article key={i} className="card reveal">
-              <div className="thumb"><img src={p.img} alt={p.title} /></div>
-              <div className="body">
-                <h3>{p.title}</h3>
-                <Link to="/constructor" className="price">Add to box</Link>
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+          {tailor.map((p, i) => (
+            <article key={i} className="reveal bg-white rounded-2xl shadow-md overflow-hidden border border-rose-100">
+              <div className="h-40 w-full overflow-hidden">
+                <img src={p.img} alt={p.title} className="h-full w-full object-cover" />
+              </div>
+              <div className="p-4 flex items-center justify-between">
+                <h3 className="font-semibold text-gray-900">{p.title}</h3>
+                <Link to="/constructor" className="text-pink-600 hover:text-pink-700 font-semibold text-sm">
+                  Add to box
+                </Link>
               </div>
             </article>
           ))}
         </div>
       </section>
 
-      {/* FOOTER */}
-      <footer id="contact">
-        <div className="container cols">
+      {/* Footer */}
+      <footer className="bg-white border-t border-rose-100">
+        <div className="max-w-6xl mx-auto px-4 py-10 grid grid-cols-2 sm:grid-cols-4 gap-6 text-gray-700">
           <div>
-            <h4>IONELA CAKE</h4>
-            <Link to="/catalog">Cakes</Link><br />
-            <Link to="/catalog">Macarons</Link><br />
-            <Link to="/catalog">Chocolates</Link><br />
-            <Link to="/catalog">Eugénie boxes</Link>
+            <h4 className="font-semibold mb-2">IONELA CAKE</h4>
+            <Link to="/catalog" className="block hover:text-pink-600">Cakes</Link>
+            <Link to="/catalog" className="block hover:text-pink-600">Macarons</Link>
+            <Link to="/catalog" className="block hover:text-pink-600">Chocolates</Link>
+            <Link to="/catalog" className="block hover:text-pink-600">EugAcnies</Link>
           </div>
           <div>
-            <h4>More information</h4>
-            <Link to="/catalog">Our collections</Link><br />
-            <Link to="/despre">History</Link>
+            <h4 className="font-semibold mb-2">Informatii</h4>
+            <Link to="/catalog" className="block hover:text-pink-600">Colectii</Link>
+            <Link to="/despre" className="block hover:text-pink-600">Poveste</Link>
           </div>
           <div>
-            <h4>Corporate</h4>
-            <Link to="/contact">Corporate gifts</Link><br />
-            <Link to="/contact">Events & receptions</Link>
+            <h4 className="font-semibold mb-2">Corporate</h4>
+            <Link to="/contact" className="block hover:text-pink-600">Cadouri corporate</Link>
+            <Link to="/contact" className="block hover:text-pink-600">Evenimente</Link>
           </div>
           <div>
-            <h4>Help</h4>
-            <Link to="/contact">Contact us</Link><br />
-            <Link to="/faq">FAQ</Link>
+            <h4 className="font-semibold mb-2">Help</h4>
+            <Link to="/contact" className="block hover:text-pink-600">Contact</Link>
+            <Link to="/faq" className="block hover:text-pink-600">FAQ</Link>
           </div>
         </div>
       </footer>
-    </>
+    </div>
   );
 }

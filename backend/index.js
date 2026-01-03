@@ -127,6 +127,7 @@ mount("/api/personalizare", "./routes/personalizare");
 mount("/api/coupon", "./routes/coupon");
 mount("/api/comenzi-personalizate", "./routes/comenziPersonalizate");
 mount("/api/cutie-lunara", "./routes/cutieLunara");
+mount("/api/auth", "./routes/auth");
 
 // --- CHAT / MESAJE ---
 mount("/api/mesaje-chat", "./routes/mesajChat");

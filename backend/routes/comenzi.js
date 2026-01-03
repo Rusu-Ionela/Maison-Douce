@@ -2,6 +2,7 @@ const express = require("express");
 const router = express.Router();
 const mongoose = require("mongoose");
 const { Parser } = require("json2csv");
+const { authRequired, roleCheck } = require("../middleware/auth");
 
 // MODELE
 const Comanda = require("../models/Comanda");
@@ -73,7 +74,7 @@ function mapComandaToAdmin(c) {
 /**
  * POST /api/comenzi
  */
-router.post("/", async (req, res) => {
+router.post("/", authRequired, async (req, res) => {
     try {
         const {
             clientId,
@@ -124,7 +125,7 @@ router.post("/", async (req, res) => {
  * POST /api/comenzi/creeaza-cu-slot
  * Body: { clientId, items|produse, metodaLivrare, adresaLivrare?, dataLivrare, oraLivrare, prestatorId }
  */
-router.post("/creeaza-cu-slot", async (req, res) => {
+router.post("/creeaza-cu-slot", authRequired, async (req, res) => {
     const session = await mongoose.startSession();
     session.startTransaction();
     try {
@@ -216,7 +217,7 @@ router.post("/creeaza-cu-slot", async (req, res) => {
  * GET /api/comenzi
  * — întoarce ÎMPREUNĂ Comanda + Rezervare în format comun pentru AdminCalendar.jsx
  */
-router.get("/", async (_req, res) => {
+router.get("/", authRequired, roleCheck("admin", "patiser"), async (_req, res) => {
     try {
         const [comenzi, rezervari] = await Promise.all([
             Comanda.find({}).lean(),
@@ -244,7 +245,7 @@ router.get("/", async (_req, res) => {
 /**
  * GET /api/comenzi/client/:clientId (doar din Comanda, cum aveai)
  */
-router.get("/client/:clientId", async (req, res) => {
+router.get("/client/:clientId", authRequired, async (req, res) => {
     try {
         const comenzi = await Comanda.find({ clientId: req.params.clientId }).sort({ createdAt: -1 });
         res.json(comenzi.map((c) => ({
@@ -268,7 +269,7 @@ router.get("/client/:clientId", async (req, res) => {
 /**
  * GET /api/comenzi/admin?date=YYYY-MM-DD  (rămâne pe Comanda)
  */
-router.get("/admin", async (req, res) => {
+router.get("/admin", authRequired, roleCheck("admin", "patiser"), async (req, res) => {
     try {
         const { date } = req.query;
         const filter = date ? { dataLivrare: date } : {};
@@ -286,7 +287,7 @@ router.get("/admin", async (req, res) => {
  * — pentru Comanda: setează direct `status`
  * — pentru Rezervare: mapează la `handoffStatus` + `status`
  */
-router.patch("/:id/status", async (req, res) => {
+router.patch("/:id/status", authRequired, async (req, res) => {
     try {
         const { id } = req.params;
         const nou = req.body?.status;
@@ -340,7 +341,7 @@ router.patch("/:comandaId/status", async (req, res, next) => {
     return router.handle(req, res, next);
 });
 // în backend/routes/comenzi.js (unde ai celelalte rute)
-router.get("/:id", async (req, res) => {
+router.get("/:id", authRequired, async (req, res) => {
     try {
         const c = await Comanda.findById(req.params.id).lean();
         if (!c) return res.status(404).json({ message: "Comandă inexistentă" });
@@ -354,7 +355,7 @@ router.get("/:id", async (req, res) => {
 /**
  * GET /api/comenzi/export/csv?from=YYYY-MM-DD&to=YYYY-MM-DD&status=...
  */
-router.get("/export/csv", async (req, res) => {
+router.get("/export/csv", authRequired, roleCheck("admin", "patiser"), async (req, res) => {
     try {
         const { from, to, status } = req.query;
         const q = {};
@@ -399,7 +400,7 @@ router.get("/export/csv", async (req, res) => {
     }
 });
 // PATCH /api/comenzi/:id/cancel – anulează comanda și eliberează slotul (used−1) din CalendarSlotEntry + fallback legacy
-router.patch("/:id/cancel", async (req, res) => {
+router.patch("/:id/cancel", authRequired, async (req, res) => {
     try {
         const { id } = req.params;
         const doc = await Comanda.findById(id);

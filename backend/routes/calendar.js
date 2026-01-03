@@ -6,6 +6,7 @@ const CalendarPrestator = require("../models/CalendarPrestator");
 const CalendarSlotEntry = require("../models/CalendarSlotEntry");
 const Rezervare = require("../models/Rezervare");
 const Comanda = require("../models/Comanda");
+const { authRequired, roleCheck } = require("../middleware/auth");
 
 let Utilizator = null;
 try {
@@ -64,7 +65,11 @@ router.get("/disponibilitate/:prestatorId", availabilityHandler);
   Body: { slots: [{ date, time, capacity }] }
   Note: After migration, creates CalendarSlotEntry docs exclusively.
 */
-router.post("/availability/:prestatorId", async (req, res) => {
+router.post(
+  "/availability/:prestatorId",
+  authRequired,
+  roleCheck("admin", "patiser"),
+  async (req, res) => {
   try {
     const { prestatorId } = req.params;
     const { slots } = req.body;
@@ -95,7 +100,8 @@ router.post("/availability/:prestatorId", async (req, res) => {
     console.error(e);
     res.status(500).json({ message: e.message });
   }
-});
+}
+);
 
 /* ================== POST rezervare (CLIENT) ================== */
 /*
@@ -113,7 +119,7 @@ router.post("/availability/:prestatorId", async (req, res) => {
       customDetails?
     }
 */
-router.post("/reserve", async (req, res) => {
+router.post("/reserve", authRequired, async (req, res) => {
   try {
     const {
       clientId,
@@ -123,6 +129,8 @@ router.post("/reserve", async (req, res) => {
       metoda = "ridicare",
       adresaLivrare = "",
       subtotal = 0,
+      descriere,
+      items = [],
       tortId,
       customDetails,
     } = req.body;
@@ -172,6 +180,7 @@ router.post("/reserve", async (req, res) => {
     // 2️⃣ Creăm COMANDA
     const comandaPayload = {
       clientId,
+      items: Array.isArray(items) ? items : [],
       subtotal: sb,
       deliveryFee,
       total,
@@ -183,7 +192,8 @@ router.post("/reserve", async (req, res) => {
       dataRezervare: date,
       oraRezervare: time,
       tortId: tortId || null,
-      customDetails: customDetails || null,
+      customDetails: customDetails || (descriere ? { descriere } : null),
+      preferinte: descriere || undefined,
     };
 
     let comanda;
@@ -197,7 +207,7 @@ router.post("/reserve", async (req, res) => {
         prestatorId,
         comandaId: comanda._id,
         tortId: tortId || undefined,
-        customDetails: customDetails || undefined,
+        customDetails: customDetails || (descriere ? { descriere } : undefined),
         date,
         timeSlot,
         handoffMethod: metoda === "livrare" ? "delivery" : "pickup",
@@ -249,41 +259,44 @@ router.post("/reserve", async (req, res) => {
 /*
   GET /api/calendar/admin/:date
 */
-router.get("/admin/:date", async (req, res) => {
+router.get(
+  "/admin/:date",
+  authRequired,
+  roleCheck("admin", "patiser"),
+  async (req, res) => {
   try {
     const { date } = req.params;
     if (!date) {
       return res.status(400).json({ message: "Data lipsă" });
     }
 
-    const rezervari = await Rezervare.find({ date })
-      .sort({ timeSlot: 1 })
-      .populate("comandaId")
-      .lean();
+    const [rezervari, comenzi] = await Promise.all([
+      Rezervare.find({ date }).sort({ timeSlot: 1 }).populate("comandaId").lean(),
+      Comanda.find({
+        $or: [{ dataLivrare: date }, { dataRezervare: date }],
+      }).lean(),
+    ]);
 
-    if (Utilizator) {
-      const ids = [
-        ...new Set(rezervari.map((r) => r.clientId).filter(Boolean)),
-      ];
+    // map users if model disponibil
+    const userIds = new Set();
+    rezervari.forEach((r) => r.clientId && userIds.add(String(r.clientId)));
+    comenzi.forEach((c) => c.clientId && userIds.add(String(c.clientId)));
+
+    const mapUsers = new Map();
+    if (Utilizator && userIds.size) {
       const users = await Utilizator.find(
-        { _id: { $in: ids } },
+        { _id: { $in: Array.from(userIds) } },
         { nume: 1, name: 1 }
       ).lean();
-      const mapUsers = new Map(
-        users.map((u) => [String(u._id), u.nume || u.name || "Client"])
+      users.forEach((u) =>
+        mapUsers.set(String(u._id), u.nume || u.name || "Client")
       );
-      rezervari.forEach((r) => {
-        r.clientName = mapUsers.get(String(r.clientId)) || "Client";
-      });
-    } else {
-      rezervari.forEach((r) => {
-        r.clientName = "Client";
-      });
     }
 
-    rezervari.forEach((r) => {
-      let desc = "";
+    const mappedRezervari = rezervari.map((r) => {
       const c = r.comandaId || {};
+      const start = (r.timeSlot || "").split("-")[0] || r.timeSlot;
+      let desc = "";
       if (Array.isArray(c.items) && c.items.length > 0) {
         desc =
           "Produse: " +
@@ -292,24 +305,87 @@ router.get("/admin/:date", async (req, res) => {
             .join(", ");
       } else if (c.preferinte) {
         desc = "Preferințe: " + c.preferinte;
-      } else if (c.tip === "rezervare-calendar" && r.customDetails) {
-        desc = "Rezervare tort personalizat";
+      } else if (r.customDetails?.descriere) {
+        desc = r.customDetails.descriere;
       }
-      r.itemsSummary = desc;
+
+      return {
+        _id: r._id,
+        type: "rezervare",
+        timeSlot: r.timeSlot,
+        startTime: start,
+        clientId: r.clientId,
+        clientName: mapUsers.get(String(r.clientId)) || "Client",
+        handoffMethod: r.handoffMethod,
+        handoffStatus: r.handoffStatus,
+        deliveryAddress: r.deliveryAddress,
+        subtotal: r.subtotal,
+        deliveryFee: r.deliveryFee,
+        total: r.total,
+        status: r.status,
+        paymentStatus: r.paymentStatus,
+        itemsSummary: desc,
+      };
     });
 
-    res.json(rezervari);
+    const mappedComenzi = comenzi.map((c) => {
+      const start = c.oraLivrare || c.oraRezervare || c.calendarSlot?.time || "";
+      let desc = "";
+      if (Array.isArray(c.items) && c.items.length > 0) {
+        desc =
+          "Produse: " +
+          c.items
+            .map((it) => it.nume || it.name || it.tortName || "Produs")
+            .join(", ");
+      } else if (c.preferinte) {
+        desc = "Preferințe: " + c.preferinte;
+      } else if (c.customDetails?.descriere) {
+        desc = c.customDetails.descriere;
+      }
+
+      return {
+        _id: c._id,
+        type: "comanda",
+        timeSlot: start || "",
+        startTime: start,
+        clientId: c.clientId,
+        clientName: mapUsers.get(String(c.clientId)) || "Client",
+        handoffMethod:
+          c.metodaLivrare === "livrare" || c.metodaLivrare === "delivery"
+            ? "delivery"
+            : "pickup",
+        handoffStatus: c.handoffStatus || "scheduled",
+        deliveryAddress: c.adresaLivrare,
+        subtotal: c.subtotal,
+        deliveryFee: c.taxaLivrare || c.deliveryFee || 0,
+        total: c.total,
+        status: c.status,
+        paymentStatus: c.paymentStatus || c.statusPlata,
+        itemsSummary: desc,
+      };
+    });
+
+    const combinat = [...mappedRezervari, ...mappedComenzi].sort((a, b) =>
+      String(a.startTime || "").localeCompare(String(b.startTime || ""))
+    );
+
+    res.json({ rezervari: combinat });
   } catch (e) {
     console.error(e);
     res.status(500).json({ message: e.message });
   }
-});
+}
+);
 
 /* ================== Export CSV pentru o dată ================== */
 /*
   GET /api/calendar/admin/:date/export
 */
-router.get("/admin/:date/export", async (req, res) => {
+router.get(
+  "/admin/:date/export",
+  authRequired,
+  roleCheck("admin", "patiser"),
+  async (req, res) => {
   try {
     const { date } = req.params;
     const rezervari = await Rezervare.find({ date })
@@ -361,6 +437,7 @@ router.get("/admin/:date/export", async (req, res) => {
     console.error(e);
     res.status(500).json({ message: e.message });
   }
-});
+  }
+);
 
 module.exports = router;

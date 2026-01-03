@@ -14,8 +14,9 @@ const FidelizareSchema = new mongoose.Schema(
             descriere: String
         }],
         reduceriDisponibile: [{
-            procent: Number,
-            valoareMinima: Number,
+            procent: { type: Number, default: 0 },
+            valoareMinima: { type: Number, default: 0 },
+            valoareFixa: { type: Number, default: 0 }, // ex: voucher fix (MDL)
             codigPromo: String,
             dataExpirare: Date,
             folosita: { type: Boolean, default: false }

@@ -115,7 +115,7 @@ router.post("/add-points", async (req, res) => {
  * Folosire puncte pentru voucher fix (ex: 100p = 50 MDL)
  * Folosit de componenta FidelizarePortofel.jsx
  */
-router.post("/redeem", async (req, res) => {
+router.post("/redeem", authRequired, async (req, res) => {
   try {
     const { utilizatorId, puncteDeUtilizat } = req.body;
 
@@ -173,6 +173,112 @@ router.post("/redeem", async (req, res) => {
     });
   } catch (err) {
     console.error("Eroare POST /redeem:", err.message);
+    res.status(500).json({ ok: false, error: "Eroare server" });
+  }
+});
+
+/**
+ * POST /api/fidelizare/apply-voucher
+ * Aplică un voucher din portofel la un total.
+ * Body: { utilizatorId, cod, total }
+ */
+router.post("/apply-voucher", authRequired, async (req, res) => {
+  try {
+    const { utilizatorId, cod, total } = req.body;
+    if (!utilizatorId || !cod || total == null) {
+      return res.status(400).json({ ok: false, message: "utilizatorId, cod și total sunt necesare" });
+    }
+
+    const fidelizare = await Fidelizare.findOne({ utilizatorId });
+    if (!fidelizare) {
+      return res.status(404).json({ ok: false, message: "Portofel inexistent" });
+    }
+
+    const now = Date.now();
+    const voucher = (fidelizare.reduceriDisponibile || []).find(
+      (v) =>
+        v.codigPromo === cod &&
+        !v.folosita &&
+        (!v.dataExpirare || new Date(v.dataExpirare).getTime() > now) &&
+        (v.valoareMinima || 0) <= Number(total || 0)
+    );
+
+    if (!voucher) {
+      return res.status(400).json({ ok: false, message: "Voucher invalid sau expirat" });
+    }
+
+    const numericTotal = Number(total || 0);
+    const discountPerc = Number(voucher.procent || 0);
+    const discountFix = Number(voucher.valoareFixa || 0);
+    let discount = discountFix;
+    if (discountPerc > 0) {
+      discount = Math.round((numericTotal * discountPerc) / 100);
+    }
+    if (discount > numericTotal) discount = numericTotal;
+
+    voucher.folosita = true;
+    fidelizare.istoric.push({
+      data: new Date(),
+      tip: "redeem",
+      puncte: 0,
+      sursa: "voucher",
+      descriere: `Voucher ${voucher.codigPromo} aplicat (-${discount} MDL)`,
+    });
+
+    await fidelizare.save();
+
+    return res.json({
+      ok: true,
+      discount,
+      newTotal: numericTotal - discount,
+      cod: voucher.codigPromo,
+    });
+  } catch (err) {
+    console.error("Eroare POST /apply-voucher:", err.message);
+    res.status(500).json({ ok: false, error: "Eroare server" });
+  }
+});
+
+/**
+ * POST /api/fidelizare/apply-points
+ * Folosire puncte direct la checkout. Formula: 2 puncte = 1 MDL (ca în redeem).
+ * Body: { utilizatorId, puncte, total }
+ */
+router.post("/apply-points", authRequired, async (req, res) => {
+  try {
+    const { utilizatorId, puncte, total } = req.body;
+    if (!utilizatorId || !puncte || puncte <= 0 || total == null) {
+      return res.status(400).json({ ok: false, message: "utilizatorId, puncte (>0) și total sunt necesare" });
+    }
+
+    const fidelizare = await Fidelizare.findOne({ utilizatorId });
+    if (!fidelizare || fidelizare.puncteCurent < puncte) {
+      return res.status(400).json({ ok: false, message: "Puncte insuficiente" });
+    }
+
+    const numericTotal = Number(total || 0);
+    const discount = Math.floor(puncte / 2);
+    const appliedDiscount = Math.min(discount, numericTotal);
+
+    fidelizare.puncteCurent -= puncte;
+    fidelizare.istoric.push({
+      data: new Date(),
+      tip: "redeem",
+      puncte,
+      sursa: "checkout",
+      descriere: `Discount ${appliedDiscount} MDL din puncte (${puncte}p)`,
+    });
+
+    await fidelizare.save();
+
+    return res.json({
+      ok: true,
+      discount: appliedDiscount,
+      newTotal: numericTotal - appliedDiscount,
+      puncteRamase: fidelizare.puncteCurent,
+    });
+  } catch (err) {
+    console.error("Eroare POST /apply-points:", err.message);
     res.status(500).json({ ok: false, error: "Eroare server" });
   }
 });

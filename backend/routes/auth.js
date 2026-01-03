@@ -3,6 +3,7 @@ const { login, me } = require('../controllers/authController');
 const requireAuth = require('../middleware/requireAuth');
 const Utilizator = require('../models/Utilizator');
 const jwt = require('jsonwebtoken');
+const JWT_SECRET = process.env.JWT_SECRET || "dev-secret-123";
 
 router.post('/login', login);
 router.get('/me', requireAuth, me);
@@ -21,29 +22,40 @@ router.post('/seed-test-user', async (req, res) => {
 
         const testEmail = req.body?.email || 'test@example.com';
         const testPassword = req.body?.password || 'testpass123';
+        const desiredRole = req.body?.rol || req.body?.role || 'admin';
 
         // Try to find user
         let user = await Utilizator.findOne({ email: testEmail });
 
         if (!user) {
-            // Create test user
-            user = await Utilizator.create({
+            // Create test user as admin for E2E (can manage calendar)
+            user = new Utilizator({
                 email: testEmail,
-                password: testPassword,
                 nume: 'Test',
                 prenume: 'User',
                 telefon: '0123456789',
-                rol: 'client',
+                rol: desiredRole,
             });
+            if (user.setPassword) {
+                await user.setPassword(testPassword);
+            } else {
+                user.parola = testPassword;
+            }
+            await user.save();
             console.log('[seed-test-user] Created new test user:', testEmail);
         } else {
             console.log('[seed-test-user] Found existing test user:', testEmail);
         }
 
+        if (user.rol !== desiredRole) {
+            user.rol = desiredRole;
+            await user.save();
+        }
+
         // Generate token
         const token = jwt.sign(
-            { userId: user._id, email: user.email, rol: user.rol },
-            process.env.JWT_SECRET || 'test-secret',
+            { id: user._id, userId: user._id, email: user.email, rol: user.rol },
+            JWT_SECRET,
             { expiresIn: '7d' }
         );
 

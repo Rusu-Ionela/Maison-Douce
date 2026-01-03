@@ -1,6 +1,7 @@
 // backend/middleware/auth.js
 const jwt = require("jsonwebtoken");
 const Utilizator = require("../models/Utilizator");
+const JWT_SECRET = process.env.JWT_SECRET || "dev-secret-123";
 
 /**
  * Middleware: verifică dacă utilizatorul este autentificat (Bearer <token>)
@@ -16,7 +17,7 @@ async function authRequired(req, res, next) {
     const token = authHeader.split(" ")[1];
 
     // Verificăm și decodăm token-ul
-    const payload = jwt.verify(token, process.env.JWT_SECRET);
+    const payload = jwt.verify(token, JWT_SECRET);
 
     // payload poate avea id sau _id
     const userId = payload.id || payload._id;

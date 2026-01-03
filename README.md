@@ -12,6 +12,42 @@ Scurt ghid de setup, testare și deploy pentru proiectul "Maison-Douce" (fronten
 - `/backend` - API Node.js + Express + Mongoose
 - `/frontend` - React (Vite)
 
+## Rezumat tehnic (scurt)
+
+### Arhitectura (text diagram)
+```
+Frontend (Vite/React) --axios--> Backend API (Express)
+    |                                   |
+    |                                   +--> MongoDB (Mongoose)
+    |                                   +--> Stripe (payment intent + webhook)
+    |                                   +--> Socket.io (chat)
+    |
+    +--> Browser localStorage (token, user)
+```
+
+### Fluxuri cheie
+- Calendar: sloturi (`CalendarSlotEntry`), rezervare (`/api/calendar/reserve`), list admin combinat comenzi+rezervari.
+- Comenzi: create simple sau cu slot, export CSV, status/cancel, protejate cu auth.
+- Fidelizare: portofel puncte/vouchere, aplicare la checkout (`/api/fidelizare/apply-*`).
+- Plati: Stripe PaymentIntent + webhook (marcheaza comanda si adauga puncte).
+- Chat: socket.io + persistare MesajChat.
+
+### Modele esentiale (Mongo)
+- `Utilizator { email, rol, parolaHash, pointsBalance, pointsHistory }`
+- `Comanda { clientId, prestatorId, items[], subtotal, taxaLivrare, total, metodaLivrare, data/ora, status, paymentStatus, customDetails }`
+- `Rezervare { clientId, prestatorId, comandaId, date, timeSlot, handoffMethod, deliveryFee, status, paymentStatus }`
+- `CalendarSlotEntry { prestatorId, date, time, capacity, used }`
+- `Fidelizare { utilizatorId, puncteCurent, puncteTotal, reduceriDisponibile[], istoric[] }`
+- `MesajChat { text, utilizator, room, authorId, data }`
+
+### Checklist deploy (scurt)
+- Backend host cu env: `MONGODB_URI`, `JWT_SECRET`, `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, `BASE_CLIENT_URL`.
+- Frontend host cu `VITE_API_URL` spre backend.
+- MongoDB Atlas index pe `CalendarSlotEntry {prestatorId,date,time}`.
+- CORS permite origin frontend.
+- Stripe: endpoint webhook in dashboard catre `/api/stripe/webhook` (live keys).
+- SSL/HTTPS pe ambele servicii.
+
 ## 3. Config env
 
 Creează un `.env` în `backend` pe baza fișierului `.env.example` și completează:
@@ -45,7 +81,7 @@ npm install
 npm run dev
 ```
 
-## 5. Test Stripe webhook local (pași‑pași)
+## 5. Test Stripe webhook local (pasi)
 1. Instalează Stripe CLI: https://stripe.com/docs/stripe-cli
 2. Autentificare: `stripe login`
 3. În terminal: `stripe listen --forward-to localhost:5000/api/stripe/webhook`
@@ -98,26 +134,32 @@ stripe trigger checkout.session.completed
 
 ---
 
-### C) ✅ Cypress E2E + Seed User for Auth
-**Adaugări:**
-1. **Seed endpoint:** `POST /api/auth/seed-test-user` — creează/obține test user și token
-2. **Cypress helpers:** Commands pentru `cy.loginAsTestUser()`, `cy.seedTestUser()`, `cy.loginWithToken()`
-3. **E2E tests:** 
-   - `booking-flow.spec.js` — full booking flow test
-   - `constructor-save-edit.spec.js` — 2D constructor save/edit test
-   - Updated `support/auth.js` — login helpers
+### C) Cypress E2E + Seed User for Auth
+**Adaugari:**
+1. **Seed endpoint:** `POST /api/auth/seed-test-user` - creeaza/obtine test user si token (doar dev/test). Accepta `rol` (default `admin`) pentru rute admin.
+2. **Cypress helpers:** `cy.loginAsTestUser()`, `cy.seedTestUser()`, `cy.loginWithToken()`.
+3. **E2E tests:**
+   - `booking-flow.spec.js` - full booking flow
+   - `constructor-save-edit.spec.js` - 2D constructor save/edit
+   - `personalizare.spec.js`, `reserve-api.spec.js`, `recommendations-ui.spec.js`
+4. **Electron launch flags:** `frontend/cypress.config.js` adauga flag-uri pentru evitarea ferestrei albe in Cypress.
 
-**Fișiere noi:**
-- `frontend/cypress/support/auth.js` — Cypress auth commands
-- `frontend/cypress/support/e2e.js` — Cypress config
-- `frontend/cypress/e2e/booking-flow.spec.js` — Booking E2E test
-- `frontend/cypress/e2e/constructor-save-edit.spec.js` — Constructor E2E test
+**Fisiere noi:**
+- `frontend/cypress/support/auth.js` - Cypress auth commands
+- `frontend/cypress/support/e2e.js` - Cypress config
+- `frontend/cypress/e2e/booking-flow.spec.js` - Booking E2E test
+- `frontend/cypress/e2e/constructor-save-edit.spec.js` - Constructor E2E test
+
+**Fisiere modificate:**
+- `frontend/cypress.config.js` - Electron launch flags (blank window fix)
 
 **Rulare:**
 ```powershell
 cd frontend
 npm run cypress:open
-# sau pentru headless:
+# daca fereastra Cypress e alba (Electron), incearca:
+npx cypress open --browser chrome
+# headless:
 npm run cypress:run
 ```
 
@@ -186,6 +228,33 @@ node scripts/migrate-calendars.js
 
 ---
 
+### F) Recomandări AI + UI + test Cypress
+- Endpoint hibrid `/api/recommendations/ai` (GET/POST) combină popularitate globală, istoricul userului, preferințe (categorie), ingrediente de evitat și returnează motive transparente.
+- UI nouă pe `Home` cu secțiunea „Recomandate pentru tine” (folosește endpoint-ul AI).
+- Test E2E `cypress/e2e/recommendations-ui.spec.js` (interceptează API-ul și verifică secțiunea UI).
+
+**Fișiere modificate/noi:**
+- `backend/routes/recommendations.js`
+- `frontend/src/api/products.js`
+- `frontend/src/pages/Home.jsx`
+- `frontend/cypress.config.js`, `frontend/cypress/e2e/recommendations-ui.spec.js`
+
+### G) Curățare UI Coș + formular comandă client
+- Coș și `ComandaClient` rescrise cu `tailwindComponents` (cards, buttons, inputs) pentru layout unificat.
+
+**Fișiere modificate:**
+- `frontend/src/pages/Cart.jsx`
+- `frontend/src/pages/ComandaClient.jsx`
+
+### H) Stripe config + rotație chei
+- Endpoint `GET /api/stripe/config` expune `mode` (test/live) și status webhook/publishable pentru sanity check și rotație.
+- `payment-intent` și `checkout-session` întorc `mode` pentru debugging.
+
+**Fișiere modificate:**
+- `backend/routes/stripe.js`
+
+---
+
 ## 7. Urmatoarele steps (Opțional)
 1. **Extend Cypress tests:** Add authenticated booking flow test cu UI interaction
 2. **More UI polish:** Apply `tailwindComponents` la mai multe pagini (cart, checkout, profile)
@@ -208,68 +277,47 @@ node scripts/migrate-calendars.js
 - Verify CalendarSlotEntry model is imported in routes
 - Check index on `{prestatorId, date, time}`
 
+### Comanda duplicate key (numeroComanda)
+- Error: `E11000 duplicate key error ... numeroComanda: null`
+- Fix: asigura-te ca backend-ul genereaza automat `numeroComanda` si reporneste serverul.
+
 ### Cypress tests failing
 - Ensure backend is running on `http://localhost:5000`
 - Check `POST /api/auth/seed-test-user` endpoint exists
 - Verify MongoDB is connected
 - Run `npm run cypress:open` for debugging
+- If Cypress opens a blank window, try `npx cypress open --browser chrome`.
 
 ---
 
-**Version:** 1.4.0 (Nov 20, 2025)
-**Last updated:** Post-migration CalendarSlotEntry + UI polish + Stripe hardening
+## 9. Diagrame rapide (mermaid)
 
-3. În `backend/.env` setează `STRIPE_SECRET_KEY` = cheia ta de test (în contul Stripe test)
-4. Pornește backend-ul local
-5. Deschide terminal PowerShell și rulează:
-
-```powershell
-stripe listen --forward-to localhost:5000/api/stripe/webhook
+```mermaid
+flowchart LR
+  FE[Frontend Vite/React] -->|axios| API[Backend Express]
+  API --> DB[(MongoDB Atlas/local)]
+  API --> Stripe[Stripe PI + Webhook]
+  API --> Socket[Socket.io Chat]
+  FE --> LocalStorage[(token,user)]
 ```
 
-6. Creează o sesiune de checkout în aplicație (sau folosește `stripe trigger`):
+```mermaid
+sequenceDiagram
+  participant C as Client (UI)
+  participant API as Backend API
+  participant STR as Stripe
+  participant DB as MongoDB
 
-```powershell
-# exemplu: trigger a checkout.session.completed event
-stripe trigger checkout.session.completed
+  C->>API: POST /api/comenzi (creare)
+  API->>DB: save comanda
+  API->>STR: create PaymentIntent
+  API-->>C: clientSecret + mode(test/live)
+  STR-->>API: webhook checkout.session.completed
+  API->>DB: update comanda + points
 ```
-
-7. Verifică în logurile backend primirea evenimentului și actualizarea `Comanda`/`Rezervare`.
-
-Notă: nu partaja cheile private. Dacă webhook nu actualizează `Comanda`, verifică `stripeWebhook.js` pentru loguri și mapping ID->comanda.
-
-## 6. Ce am implementat deja
-- autentificare minimală (routes/auth)
-- chat realtime cu `socket.io` și persistare (`MesajChat`)
-- construcție 2D (react-konva) + salvare imagini în `uploads/personalizari`
-- rute calendar/admin + rezervare (vedeți /backend/routes/calendar.js)
-- endpoints personalizare (POST/GET/PUT)
-
-## 7. Pași următori recomandați
-- Verificare E2E (Cypress) pentru rezervare și personalizare
-- UI polish (Tailwind) pentru pagini principale
-- Rotație chei Stripe și push la mediu de producție
-- Deploy: Frontend pe Vercel/Netlify, Backend pe Render/Heroku, MongoDB Atlas
-
-## 8. Testare E2E (Cypress)
-În `frontend`:
-
-```powershell
-npm install --save-dev cypress
-npx cypress open
-# sau rulat headless
-npm run cypress:run
-```
-
-Am adăugat câteva teste smoke în `frontend/cypress/e2e/`.
-
-## 9. Deploy checklist (sumar)
-- Asigură variabile de mediu pe servicii de hosting
-- Configurează CORS (backend/index.js) cu URL-urile front-end
-- Rulează `npm run build` pentru frontend și publică build
-- Configurează certificat HTTPS și domeniu
-- Rotește cheile Stripe și test webhook în staging
-- Configurează backup MongoDB și indexe importante
 
 ---
-Dacă vrei, încep imediat cu: 1) rularea testelor E2E, 2) polish UI pe paginile cheie, 3) implementare tranzacție completă Mongo (dacă folosești Atlas replica set).
+
+**Version:** 1.5.0 (Dec 16, 2025)
+**Last updated:** Cypress E2E fixes + admin seed role + numeroComanda auto-gen + README cleanup
+

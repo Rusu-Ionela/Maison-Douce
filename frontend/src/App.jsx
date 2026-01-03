@@ -9,6 +9,7 @@ import ResetParola from "./pages/ResetParola";
 import Home from "./pages/Home.jsx";
 import Catalog from "./pages/Catalog.jsx";
 import Personalizeaza from "./pages/Personalizeaza.jsx";
+import Constructor from "./pages/Constructor.jsx";
 import Contact from "./pages/Contact.jsx";
 import Despre from "./pages/Despre.jsx";
 import FAQ from "./pages/FAQ.jsx";
@@ -78,6 +79,7 @@ export default function App() {
         <Route path="/" element={<Home />} />
         <Route path="/catalog" element={<Catalog />} />
         <Route path="/personalizeaza" element={<Personalizeaza />} />
+        <Route path="/constructor" element={<Constructor />} />
         <Route path="/contact" element={<Contact />} />
         <Route path="/despre" element={<Despre />} />
         <Route path="/faq" element={<FAQ />} />
