@@ -1,14 +1,14 @@
 # Maison-Douce (Tort-app)
 
-Scurt ghid de setup, testare și deploy pentru proiectul "Maison-Douce" (frontend + backend).
+Scurt ghid de setup, testare si deploy pentru proiectul "Maison-Douce" (frontend + backend).
 
-## 1. Cerințe locale
+## 1. Cerinte locale
 - Node.js >= 18
 - npm
 - MongoDB local (sau MongoDB Atlas URI)
-- (opțional) Stripe CLI pentru test webhook
+- (optional) Stripe CLI pentru test webhook
 
-## 2. Structură proiect
+## 2. Structura proiect
 - `/backend` - API Node.js + Express + Mongoose
 - `/frontend` - React (Vite)
 
@@ -50,16 +50,16 @@ Frontend (Vite/React) --axios--> Backend API (Express)
 
 ## 3. Config env
 
-Creează un `.env` în `backend` pe baza fișierului `.env.example` și completează:
+Creeaza un `.env` in `backend` pe baza fisierului `.env.example` si completeaza:
 - `PORT` - port backend (ex. 5000)
 - `MONGODB_URI` - conexiune MongoDB
-- `STRIPE_SECRET_KEY` - Stripe secret (test) — NU comita în repo
+- `STRIPE_SECRET_KEY` - Stripe secret (test) - NU comita in repo
 - `BASE_CLIENT_URL` - URL frontend local (ex. http://localhost:5173)
 
-Frontend: creează `frontend/.env.local` cu:
+Frontend: creeaza `frontend/.env.local` cu:
 - `VITE_API_URL=http://localhost:5000/api`
 - `VITE_PRESTATOR_ID=default`
-- `VITE_STRIPE_PUBLISHABLE=` (opțional pentru integrare)
+- `VITE_STRIPE_PUBLISHABLE=` (optional pentru integrare)
 
 ## 4. Pornire local
 
@@ -82,53 +82,53 @@ npm run dev
 ```
 
 ## 5. Test Stripe webhook local (pasi)
-1. Instalează Stripe CLI: https://stripe.com/docs/stripe-cli
+1. Instaleaza Stripe CLI: https://stripe.com/docs/stripe-cli
 2. Autentificare: `stripe login`
-3. În terminal: `stripe listen --forward-to localhost:5000/api/stripe/webhook`
-4. Declanșare test event: `stripe trigger checkout.session.completed`
-5. Verifică logs-uri în backend console (cautează `[stripe webhook]`)
-6. **Important:** Webhook-ul acum are logging complet și error handling
+3. In terminal: `stripe listen --forward-to localhost:5000/api/stripe/webhook`
+4. Declansare test event: `stripe trigger checkout.session.completed`
+5. Verifica logs-uri in backend console (cauteaza `[stripe webhook]`)
+6. **Important:** Webhook-ul acum are logging complet si error handling
 
 ---
 
-## 6. Recente implementări (A-E)
+## 6. Recente implementari (A-E)
 
-### A) ✅ Fix CANCEL pentru CalendarSlotEntry
-**Problemă:** Funcția de anulare a comenzii descrementa doar legacy `CalendarPrestator.slots`, nu și `CalendarSlotEntry`.
+### A) [OK] Fix CANCEL pentru CalendarSlotEntry
+**Problema:** Functia de anulare a comenzii descrementa doar legacy `CalendarPrestator.slots`, nu si `CalendarSlotEntry`.
 
-**Soluție:** 
-- Actualizat `PATCH /api/comenzi/:id/cancel` în `backend/routes/comenzi.js`
-- Acum încearcă să decrementez `CalendarSlotEntry.used` în prioritate
-- Fallback la legacy dacă slot-ul nu există
+**Solutie:** 
+- Actualizat `PATCH /api/comenzi/:id/cancel` in `backend/routes/comenzi.js`
+- Acum incearca sa decrementez `CalendarSlotEntry.used` in prioritate
+- Fallback la legacy daca slot-ul nu exista
 - Rollback logic preserved pentru consistency
 
-**Fișiere modificate:**
-- `backend/routes/comenzi.js` — cancel handler refactored
+**Fisiere modificate:**
+- `backend/routes/comenzi.js` - cancel handler refactored
 
 ---
 
-### B) ✅ Stripe Webhook Hardening + Test Guide
-**Îmbunătățiri:**
+### B) [OK] Stripe Webhook Hardening + Test Guide
+**Imbunatatiri:**
 1. **Better logging:** Messages cu `[stripe webhook]` tag pentru debugging
-2. **Config validation:** Verifică dacă au STRIPE_SECRET_KEY și STRIPE_WEBHOOK_SECRET
+2. **Config validation:** Verifica daca au STRIPE_SECRET_KEY si STRIPE_WEBHOOK_SECRET
 3. **Error responses:** Return 500 cu stack trace pentru development
 4. **Payment Intent logging:** Support for multiple event types
 5. **Debug route:** `GET /api/stripe/webhook-test` shows config status
 
-**Fișiere modificate:**
-- `backend/routes/stripeWebhook.js` — Enhanced with comprehensive logging
-- `backend/routes/stripe.js` — Added `/webhook-test` debug endpoint
+**Fisiere modificate:**
+- `backend/routes/stripeWebhook.js` - Enhanced with comprehensive logging
+- `backend/routes/stripe.js` - Added `/webhook-test` debug endpoint
 
 **Test local:**
 ```powershell
-# Terminal 1 — Backend
+# Terminal 1 - Backend
 cd backend
 npm start
 
-# Terminal 2 — Stripe CLI
+# Terminal 2 - Stripe CLI
 stripe listen --forward-to localhost:5000/api/stripe/webhook
 
-# Terminal 3 — Trigger test
+# Terminal 3 - Trigger test
 stripe trigger checkout.session.completed
 ```
 
@@ -165,33 +165,33 @@ npm run cypress:run
 
 ---
 
-### D) ✅ Full Migration CalendarSlotEntry
-**Obiectiv:** Elimina dependența de legacy `CalendarPrestator.slots` și folosiți `CalendarSlotEntry` exclusiv.
+### D) [OK] Full Migration CalendarSlotEntry
+**Obiectiv:** Elimina dependenta de legacy `CalendarPrestator.slots` si folositi `CalendarSlotEntry` exclusiv.
 
-**Implementări:**
+**Implementari:**
 1. **Migration script:** `backend/scripts/migrate-calendars.js`
-   - Citeste `CalendarPrestator.slots` și creează `CalendarSlotEntry` docs
-   - Rulează cu: `node backend/scripts/migrate-calendars.js`
+   - Citeste `CalendarPrestator.slots` si creeaza `CalendarSlotEntry` docs
+   - Ruleaza cu: `node backend/scripts/migrate-calendars.js`
    
 2. **Refactored routes:**
-   - `GET /api/calendar/availability` — Query exclusiv `CalendarSlotEntry`
-   - `POST /api/calendar/availability` — Upsert doar `CalendarSlotEntry` docs (no legacy sync)
-   - `POST /api/calendar/reserve` — Increment atomic pe `CalendarSlotEntry` only
+   - `GET /api/calendar/availability` - Query exclusiv `CalendarSlotEntry`
+   - `POST /api/calendar/availability` - Upsert doar `CalendarSlotEntry` docs (no legacy sync)
+   - `POST /api/calendar/reserve` - Increment atomic pe `CalendarSlotEntry` only
    - Rollback logic uses only `CalendarSlotEntry`
 
 3. **Updated controllers:**
-   - `backend/controllers/rezervariController.js` — booking/unbooking uses `CalendarSlotEntry`
-   - `backend/routes/comenzi.js` — create-with-slot uses `CalendarSlotEntry` in transaction
+   - `backend/controllers/rezervariController.js` - booking/unbooking uses `CalendarSlotEntry`
+   - `backend/routes/comenzi.js` - create-with-slot uses `CalendarSlotEntry` in transaction
 
-**Fișiere noi:**
-- `backend/scripts/migrate-calendars.js` — Migration script
+**Fisiere noi:**
+- `backend/scripts/migrate-calendars.js` - Migration script
 
-**Fișiere modificate:**
-- `backend/routes/calendar.js` — Refactored to use CalendarSlotEntry exclusively
-- `backend/controllers/rezervariController.js` — Uses CalendarSlotEntry
-- `backend/routes/comenzi.js` — Uses CalendarSlotEntry
+**Fisiere modificate:**
+- `backend/routes/calendar.js` - Refactored to use CalendarSlotEntry exclusively
+- `backend/controllers/rezervariController.js` - Uses CalendarSlotEntry
+- `backend/routes/comenzi.js` - Uses CalendarSlotEntry
 
-**Rulare migrație:**
+**Rulare migratie:**
 ```powershell
 cd backend
 node scripts/migrate-calendars.js
@@ -199,63 +199,63 @@ node scripts/migrate-calendars.js
 
 ---
 
-### E) ✅ UI Polish Site-Wide (Tailwind)
-**Creări:**
+### E) [OK] UI Polish Site-Wide (Tailwind)
+**Creari:**
 1. **Component library:** `frontend/src/lib/tailwindComponents.js`
    - Reusable Tailwind classes: `buttons`, `cards`, `inputs`, `containers`, `typography`, `grids`, `badges`
    - Consistency across app
 
 2. **Pages styled:**
-   - `CalendarClient.jsx` — Full redesign: gradient background, improved form layout, better typography, responsive
-   - `AdminCalendar.jsx` — 2-column layout with card design, color-coded slots, styled reservations list
+   - `CalendarClient.jsx` - Full redesign: gradient background, improved form layout, better typography, responsive
+   - `AdminCalendar.jsx` - 2-column layout with card design, color-coded slots, styled reservations list
 
 **Stil aplicat:**
 - Gradient backgrounds (pink-to-purple theme)
-- Improved form inputs și labels
+- Improved form inputs si labels
 - Better button styling with icons
 - Responsive grid layouts
 - Status badges (success/warning/error/info)
 - Better typography hierarchy
-- Hover states și transitions
+- Hover states si transitions
 - Mobile-first design
 
-**Fișiere noi:**
-- `frontend/src/lib/tailwindComponents.js` — Tailwind component library
+**Fisiere noi:**
+- `frontend/src/lib/tailwindComponents.js` - Tailwind component library
 
-**Fișiere modificate:**
-- `frontend/src/pages/CalendarClient.jsx` — Full Tailwind redesign
-- `frontend/src/pages/AdminCalendar.jsx` — Full Tailwind redesign
+**Fisiere modificate:**
+- `frontend/src/pages/CalendarClient.jsx` - Full Tailwind redesign
+- `frontend/src/pages/AdminCalendar.jsx` - Full Tailwind redesign
 
 ---
 
-### F) Recomandări AI + UI + test Cypress
-- Endpoint hibrid `/api/recommendations/ai` (GET/POST) combină popularitate globală, istoricul userului, preferințe (categorie), ingrediente de evitat și returnează motive transparente.
-- UI nouă pe `Home` cu secțiunea „Recomandate pentru tine” (folosește endpoint-ul AI).
-- Test E2E `cypress/e2e/recommendations-ui.spec.js` (interceptează API-ul și verifică secțiunea UI).
+### F) Recomandari AI + UI + test Cypress
+- Endpoint hibrid `/api/recommendations/ai` (GET/POST) combina popularitate globala, istoricul userului, preferinte (categorie), ingrediente de evitat si returneaza motive transparente.
+- UI noua pe `Home` cu sectiunea "Recomandate pentru tine" (foloseste endpoint-ul AI).
+- Test E2E `cypress/e2e/recommendations-ui.spec.js` (intercepteaza API-ul si verifica sectiunea UI).
 
-**Fișiere modificate/noi:**
+**Fisiere modificate/noi:**
 - `backend/routes/recommendations.js`
 - `frontend/src/api/products.js`
 - `frontend/src/pages/Home.jsx`
 - `frontend/cypress.config.js`, `frontend/cypress/e2e/recommendations-ui.spec.js`
 
-### G) Curățare UI Coș + formular comandă client
-- Coș și `ComandaClient` rescrise cu `tailwindComponents` (cards, buttons, inputs) pentru layout unificat.
+### G) Curatare UI Cos + formular comanda client
+- Cos si `ComandaClient` rescrise cu `tailwindComponents` (cards, buttons, inputs) pentru layout unificat.
 
-**Fișiere modificate:**
+**Fisiere modificate:**
 - `frontend/src/pages/Cart.jsx`
 - `frontend/src/pages/ComandaClient.jsx`
 
-### H) Stripe config + rotație chei
-- Endpoint `GET /api/stripe/config` expune `mode` (test/live) și status webhook/publishable pentru sanity check și rotație.
-- `payment-intent` și `checkout-session` întorc `mode` pentru debugging.
+### H) Stripe config + rotatie chei
+- Endpoint `GET /api/stripe/config` expune `mode` (test/live) si status webhook/publishable pentru sanity check si rotatie.
+- `payment-intent` si `checkout-session` intorc `mode` pentru debugging.
 
-**Fișiere modificate:**
+**Fisiere modificate:**
 - `backend/routes/stripe.js`
 
 ---
 
-## 7. Urmatoarele steps (Opțional)
+## 7. Urmatoarele steps (Optional)
 1. **Extend Cypress tests:** Add authenticated booking flow test cu UI interaction
 2. **More UI polish:** Apply `tailwindComponents` la mai multe pagini (cart, checkout, profile)
 3. **Unit tests:** Backend controller tests cu Jest
@@ -267,10 +267,10 @@ node scripts/migrate-calendars.js
 ## 8. Troubleshooting
 
 ### Stripe webhook not working
-- ✓ Check `backend/.env` has `STRIPE_SECRET_KEY` și `STRIPE_WEBHOOK_SECRET`
-- ✓ Run `GET /api/stripe/webhook-test` to verify config
-- ✓ Ensure `stripe listen` is running and forwards correctly
-- ✓ Check backend logs for `[stripe webhook]` messages
+- OK Check `backend/.env` has `STRIPE_SECRET_KEY` si `STRIPE_WEBHOOK_SECRET`
+- OK Run `GET /api/stripe/webhook-test` to verify config
+- OK Ensure `stripe listen` is running and forwards correctly
+- OK Check backend logs for `[stripe webhook]` messages
 
 ### CalendarSlotEntry not found errors
 - Run migration script: `node backend/scripts/migrate-calendars.js`
