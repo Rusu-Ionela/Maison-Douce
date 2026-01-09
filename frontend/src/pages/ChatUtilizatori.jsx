@@ -64,7 +64,7 @@ export default function ChatUtilizatori() {
                 socket.connect();
             } catch { }
             if (!socket.connected) {
-                alert("Serverul de chat nu este disponibil momentan.");
+                alert("Conectare chat: incearca din nou.");
                 return;
             }
         }

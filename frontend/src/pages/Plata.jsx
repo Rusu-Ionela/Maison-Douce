@@ -9,7 +9,7 @@ import { useAuth } from "../context/AuthContext";
 const publicKey = import.meta.env.VITE_STRIPE_PK;
 const missingStripeKey = !publicKey;
 if (missingStripeKey) {
-    console.error("Lipseste VITE_STRIPE_PK in frontend/.env.local");
+    console.info("Seteaza VITE_STRIPE_PK in frontend/.env.local pentru plata cu cardul.");
 }
 
 const stripePromise = missingStripeKey ? null : loadStripe(publicKey);
@@ -200,7 +200,7 @@ export default function Plata() {
 
     // 7) Stripe Checkout (redirect)
     const goCheckout = async () => {
-        if (!comandaId) return alert("Lipseste comandaId in URL.");
+        if (!comandaId) return alert("Adauga comandaId in URL.");
         setCreatingCheckout(true);
         try {
             const { data } = await api.post(`/stripe/create-checkout-session/${comandaId}`);
@@ -223,7 +223,7 @@ export default function Plata() {
             return setFidelizareMsg("Trebuie sa fii autentificat pentru a aplica voucherul.");
         }
         if (!comandaId) {
-            return setFidelizareMsg("Lipseste comandaId pentru aplicarea voucherului.");
+            return setFidelizareMsg("Adauga comandaId pentru aplicarea voucherului.");
         }
         if (reducerePct > 0) {
             return setFidelizareMsg("Nu poti combina cuponul cu voucher/puncte.");
@@ -262,7 +262,7 @@ export default function Plata() {
             return setFidelizareMsg("Trebuie sa fii autentificat pentru a folosi puncte.");
         }
         if (!comandaId) {
-            return setFidelizareMsg("Lipseste comandaId pentru aplicarea punctelor.");
+            return setFidelizareMsg("Adauga comandaId pentru aplicarea punctelor.");
         }
         if (reducerePct > 0) {
             return setFidelizareMsg("Nu poti combina cuponul cu voucher/puncte.");
@@ -308,9 +308,9 @@ export default function Plata() {
             <h1 className="text-3xl font-bold text-gray-900 mb-4">Plata comenzii</h1>
 
             {missingStripeKey && (
-                <div className="mb-4 text-red-800 bg-red-50 border border-red-200 rounded-md px-4 py-3">
-                    Lipseste <code>VITE_STRIPE_PK</code> in <code>frontend/.env.local</code>. Adauga cheia publishable Stripe
-                    de test (ex: <code>pk_test_...</code>) si reporneste <code>npm run dev</code>. Payment Element este dezactivat pana atunci.
+                <div className="mb-4 text-amber-900 bg-amber-50 border border-amber-200 rounded-md px-4 py-3">
+                    Pentru plata cu cardul, configureaza <code>VITE_STRIPE_PK</code> in <code>frontend/.env.local</code> (ex: <code>pk_test_...</code>)
+                    si reporneste <code>npm run dev</code>.
                 </div>
             )}
 
