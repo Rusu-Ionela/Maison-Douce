@@ -10,10 +10,33 @@ const PointsTxnSchema = new mongoose.Schema({
     at: { type: Date, default: Date.now },
 }, { _id: false });
 
+const AddressSchema = new mongoose.Schema(
+    {
+        label: { type: String, default: "Acasa" },
+        address: { type: String, required: true },
+        isDefault: { type: Boolean, default: false },
+    },
+    { _id: false }
+);
+
 const UtilizatorSchema = new mongoose.Schema({
     nume: String,
+    prenume: String,
     email: { type: String, unique: true, lowercase: true, trim: true, required: true },
-    rol: { type: String, enum: ["client", "admin", "prestator"], default: "client" },
+    rol: { type: String, enum: ["client", "admin", "patiser", "prestator"], default: "client" },
+
+    telefon: String,
+    adresa: String,
+    adreseSalvate: { type: [AddressSchema], default: [] },
+    preferinte: {
+        alergii: { type: [String], default: [] },
+        evit: { type: [String], default: [] },
+        note: { type: String, default: "" },
+    },
+    setariNotificari: {
+        email: { type: Boolean, default: true },
+        inApp: { type: Boolean, default: true },
+    },
 
     // folosim doar parolaHash; ținem compat cu 'parola' dacă există deja
     parolaHash: { type: String, select: false },

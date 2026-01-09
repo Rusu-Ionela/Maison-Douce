@@ -7,6 +7,7 @@ const CalendarSlotEntry = require("../models/CalendarSlotEntry");
 const Rezervare = require("../models/Rezervare");
 const Comanda = require("../models/Comanda");
 const { authRequired, roleCheck } = require("../middleware/auth");
+const Notificare = require("../models/Notificare");
 
 let Utilizator = null;
 try {
@@ -239,6 +240,18 @@ router.post("/reserve", authRequired, async (req, res) => {
       slotInfo = await CalendarSlotEntry.findById(incremented.id).lean();
     } catch (e) {
       console.warn('Could not read slot info for response', e.message || e);
+    }
+
+    try {
+      await Notificare.create({
+        userId: clientId,
+        titlu: "Rezervare creata",
+        mesaj: `Rezervarea ta pentru ${date} ${time} a fost inregistrata.`,
+        tip: "rezervare",
+        link: `/plata?comandaId=${comanda._id}`,
+      });
+    } catch (e) {
+      console.warn("Notificare rezervare failed:", e.message);
     }
 
     return res.json({

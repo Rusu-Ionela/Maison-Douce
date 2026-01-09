@@ -2,7 +2,18 @@
 const express = require("express");
 const router = express.Router();
 const Fidelizare = require("../models/Fidelizare");
-const { authRequired } = require("../middleware/auth");
+const FidelizareConfig = require("../models/FidelizareConfig");
+const Comanda = require("../models/Comanda");
+const { authRequired, roleCheck } = require("../middleware/auth");
+
+async function ensureConfig() {
+  let config = await FidelizareConfig.findOne().lean();
+  if (!config) {
+    const created = await FidelizareConfig.create({});
+    config = created.toObject();
+  }
+  return config;
+}
 
 /**
  * GET /api/fidelizare/client/:userId
@@ -42,6 +53,145 @@ router.get("/client/:userId", authRequired, async (req, res) => {
     res.status(500).json({ error: "Eroare server" });
   }
 });
+
+/**
+ * GET /api/fidelizare/admin/config
+ * Configuratie fidelizare (admin)
+ */
+router.get(
+  "/admin/config",
+  authRequired,
+  roleCheck("admin", "patiser"),
+  async (_req, res) => {
+    try {
+      const cfg = await ensureConfig();
+      res.json(cfg);
+    } catch (e) {
+      res.status(500).json({ message: "Eroare la incarcare config." });
+    }
+  }
+);
+
+/**
+ * PUT /api/fidelizare/admin/config
+ * Body: { pointsPer10, pointsPerOrder, minTotal }
+ */
+router.put(
+  "/admin/config",
+  authRequired,
+  roleCheck("admin", "patiser"),
+  async (req, res) => {
+    try {
+      const update = {};
+      if (req.body.pointsPer10 != null) update.pointsPer10 = Number(req.body.pointsPer10 || 0);
+      if (req.body.pointsPerOrder != null) update.pointsPerOrder = Number(req.body.pointsPerOrder || 0);
+      if (req.body.minTotal != null) update.minTotal = Number(req.body.minTotal || 0);
+
+      const cfg = await FidelizareConfig.findOneAndUpdate(
+        {},
+        { $set: update },
+        { new: true, upsert: true }
+      );
+      res.json({ ok: true, config: cfg });
+    } catch (e) {
+      res.status(500).json({ message: "Eroare la salvare config." });
+    }
+  }
+);
+
+/**
+ * GET /api/fidelizare/admin/user/:userId
+ * Portofel complet pentru un client (admin view)
+ */
+router.get(
+  "/admin/user/:userId",
+  authRequired,
+  roleCheck("admin", "patiser"),
+  async (req, res) => {
+    try {
+      const { userId } = req.params;
+      let fidelizare = await Fidelizare.findOne({ utilizatorId: userId });
+      if (!fidelizare) {
+        fidelizare = await Fidelizare.create({
+          utilizatorId: userId,
+          puncteCurent: 0,
+          puncteTotal: 0,
+          nivelLoyalitate: "bronze",
+          reduceriDisponibile: [],
+          istoric: [],
+        });
+      }
+      res.json({ ok: true, fidelizare });
+    } catch (e) {
+      res.status(500).json({ message: "Eroare la incarcare portofel." });
+    }
+  }
+);
+
+/**
+ * POST /api/fidelizare/admin/voucher
+ * Body: { utilizatorId, cod?, procent?, valoareFixa?, valoareMinima?, dataExpirare? }
+ */
+router.post(
+  "/admin/voucher",
+  authRequired,
+  roleCheck("admin", "patiser"),
+  async (req, res) => {
+    try {
+      const {
+        utilizatorId,
+        cod,
+        procent = 0,
+        valoareFixa = 0,
+        valoareMinima = 0,
+        dataExpirare,
+      } = req.body || {};
+
+      if (!utilizatorId) {
+        return res.status(400).json({ message: "utilizatorId este obligatoriu" });
+      }
+      const hasDiscount = Number(procent || 0) > 0 || Number(valoareFixa || 0) > 0;
+      if (!hasDiscount) {
+        return res.status(400).json({ message: "procent sau valoareFixa sunt necesare" });
+      }
+
+      let fidelizare = await Fidelizare.findOne({ utilizatorId });
+      if (!fidelizare) {
+        fidelizare = await Fidelizare.create({
+          utilizatorId,
+          puncteCurent: 0,
+          puncteTotal: 0,
+          nivelLoyalitate: "bronze",
+          reduceriDisponibile: [],
+          istoric: [],
+        });
+      }
+
+      const code = cod || `PROMO-${Date.now()}`;
+      const voucher = {
+        procent: Number(procent || 0),
+        valoareMinima: Number(valoareMinima || 0),
+        valoareFixa: Number(valoareFixa || 0),
+        codigPromo: code,
+        dataExpirare: dataExpirare ? new Date(dataExpirare) : undefined,
+        folosita: false,
+      };
+      fidelizare.reduceriDisponibile.push(voucher);
+      fidelizare.istoric.push({
+        data: new Date(),
+        tip: "earn",
+        puncte: 0,
+        sursa: "voucher-admin",
+        descriere: `Voucher creat: ${code}`,
+      });
+      await fidelizare.save();
+
+      res.json({ ok: true, voucher });
+    } catch (e) {
+      res.status(500).json({ message: "Eroare la creare voucher." });
+    }
+  }
+);
 
 /**
  * POST /api/fidelizare/add-points
@@ -176,17 +326,28 @@ router.post("/redeem", authRequired, async (req, res) => {
     res.status(500).json({ ok: false, error: "Eroare server" });
   }
 });
-
 /**
  * POST /api/fidelizare/apply-voucher
- * Aplică un voucher din portofel la un total.
- * Body: { utilizatorId, cod, total }
+ * Body: { utilizatorId, cod, comandaId }
  */
 router.post("/apply-voucher", authRequired, async (req, res) => {
   try {
-    const { utilizatorId, cod, total } = req.body;
-    if (!utilizatorId || !cod || total == null) {
-      return res.status(400).json({ ok: false, message: "utilizatorId, cod și total sunt necesare" });
+    const { utilizatorId, cod, comandaId } = req.body;
+    const role = req.user?.rol || req.user?.role;
+    if (!utilizatorId || !cod || !comandaId) {
+      return res.status(400).json({ ok: false, message: "utilizatorId, cod si comandaId sunt necesare" });
+    }
+    if (role !== "admin" && role !== "patiser" && String(req.user?._id) !== String(utilizatorId)) {
+      return res.status(403).json({ ok: false, message: "Acces interzis" });
+    }
+
+    const comanda = await Comanda.findById(comandaId);
+    if (!comanda) return res.status(404).json({ ok: false, message: "Comanda inexistenta" });
+    if (String(comanda.clientId) !== String(utilizatorId)) {
+      return res.status(403).json({ ok: false, message: "Comanda nu apartine utilizatorului" });
+    }
+    if (comanda.discountFidelizare > 0 || comanda.voucherCode || comanda.pointsUsed > 0) {
+      return res.status(409).json({ ok: false, message: "Discount fidelizare deja aplicat" });
     }
 
     const fidelizare = await Fidelizare.findOne({ utilizatorId });
@@ -195,26 +356,26 @@ router.post("/apply-voucher", authRequired, async (req, res) => {
     }
 
     const now = Date.now();
+    const baseTotal = Number(comanda.total || 0);
     const voucher = (fidelizare.reduceriDisponibile || []).find(
       (v) =>
         v.codigPromo === cod &&
         !v.folosita &&
         (!v.dataExpirare || new Date(v.dataExpirare).getTime() > now) &&
-        (v.valoareMinima || 0) <= Number(total || 0)
+        (v.valoareMinima || 0) <= baseTotal
     );
 
     if (!voucher) {
       return res.status(400).json({ ok: false, message: "Voucher invalid sau expirat" });
     }
 
-    const numericTotal = Number(total || 0);
     const discountPerc = Number(voucher.procent || 0);
     const discountFix = Number(voucher.valoareFixa || 0);
     let discount = discountFix;
     if (discountPerc > 0) {
-      discount = Math.round((numericTotal * discountPerc) / 100);
+      discount = Math.round((baseTotal * discountPerc) / 100);
     }
-    if (discount > numericTotal) discount = numericTotal;
+    if (discount > baseTotal) discount = baseTotal;
 
     voucher.folosita = true;
     fidelizare.istoric.push({
@@ -222,15 +383,21 @@ router.post("/apply-voucher", authRequired, async (req, res) => {
       tip: "redeem",
       puncte: 0,
       sursa: "voucher",
+      comandaId,
       descriere: `Voucher ${voucher.codigPromo} aplicat (-${discount} MDL)`,
     });
-
     await fidelizare.save();
+
+    comanda.discountFidelizare = discount;
+    comanda.discountTotal = discount;
+    comanda.voucherCode = voucher.codigPromo;
+    comanda.totalFinal = Math.max(0, baseTotal - discount);
+    await comanda.save();
 
     return res.json({
       ok: true,
       discount,
-      newTotal: numericTotal - discount,
+      newTotal: comanda.totalFinal,
       cod: voucher.codigPromo,
     });
   } catch (err) {
@@ -238,17 +405,28 @@ router.post("/apply-voucher", authRequired, async (req, res) => {
     res.status(500).json({ ok: false, error: "Eroare server" });
   }
 });
-
 /**
  * POST /api/fidelizare/apply-points
- * Folosire puncte direct la checkout. Formula: 2 puncte = 1 MDL (ca în redeem).
- * Body: { utilizatorId, puncte, total }
+ * Body: { utilizatorId, puncte, comandaId }
  */
 router.post("/apply-points", authRequired, async (req, res) => {
   try {
-    const { utilizatorId, puncte, total } = req.body;
-    if (!utilizatorId || !puncte || puncte <= 0 || total == null) {
-      return res.status(400).json({ ok: false, message: "utilizatorId, puncte (>0) și total sunt necesare" });
+    const { utilizatorId, puncte, comandaId } = req.body;
+    const role = req.user?.rol || req.user?.role;
+    if (!utilizatorId || !puncte || puncte <= 0 || !comandaId) {
+      return res.status(400).json({ ok: false, message: "utilizatorId, puncte (>0) si comandaId sunt necesare" });
+    }
+    if (role !== "admin" && role !== "patiser" && String(req.user?._id) !== String(utilizatorId)) {
+      return res.status(403).json({ ok: false, message: "Acces interzis" });
+    }
+
+    const comanda = await Comanda.findById(comandaId);
+    if (!comanda) return res.status(404).json({ ok: false, message: "Comanda inexistenta" });
+    if (String(comanda.clientId) !== String(utilizatorId)) {
+      return res.status(403).json({ ok: false, message: "Comanda nu apartine utilizatorului" });
+    }
+    if (comanda.discountFidelizare > 0 || comanda.voucherCode || comanda.pointsUsed > 0) {
+      return res.status(409).json({ ok: false, message: "Discount fidelizare deja aplicat" });
     }
 
     const fidelizare = await Fidelizare.findOne({ utilizatorId });
@@ -256,25 +434,31 @@ router.post("/apply-points", authRequired, async (req, res) => {
       return res.status(400).json({ ok: false, message: "Puncte insuficiente" });
     }
 
-    const numericTotal = Number(total || 0);
-    const discount = Math.floor(puncte / 2);
-    const appliedDiscount = Math.min(discount, numericTotal);
+    const baseTotal = Number(comanda.total || 0);
+    const discount = Math.floor(Number(puncte) / 2);
+    const appliedDiscount = Math.min(discount, baseTotal);
 
-    fidelizare.puncteCurent -= puncte;
+    fidelizare.puncteCurent -= Number(puncte);
     fidelizare.istoric.push({
       data: new Date(),
       tip: "redeem",
-      puncte,
+      puncte: Number(puncte),
       sursa: "checkout",
+      comandaId,
       descriere: `Discount ${appliedDiscount} MDL din puncte (${puncte}p)`,
     });
-
     await fidelizare.save();
+
+    comanda.discountFidelizare = appliedDiscount;
+    comanda.discountTotal = appliedDiscount;
+    comanda.pointsUsed = Number(puncte);
+    comanda.totalFinal = Math.max(0, baseTotal - appliedDiscount);
+    await comanda.save();
 
     return res.json({
       ok: true,
       discount: appliedDiscount,
-      newTotal: numericTotal - appliedDiscount,
+      newTotal: comanda.totalFinal,
       puncteRamase: fidelizare.puncteCurent,
     });
   } catch (err) {

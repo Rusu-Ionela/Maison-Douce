@@ -2,6 +2,7 @@
 const Stripe = require("stripe");
 const Comanda = require("../models/Comanda");
 const Fidelizare = require("../models/Fidelizare");
+const FidelizareConfig = require("../models/FidelizareConfig");
 
 const stripeKey =
   process.env.STRIPE_SECRET_KEY ||
@@ -9,6 +10,22 @@ const stripeKey =
   process.env.STRIPE_SK ||
   "";
 const stripe = stripeKey ? new Stripe(stripeKey, { apiVersion: "2023-10-16" }) : null;
+
+async function getFidelizareConfig() {
+  const existing = await FidelizareConfig.findOne().lean();
+  if (existing) return existing;
+  const created = await FidelizareConfig.create({});
+  return created.toObject();
+}
+
+function calcPoints(total, config) {
+  const step = Number(config.pointsPer10 || 0);
+  const perOrder = Number(config.pointsPerOrder || 0);
+  const minTotal = Number(config.minTotal || 0);
+  if (!Number.isFinite(total) || total < minTotal) return 0;
+  const fromTotal = Math.floor(total / 10) * step;
+  return Math.max(0, Math.floor(fromTotal + perOrder));
+}
 
 module.exports = async (req, res) => {
   if (!stripe || !process.env.STRIPE_WEBHOOK_SECRET) {
@@ -48,46 +65,68 @@ module.exports = async (req, res) => {
         const comanda = await Comanda.findById(orderId);
         if (comanda) {
           console.log(`[stripe webhook] Found Comanda: ${comanda._id}`);
-          // normalizează câmpurile tale existente
-          comanda.paymentStatus = "paid";     // dacă ai câmp separat
-          comanda.status = "confirmata";      // status general al comenzii
-          await comanda.save();
-          console.log(`[stripe webhook] ✓ Comanda marked as paid and confirmed`);
 
-          // Acordă puncte (ex: 10% din total)
-          const earned = Math.floor((Number(comanda.total) || 0) * 0.1);
+          comanda.paymentStatus = "paid";
+          comanda.statusPlata = "paid";
+          if (["plasata", "in_asteptare", "inregistrata"].includes(comanda.status)) {
+            comanda.status = "confirmata";
+          }
+          comanda.statusHistory = Array.isArray(comanda.statusHistory)
+            ? [...comanda.statusHistory, { status: "paid", note: "Stripe payment confirmed" }]
+            : [{ status: "paid", note: "Stripe payment confirmed" }];
+          await comanda.save();
+          console.log("[stripe webhook] Comanda marked as paid");
+
+          const total = Number(comanda.totalFinal || comanda.total || 0);
+          const cfg = await getFidelizareConfig();
+          const earned = calcPoints(total, cfg);
           if (earned > 0 && comanda.clientId) {
-            let doc = await Fidelizare.findOne({
-              $or: [{ userId: comanda.clientId }, { clientId: comanda.clientId }],
-            });
+            let doc = await Fidelizare.findOne({ utilizatorId: comanda.clientId });
             if (!doc) {
               doc = await Fidelizare.create({
-                userId: comanda.clientId,
-                clientId: comanda.clientId,
-                points: 0,
-                puncte: 0,
-                history: [],
+                utilizatorId: comanda.clientId,
+                puncteCurent: 0,
+                puncteTotal: 0,
+                nivelLoyalitate: "bronze",
+                reduceriDisponibile: [],
                 istoric: [],
               });
-              console.log(`[stripe webhook] Created new Fidelizare doc for clientId=${comanda.clientId}`);
+              console.log(`[stripe webhook] Created Fidelizare for clientId=${comanda.clientId}`);
             }
-            doc.points = (doc.points || 0) + earned;
-            doc.puncte = (doc.puncte || 0) + earned;
 
-            const entry = {
-              type: "earn",
-              points: earned,
-              puncteModificare: earned,
-              source: `order:${comanda._id}`,
-              note: "Stripe paid",
-              descriere: "Stripe paid",
-              at: new Date(),
-            };
-            doc.history = Array.isArray(doc.history) ? [...doc.history, entry] : [entry];
-            doc.istoric = Array.isArray(doc.istoric) ? [...doc.istoric, entry] : [entry];
+            doc.puncteCurent = Number(doc.puncteCurent || 0) + earned;
+            doc.puncteTotal = Number(doc.puncteTotal || 0) + earned;
+            doc.istoric = Array.isArray(doc.istoric)
+              ? [
+                  ...doc.istoric,
+                  {
+                    data: new Date(),
+                    tip: "earn",
+                    puncte: earned,
+                    sursa: "stripe",
+                    comandaId: comanda._id,
+                    descriere: "Plata Stripe confirmata",
+                  },
+                ]
+              : [
+                  {
+                    data: new Date(),
+                    tip: "earn",
+                    puncte: earned,
+                    sursa: "stripe",
+                    comandaId: comanda._id,
+                    descriere: "Plata Stripe confirmata",
+                  },
+                ];
+
+            if (doc.puncteTotal >= 500) doc.nivelLoyalitate = "gold";
+            else if (doc.puncteTotal >= 200) doc.nivelLoyalitate = "silver";
+            else doc.nivelLoyalitate = "bronze";
+
             await doc.save();
-            console.log(`[stripe webhook] ✓ Fidelizare awarded: ${earned} points`);
+            console.log(`[stripe webhook] Fidelizare awarded: ${earned} points`);
           }
+        }
         } else {
           console.warn(`[stripe webhook] ⚠ Comanda NOT found for orderId=${orderId}`);
         }

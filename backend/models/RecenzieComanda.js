@@ -19,6 +19,10 @@ const recenzieComandaSchema = new mongoose.Schema({
         type: String,
         required: true
     },
+    foto: {
+        type: String,
+        default: ""
+    },
     data: {
         type: Date,
         default: Date.now

@@ -1,37 +1,50 @@
-const express = require('express');
+const express = require("express");
 const router = express.Router();
-const Partajare = require('../models/Partajare');
-const { v4: uuidv4 } = require('uuid');
-const multer = require('multer');
-const path = require('path');
+const Partajare = require("../models/Partajare");
+const crypto = require("crypto");
+const multer = require("multer");
+const path = require("path");
+const { authRequired } = require("../middleware/auth");
 
 // Configurare Multer
 const storage = multer.diskStorage({
-    destination: (req, file, cb) => cb(null, 'uploads/'),
-    filename: (req, file, cb) => cb(null, Date.now() + path.extname(file.originalname))
+  destination: (_req, _file, cb) => cb(null, "uploads/"),
+  filename: (_req, file, cb) => cb(null, Date.now() + path.extname(file.originalname)),
 });
 const upload = multer({ storage });
 
-// Creare partajare fișiere
-router.post('/creare', upload.array('fisiere', 10), async (req, res) => {
-    const { utilizatorId } = req.body;
-    const fisiere = req.files.map(f => `/uploads/${f.filename}`);
-    const linkUnic = uuidv4();
+function createLink() {
+  if (crypto.randomUUID) return crypto.randomUUID();
+  return crypto.randomBytes(16).toString("hex");
+}
 
-    const partajare = new Partajare({ utilizatorId, fisiere, linkUnic });
-    await partajare.save();
+// Creare partajare fisiere
+router.post("/creare", authRequired, upload.array("fisiere", 10), async (req, res) => {
+  const { utilizatorId } = req.body || {};
+  const role = req.user?.rol || req.user?.role;
+  const ownerId = role === "admin" || role === "patiser" ? (utilizatorId || req.user._id) : req.user._id;
 
-    res.json({ link: `http://localhost:3000/partajare/${linkUnic}` });
+  const fisiere = (req.files || []).map((f) => `/uploads/${f.filename}`);
+  if (!fisiere.length) {
+    return res.status(400).json({ message: "Nu exista fisiere incarcate" });
+  }
+
+  const linkUnic = createLink();
+  const partajare = new Partajare({ utilizatorId: ownerId, fisiere, linkUnic });
+  await partajare.save();
+
+  const baseUrl = process.env.BASE_CLIENT_URL || "http://localhost:5173";
+  res.json({ link: `${baseUrl.replace(/\/$/, "")}/partajare/${linkUnic}` });
 });
 
-// Obține partajarea după link
-router.get('/:linkUnic', async (req, res) => {
-    const partajare = await Partajare.findOne({ linkUnic: req.params.linkUnic });
-    if (partajare) {
-        res.json(partajare);
-    } else {
-        res.status(404).json({ message: 'Link invalid' });
-    }
+// Obtine partajarea dupa link
+router.get("/:linkUnic", async (req, res) => {
+  const partajare = await Partajare.findOne({ linkUnic: req.params.linkUnic });
+  if (partajare) {
+    res.json(partajare);
+  } else {
+    res.status(404).json({ message: "Link invalid" });
+  }
 });
 
 module.exports = router;

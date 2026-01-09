@@ -108,6 +108,7 @@ if (process.env.NODE_ENV !== "production") {
 // --- CORE ROUTES ---
 mount("/api/utilizatori", "./routes/utilizatori");
 mount("/api/torturi", "./routes/torturi");
+mount("/api/ingrediente", "./routes/ingredient.routes");
 mount("/api/produse-studio", "./routes/produseStudio");
 mount("/api/calendar", "./routes/calendar");
 mount("/api/calendar-admin", "./routes/calendarAdmin");
@@ -117,8 +118,11 @@ mount("/api/rapoarte", "./routes/rapoarte");
 mount("/api/rapoarte-rezervari", "./routes/rapoarteRezervariRoutes");
 mount("/api/recenzii", "./routes/recenzii");
 mount("/api/albume", "./routes/albumeRoutes");
+mount("/api/partajare", "./routes/partajareRoutes");
+mount("/api/upload", "./routes/upload");
 mount("/api/notificari", "./routes/notificari");
 mount("/api/notificari-foto", "./routes/notificariFotoRoutes");
+mount("/api/admin/production", "./routes/adminProduction");
 
 // --- FIDELIZARE, RECOMANDĂRI, EXTRA ---
 mount("/api/fidelizare", "./routes/fidelizare");

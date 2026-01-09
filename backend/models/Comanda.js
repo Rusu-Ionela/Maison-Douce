@@ -42,6 +42,11 @@ const ComandaSchema = new mongoose.Schema(
     taxaLivrare: { type: Number, default: 0 },
     deliveryFee: { type: Number, default: 0 }, // alias pentru calendar
     total: { type: Number, default: 0 },
+    discountTotal: { type: Number, default: 0 },
+    discountFidelizare: { type: Number, default: 0 },
+    voucherCode: { type: String, default: "" },
+    pointsUsed: { type: Number, default: 0 },
+    totalFinal: { type: Number, default: 0 },
 
     // Livrare / ridicare
     metodaLivrare: {
@@ -68,6 +73,12 @@ const ComandaSchema = new mongoose.Schema(
     statusComanda: { type: String, default: "inregistrata" },
     statusPlata: { type: String, default: "unpaid" },
     paymentStatus: { type: String, default: "unpaid" },
+    motivRefuz: { type: String, default: "" },
+    statusHistory: [{
+      status: String,
+      at: { type: Date, default: Date.now },
+      note: String,
+    }],
 
     // Stripe / plată
     metodaPlata: { type: String, default: "card" },

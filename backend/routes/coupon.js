@@ -1,9 +1,10 @@
 const express = require('express');
 const router = express.Router();
 const Coupon = require('../models/Coupon');
+const { authRequired, roleCheck } = require("../middleware/auth");
 
 // Creare cupon (admin)
-router.post('/create', async (req, res) => {
+router.post('/create', authRequired, roleCheck("admin", "patiser"), async (req, res) => {
     const { cod, procentReducere } = req.body;
 
     try {

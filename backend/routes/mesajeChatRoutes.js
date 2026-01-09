@@ -29,7 +29,7 @@ router.get("/room/:room", async (req, res) => {
 // POST /api/mesaje-chat – salvează un mesaj simplu
 router.post("/", async (req, res) => {
     try {
-        const { autor, utilizator, text, room, authorId } = req.body;
+        const { autor, utilizator, text, room, authorId, fileUrl, fileName } = req.body;
         if (!text) {
             return res
                 .status(400)
@@ -43,6 +43,8 @@ router.post("/", async (req, res) => {
         };
         if (room) payload.room = String(room);
         if (authorId) payload.authorId = String(authorId);
+        if (fileUrl) payload.fileUrl = String(fileUrl);
+        if (fileName) payload.fileName = String(fileName);
 
         const msg = await MesajChat.create(payload);
 

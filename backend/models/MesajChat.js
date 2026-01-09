@@ -7,6 +7,8 @@ const MesajChatSchema = new mongoose.Schema({
     utilizator: { type: String, required: false }, // Nume sau email (opțional)
     authorId: { type: String }, // optional: user id or socket id
     room: { type: String, index: true }, // optional: room / conversation id
+    fileUrl: { type: String, default: "" },
+    fileName: { type: String, default: "" },
 });
 
 module.exports = mongoose.models.MesajChat || mongoose.model('MesajChat', MesajChatSchema);

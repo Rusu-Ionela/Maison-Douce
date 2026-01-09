@@ -5,6 +5,7 @@ const RecenziePrestatorSchema = new mongoose.Schema({
     utilizator: { type: String, required: true },
     stele: { type: Number, required: true },
     comentariu: { type: String },
+    foto: { type: String, default: "" },
     data: { type: Date, default: Date.now }
 });
 

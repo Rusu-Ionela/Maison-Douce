@@ -8,6 +8,7 @@ const { authRequired, roleCheck } = require("../middleware/auth");
 const Comanda = require("../models/Comanda");
 const Rezervare = require("../models/Rezervare");
 const CalendarPrestator = require("../models/CalendarPrestator");
+const Notificare = require("../models/Notificare");
 // const Utilizator = require("../models/Utilizator"); // folosește dacă vrei populate
 
 const LIVRARE_FEE = 100;
@@ -102,6 +103,7 @@ router.post("/", authRequired, async (req, res) => {
             subtotal,
             taxaLivrare,
             total: subtotal + taxaLivrare,
+            totalFinal: subtotal + taxaLivrare,
             metodaLivrare,
             adresaLivrare: metodaLivrare === "livrare" ? adresaLivrare : undefined,
             dataLivrare,
@@ -111,7 +113,20 @@ router.post("/", authRequired, async (req, res) => {
             preferinte,
             imagineGenerata,
             status: "plasata",
+            statusHistory: [{ status: "plasata", note: "Comanda creata" }],
         });
+
+        try {
+            await Notificare.create({
+                userId: clientId,
+                titlu: "Comanda primita",
+                mesaj: `Comanda #${comanda.numeroComanda || comanda._id} a fost inregistrata.`,
+                tip: "comanda",
+                link: `/plata?comandaId=${comanda._id}`,
+            });
+        } catch (e) {
+            console.warn("Notificare create failed:", e.message);
+        }
 
         res.status(201).json(comanda);
     } catch (e) {
@@ -188,6 +203,7 @@ router.post("/creeaza-cu-slot", authRequired, async (req, res) => {
                 subtotal,
                 taxaLivrare,
                 total: subtotal + taxaLivrare,
+                totalFinal: subtotal + taxaLivrare,
                 metodaLivrare,
                 adresaLivrare: metodaLivrare === "livrare" ? adresaLivrare : undefined,
                 dataLivrare,
@@ -197,11 +213,23 @@ router.post("/creeaza-cu-slot", authRequired, async (req, res) => {
                 preferinte,
                 imagineGenerata,
                 status: "in_asteptare",
+                statusHistory: [{ status: "in_asteptare", note: "Comanda creata cu slot" }],
             }],
             { session }
         );
 
         await session.commitTransaction();
+        try {
+            await Notificare.create({
+                userId: clientId,
+                titlu: "Comanda primita",
+                mesaj: `Comanda #${comanda.numeroComanda || comanda._id} a fost inregistrata.`,
+                tip: "comanda",
+                link: `/plata?comandaId=${comanda._id}`,
+            });
+        } catch (e) {
+            console.warn("Notificare create failed:", e.message);
+        }
         res.status(201).json(comanda);
     } catch (e) {
         await session.abortTransaction();
@@ -296,8 +324,29 @@ router.patch("/:id/status", authRequired, async (req, res) => {
         // încearcă Comanda
         let doc = await Comanda.findById(id);
         if (doc) {
+            const paid = doc.paymentStatus === "paid" || doc.statusPlata === "paid";
+            const requiresPaid = ["acceptata", "in_lucru", "gata", "livrata", "ridicata", "confirmata"];
+            if (!paid && requiresPaid.includes(nou)) {
+                return res.status(409).json({ message: "Comanda poate fi confirmata doar dupa plata." });
+            }
             doc.status = nou;
+            doc.statusHistory = Array.isArray(doc.statusHistory)
+                ? [...doc.statusHistory, { status: nou, note: req.body?.note || "" }]
+                : [{ status: nou, note: req.body?.note || "" }];
             await doc.save();
+
+            try {
+                await Notificare.create({
+                    userId: doc.clientId,
+                    titlu: "Status comanda actualizat",
+                    mesaj: `Comanda #${doc.numeroComanda || doc._id} este acum: ${nou}.`,
+                    tip: "status",
+                    link: `/plata?comandaId=${doc._id}`,
+                });
+            } catch (e) {
+                console.warn("Notificare status failed:", e.message);
+            }
+
             return res.json({ ok: true, _source: "comanda" });
         }
 
@@ -332,6 +381,107 @@ router.patch("/:id/status", authRequired, async (req, res) => {
     } catch (e) {
         console.error(e);
         res.status(500).json({ message: "Eroare la actualizare status." });
+    }
+});
+
+// PATCH /api/comenzi/:id/schedule
+// Body: { dataLivrare, oraLivrare }
+router.patch("/:id/schedule", authRequired, roleCheck("admin", "patiser"), async (req, res) => {
+    try {
+        const { dataLivrare, oraLivrare } = req.body || {};
+        if (!dataLivrare || !oraLivrare) {
+            return res.status(400).json({ message: "dataLivrare si oraLivrare sunt obligatorii." });
+        }
+
+        const comanda = await Comanda.findById(req.params.id);
+        if (!comanda) return res.status(404).json({ message: "Comanda inexistentă." });
+
+        const CalendarSlotEntry = require("../models/CalendarSlotEntry");
+        const prestatorId = comanda.prestatorId || "default";
+
+        const prevDate = comanda.dataLivrare;
+        const prevTime = comanda.oraLivrare;
+
+        if (prevDate && prevTime) {
+            try {
+                const prev = await CalendarSlotEntry.findOne({ prestatorId, date: prevDate, time: prevTime });
+                if (prev && prev.used > 0) {
+                    await CalendarSlotEntry.updateOne({ _id: prev._id, used: { $gt: 0 } }, { $inc: { used: -1 } });
+                }
+            } catch (e) {
+                console.warn("Schedule rollback warning:", e.message);
+            }
+        }
+
+        const next = await CalendarSlotEntry.findOne({ prestatorId, date: dataLivrare, time: oraLivrare });
+        if (!next) return res.status(404).json({ message: "Slot indisponibil pentru noua data/ora." });
+        if (next.used >= next.capacity) return res.status(409).json({ message: "Slotul selectat este ocupat." });
+
+        const upd = await CalendarSlotEntry.updateOne(
+            { _id: next._id, used: { $lt: next.capacity } },
+            { $inc: { used: 1 } }
+        );
+        if (!upd || upd.modifiedCount === 0) {
+            return res.status(409).json({ message: "Slot indisponibil." });
+        }
+
+        comanda.dataLivrare = dataLivrare;
+        comanda.oraLivrare = oraLivrare;
+        comanda.statusHistory = Array.isArray(comanda.statusHistory)
+            ? [...comanda.statusHistory, { status: "reprogramata", note: "Data/ora modificata" }]
+            : [{ status: "reprogramata", note: "Data/ora modificata" }];
+        await comanda.save();
+
+        try {
+            await Notificare.create({
+                userId: comanda.clientId,
+                titlu: "Comanda reprogramata",
+                mesaj: `Comanda #${comanda.numeroComanda || comanda._id} a fost reprogramata la ${dataLivrare} ${oraLivrare}.`,
+                tip: "update",
+                link: `/plata?comandaId=${comanda._id}`,
+            });
+        } catch (e) {
+            console.warn("Notificare schedule failed:", e.message);
+        }
+
+        res.json({ ok: true });
+    } catch (e) {
+        console.error("schedule update error:", e);
+        res.status(500).json({ message: "Eroare la reprogramare." });
+    }
+});
+
+// PATCH /api/comenzi/:id/refuza
+// Body: { motiv }
+router.patch("/:id/refuza", authRequired, roleCheck("admin", "patiser"), async (req, res) => {
+    try {
+        const { motiv } = req.body || {};
+        const comanda = await Comanda.findById(req.params.id);
+        if (!comanda) return res.status(404).json({ message: "Comanda inexistentă." });
+
+        comanda.status = "refuzata";
+        comanda.motivRefuz = motiv || "Refuzata de prestator.";
+        comanda.statusHistory = Array.isArray(comanda.statusHistory)
+            ? [...comanda.statusHistory, { status: "refuzata", note: comanda.motivRefuz }]
+            : [{ status: "refuzata", note: comanda.motivRefuz }];
+        await comanda.save();
+
+        try {
+            await Notificare.create({
+                userId: comanda.clientId,
+                titlu: "Comanda refuzata",
+                mesaj: comanda.motivRefuz,
+                tip: "warning",
+                link: `/plata?comandaId=${comanda._id}`,
+            });
+        } catch (e) {
+            console.warn("Notificare refuz failed:", e.message);
+        }
+
+        res.json({ ok: true });
+    } catch (e) {
+        console.error("refuza error:", e);
+        res.status(500).json({ message: "Eroare la refuzare." });
     }
 });
 
