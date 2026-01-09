@@ -18,7 +18,7 @@ function money(n) {
     return (Number(n || 0)).toFixed(2);
 }
 
-function PaymentForm({ clientSecret, displayTotal }) {
+function PaymentForm({ clientSecret, displayTotal, comandaId }) {
     const stripe = useStripe();
     const elements = useElements();
     const [submitting, setSubmitting] = useState(false);
@@ -31,9 +31,12 @@ function PaymentForm({ clientSecret, displayTotal }) {
         setSubmitting(true);
         setErrorMsg("");
 
+        const returnUrl = comandaId
+            ? `${window.location.origin}/plata/succes?comandaId=${comandaId}`
+            : `${window.location.origin}/plata/succes`;
         const { error } = await stripe.confirmPayment({
             elements,
-            confirmParams: { return_url: window.location.origin + "/plata/succes" },
+            confirmParams: { return_url: returnUrl },
             redirect: "if_required",
         });
 
@@ -123,11 +126,13 @@ export default function Plata() {
         return totalDeBaza * (1 - factor / 100);
     }, [totalDeBaza, reducerePct]);
 
-    // 4) Discount fidelizare (voucher/puncte)
     const totalFinal = useMemo(() => {
         const t = totalRedus - Number(discountFidelizare || 0);
         return t > 0 ? t : 0;
     }, [totalRedus, discountFidelizare]);
+
+    const hasFidelizare = discountFidelizare > 0;
+    const fidelizareDisabled = busyFidelizare || reducerePct > 0 || hasFidelizare;
 
     // 4b) Adu portofel fidelizare
     useEffect(() => {
@@ -157,7 +162,7 @@ export default function Plata() {
             const amountCents = Math.max(50, Math.round(totalFinal * 100));
             const { data } = await api.post("/stripe/create-payment-intent", {
                 amount: amountCents,
-                currency: "usd",
+                currency: "mdl",
                 comandaId,
             });
             setClientSecret(data?.clientSecret || "");
@@ -172,6 +177,11 @@ export default function Plata() {
     const verificaCupon = async () => {
         setCuponStatus(null);
         setReducerePct(0);
+        if (hasFidelizare) {
+            setCuponStatus("invalid");
+            setFidelizareMsg("Nu poti combina cuponul cu voucher/puncte.");
+            return;
+        }
         if (!codCupon) return;
         try {
             const { data } = await api.get(`/coupon/verify/${encodeURIComponent(codCupon)}`);
@@ -212,6 +222,15 @@ export default function Plata() {
         if (!userId) {
             return setFidelizareMsg("Trebuie sa fii autentificat pentru a aplica voucherul.");
         }
+        if (!comandaId) {
+            return setFidelizareMsg("Lipseste comandaId pentru aplicarea voucherului.");
+        }
+        if (reducerePct > 0) {
+            return setFidelizareMsg("Nu poti combina cuponul cu voucher/puncte.");
+        }
+        if (hasFidelizare) {
+            return setFidelizareMsg("Discount fidelizare deja aplicat.");
+        }
         if (!codVoucher) {
             return setFidelizareMsg("Introdu un cod de voucher.");
         }
@@ -221,7 +240,7 @@ export default function Plata() {
             const { data } = await api.post("/fidelizare/apply-voucher", {
                 utilizatorId: userId,
                 cod: codVoucher,
-                total: totalRedus,
+                comandaId,
             });
             const d = Number(data.discount || 0);
             setDiscountFidelizare(d);
@@ -242,6 +261,15 @@ export default function Plata() {
         if (!userId) {
             return setFidelizareMsg("Trebuie sa fii autentificat pentru a folosi puncte.");
         }
+        if (!comandaId) {
+            return setFidelizareMsg("Lipseste comandaId pentru aplicarea punctelor.");
+        }
+        if (reducerePct > 0) {
+            return setFidelizareMsg("Nu poti combina cuponul cu voucher/puncte.");
+        }
+        if (hasFidelizare) {
+            return setFidelizareMsg("Discount fidelizare deja aplicat.");
+        }
         const p = Number(puncte || 0);
         if (p <= 0) {
             return setFidelizareMsg("Introdu numarul de puncte.");
@@ -252,7 +280,7 @@ export default function Plata() {
             const { data } = await api.post("/fidelizare/apply-points", {
                 utilizatorId: userId,
                 puncte: p,
-                total: totalRedus,
+                comandaId,
             });
             const d = Number(data.discount || 0);
             setDiscountFidelizare(d);
@@ -298,22 +326,21 @@ export default function Plata() {
                 </div>
             )}
 
-            {loadingComanda && <div>Se incarca datele comenzii…</div>}
+            {loadingComanda && <div>Se incarca datele comenzii...</div>}
 
             {!!totalDeBaza && (
                 <div className="mb-4 space-y-1">
                     <div className="text-gray-800">Total initial: <b>{money(totalDeBaza)}</b></div>
                     {reducerePct > 0 ? (
                         <div className="text-gray-800">
-                            Reducere: <b>{reducerePct}%</b> → Total dupa reducere:{" "}
-                            <b>{money(totalRedus)}</b>
+                            Reducere: <b>{reducerePct}%</b> - Total dupa reducere: <b>{money(totalRedus)}</b>
                         </div>
                     ) : (
                         <div className="text-gray-600 text-sm">Poti aplica un cupon mai jos.</div>
                     )}
                     {discountFidelizare > 0 && (
                         <div className="text-green-700">
-                            Discount fidelizare ({fidelizareSource || "-"}) : -{money(discountFidelizare)} → Total final: <b>{money(totalFinal)}</b>
+                            Discount fidelizare ({fidelizareSource || "-"}) : -{money(discountFidelizare)} - Total final: <b>{money(totalFinal)}</b>
                         </div>
                     )}
                     {discountFidelizare === 0 && (
@@ -332,10 +359,12 @@ export default function Plata() {
                         value={codCupon}
                         onChange={(e) => setCodCupon(e.target.value)}
                         placeholder="ex: DULCE10"
-                        className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:border-pink-500 outline-none"
+                        disabled={hasFidelizare}
+                        className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:border-pink-500 outline-none disabled:bg-gray-100"
                     />
                     <button
                         onClick={verificaCupon}
+                        disabled={hasFidelizare}
                         className="px-4 py-2 rounded-lg bg-pink-500 text-white hover:bg-pink-600"
                     >
                         Verifica
@@ -363,7 +392,7 @@ export default function Plata() {
                         />
                         <button
                             onClick={applyVoucher}
-                            disabled={busyFidelizare}
+                            disabled={fidelizareDisabled}
                             className="px-4 py-2 rounded-lg bg-pink-500 text-white hover:bg-pink-600 disabled:opacity-50"
                         >
                             Aplica voucher
@@ -383,7 +412,7 @@ export default function Plata() {
                         />
                         <button
                             onClick={applyPoints}
-                            disabled={busyFidelizare}
+                            disabled={fidelizareDisabled}
                             className="px-4 py-2 rounded-lg bg-emerald-500 text-white hover:bg-emerald-600 disabled:opacity-50"
                         >
                             Aplica puncte
@@ -434,10 +463,10 @@ export default function Plata() {
             <hr style={{ margin: "24px 0" }} />
 
             {/* Varianta integrata (Payment Element) pentru totalul final */}
-            {loadingPI && <div>Se initializeaza plata…</div>}
+            {loadingPI && <div>Se initializeaza plata...</div>}
             {clientSecret && !missingStripeKey && (
                 <Elements stripe={stripePromise} options={{ clientSecret }}>
-                    <PaymentForm clientSecret={clientSecret} displayTotal={totalFinal} />
+                    <PaymentForm clientSecret={clientSecret} displayTotal={totalFinal} comandaId={comandaId} />
                 </Elements>
             )}
         </div>

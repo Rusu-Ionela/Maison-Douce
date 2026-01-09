@@ -1,283 +1,115 @@
-﻿// ðŸ“ src/pages/AdminRapoarte.jsx â€” versiune completÄƒ, cu export CSV via backend & grafice robuste
-
-import React, { useEffect, useMemo, useState } from "react";
-import {
-    Chart as ChartJS,
-    CategoryScale,
-    LinearScale,
-    BarElement,
-    Title,
-    Tooltip,
-    Legend,
-    ArcElement,
-} from "chart.js";
-import { Bar, Pie } from "react-chartjs-2";
-import api, { getJson, BASE_URL } from '/src/lib/api.js';
-
-ChartJS.register(CategoryScale, LinearScale, BarElement, Title, Tooltip, Legend, ArcElement);
+import { useMemo, useState } from "react";
+import api, { BASE_URL } from "/src/lib/api.js";
 
 export default function AdminRapoarte() {
-    const [comenzi, setComenzi] = useState([]);
-    const [comenziPeLuna, setComenziPeLuna] = useState([]);
-    const [topProduse, setTopProduse] = useState([]);
-    const [topClienti, setTopClienti] = useState([]);
+  const [from, setFrom] = useState("");
+  const [to, setTo] = useState("");
+  const [dateRez, setDateRez] = useState("");
+  const [comenzi, setComenzi] = useState([]);
+  const [torturi, setTorturi] = useState([]);
+  const [msg, setMsg] = useState("");
 
-    // filtre export
-    const [from, setFrom] = useState("");
-    const [to, setTo] = useState("");
-    const [status, setStatus] = useState("");
+  const load = async () => {
+    setMsg("");
+    try {
+      const res = await api.get("/comenzi");
+      setComenzi(Array.isArray(res.data) ? res.data : []);
+      const tortRes = await api.get("/torturi", { params: { limit: 200 } });
+      setTorturi(Array.isArray(tortRes.data?.items) ? tortRes.data.items : []);
+    } catch (e) {
+      setMsg("Eroare la incarcare raport.");
+    }
+  };
 
-    // pentru export rezervÄƒri (opÈ›ional)
-    const [prestator, setPrestator] = useState(localStorage.getItem("userId") || "");
+  const filtered = useMemo(() => {
+    if (!from && !to) return comenzi;
+    return comenzi.filter((c) => {
+      const d = c.dataLivrare || c.dataRezervare;
+      if (!d) return false;
+      if (from && d < from) return false;
+      if (to && d > to) return false;
+      return true;
+    });
+  }, [comenzi, from, to]);
 
-    useEffect(() => {
-        (async () => {
-            try {
-                // 1) Comenzi (admin sau general, dupÄƒ cum ai protejat ruta)
-                const resComenzi = await api.get("/comenzi");
-                setComenzi(resComenzi.data || []);
+  const totalRevenue = filtered.reduce((sum, c) => sum + Number(c.total || 0), 0);
+  const costMap = useMemo(() => {
+    const map = new Map();
+    torturi.forEach((t) => map.set(String(t._id), Number(t.costEstim || 0)));
+    return map;
+  }, [torturi]);
 
-                // 2) Comenzi lunare
-                try {
-                    const resCL = await api.get("/rapoarte/comenzi-lunare");
-                    setComenziPeLuna(resCL.data || []);
-                } catch (e) {
-                    console.warn("Comenzi-lunare indisponibil:", e?.response?.data || e.message);
-                }
+  const profitEstim = filtered.reduce((sum, c) => {
+    const items = c.items || [];
+    const cost = items.reduce((s, it) => {
+      const id = it.productId || it.tortId || it._id;
+      const costUnit = costMap.get(String(id)) || 0;
+      const qty = Number(it.qty || it.cantitate || 1);
+      return s + costUnit * qty;
+    }, 0);
+    return sum + (Number(c.total || 0) - cost);
+  }, [filtered, costMap]);
+  const totalOrders = filtered.length;
 
-                // 3) Top produse
-                try {
-                    const resTopP = await api.get("/rapoarte/top-produse");
-                    setTopProduse(resTopP.data || []);
-                } catch (e) {
-                    console.warn("Top produse indisponibil:", e?.response?.data || e.message);
-                }
+  return (
+    <div className="max-w-5xl mx-auto p-6 space-y-4">
+      <h1 className="text-2xl font-bold">Rapoarte</h1>
+      {msg && <div className="text-rose-700">{msg}</div>}
 
-                // 4) Top clienÈ›i
-                try {
-                    const resTopC = await api.get("/rapoarte/top-clienti");
-                    setTopClienti(resTopC.data || []);
-                } catch (e) {
-                    console.warn("Top clienÈ›i indisponibil:", e?.response?.data || e.message);
-                }
-            } catch (err) {
-                console.error("Eroare la Ã®ncÄƒrcare rapoarte:", err);
-            }
-        })();
-    }, []);
+      <div className="flex flex-wrap gap-2 items-center">
+        <input type="date" value={from} onChange={(e) => setFrom(e.target.value)} className="border rounded p-2" />
+        <input type="date" value={to} onChange={(e) => setTo(e.target.value)} className="border rounded p-2" />
+        <button className="border px-3 py-2 rounded" onClick={load}>
+          Genereaza raport
+        </button>
+        <button
+          className="border px-3 py-2 rounded"
+          onClick={() => window.open(`${BASE_URL}/comenzi/export/csv?from=${from}&to=${to}`, "_blank")}
+        >
+          Export CSV comenzi
+        </button>
+      </div>
 
-    // ====== Helpers sigure pe cÃ¢mpuri ======
-    const safeDate = (x) => {
-        const d = x ? new Date(x) : null;
-        return d && !Number.isNaN(d.valueOf()) ? d : null;
-    };
-
-    const comenziForRevenue = useMemo(() => {
-        // folosim dataLivrare (dacÄƒ existÄƒ) sau createdAt, iar valoarea total/subtotal
-        return (comenzi || []).map((c) => ({
-            date:
-                safeDate(c.dataLivrare)?.toLocaleDateString("ro-RO") ||
-                safeDate(c.createdAt)?.toLocaleDateString("ro-RO") ||
-                "",
-            value: Number(c.total ?? c.subtotal ?? 0),
-        }));
-    }, [comenzi]);
-
-    // ====== Grafic venituri (bar) ======
-    const dataVenituri = useMemo(() => {
-        const labels = comenziForRevenue.map((x) => x.date);
-        const data = comenziForRevenue.map((x) => x.value);
-        return {
-            labels,
-            datasets: [
-                {
-                    label: "Venituri (MDL)",
-                    data,
-                    backgroundColor: "rgba(75, 192, 192, 0.6)",
-                },
-            ],
-        };
-    }, [comenziForRevenue]);
-
-    const optionsVenituri = {
-        responsive: true,
-        plugins: {
-            legend: { position: "top" },
-            title: { display: true, text: "Grafic Venituri Comenzi" },
-        },
-    };
-
-    // ====== Grafic comenzi pe lunÄƒ (bar) ======
-    const dataComenziLuna = useMemo(() => {
-        const labels = (comenziPeLuna || []).map((c) => c._id || c.month || "?");
-        return {
-            labels,
-            datasets: [
-                {
-                    label: "NumÄƒr comenzi",
-                    data: (comenziPeLuna || []).map((c) => Number(c.nrComenzi ?? c.count ?? 0)),
-                    backgroundColor: "rgba(153, 102, 255, 0.6)",
-                },
-                {
-                    label: "VÃ¢nzÄƒri totale (MDL)",
-                    data: (comenziPeLuna || []).map((c) => Number(c.totalVanzari ?? c.total ?? 0)),
-                    backgroundColor: "rgba(75, 192, 192, 0.6)",
-                },
-            ],
-        };
-    }, [comenziPeLuna]);
-
-    const optionsComenziLuna = {
-        responsive: true,
-        plugins: {
-            legend: { position: "top" },
-            title: { display: true, text: "Comenzi pe lunÄƒ" },
-        },
-    };
-
-    // ====== Pie chart top produse ======
-    const dataPie = useMemo(() => {
-        const labels = (topProduse || []).map((item) => item.nume || item.name || `Produs ${item._id}`);
-        const values = (topProduse || []).map((item) => Number(item.count || item.qty || 0));
-        return {
-            labels,
-            datasets: [
-                {
-                    data: values,
-                    backgroundColor: [
-                        "rgba(255, 99, 132, 0.6)",
-                        "rgba(54, 162, 235, 0.6)",
-                        "rgba(255, 206, 86, 0.6)",
-                        "rgba(75, 192, 192, 0.6)",
-                        "rgba(153, 102, 255, 0.6)",
-                        "rgba(255, 159, 64, 0.6)",
-                    ],
-                },
-            ],
-        };
-    }, [topProduse]);
-
-    // ====== Export CSV Comenzi ======
-    const exportComenziHref = useMemo(() => {
-        const qs = new URLSearchParams();
-        if (from) qs.set("from", from);
-        if (to) qs.set("to", to);
-        if (status) qs.set("status", status);
-        const base = (api.defaults.baseURL || BASE_URL || "").replace(/\/$/, "");
-        return `${base}/comenzi/export/csv${qs.toString() ? "?" + qs.toString() : ""}`;
-    }, [from, to, status]);
-
-    // ====== Export CSV RezervÄƒri (bonus din /rapoarte/rezervari/export) ======
-    const exportRezervariHref = useMemo(() => {
-        const qs = new URLSearchParams();
-        if (from) qs.set("from", from);
-        if (to) qs.set("to", to);
-        if (prestator) qs.set("prestator", prestator);
-        const base = (api.defaults.baseURL || BASE_URL || "").replace(/\/$/, "");
-        return `${base}/rapoarte/rezervari/export${qs.toString() ? "?" + qs.toString() : ""}`;
-    }, [from, to, prestator]);
-
-    return (
-        <div className="p-6 container">
-            <h2 className="text-2xl font-bold mb-6">ðŸ“Š Rapoarte Admin</h2>
-
-            {/* Filtre export CSV */}
-            <div className="card mb-6" style={{ display: "grid", gap: 12 }}>
-                <div
-                    className="grid"
-                    style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr", gap: 12 }}
-                >
-                    <label className="flex flex-col">
-                        <span>De la</span>
-                        <input type="date" value={from} onChange={(e) => setFrom(e.target.value)} />
-                    </label>
-
-                    <label className="flex flex-col">
-                        <span>PÃ¢nÄƒ la</span>
-                        <input type="date" value={to} onChange={(e) => setTo(e.target.value)} />
-                    </label>
-
-                    <label className="flex flex-col">
-                        <span>Status (comenzi)</span>
-                        <select value={status} onChange={(e) => setStatus(e.target.value)}>
-                            <option value="">(toate)</option>
-                            <option value="in_asteptare">Ã®n aÈ™teptare</option>
-                            <option value="platita">plÄƒtitÄƒ</option>
-                            <option value="predat_curierului">predat curierului</option>
-                            <option value="ridicat_client">ridicat de client</option>
-                            <option value="livrata">livratÄƒ</option>
-                            <option value="anulata">anulatÄƒ</option>
-                        </select>
-                    </label>
-
-                    <label className="flex flex-col">
-                        <span>Prestator (rezervÄƒri)</span>
-                        <input
-                            type="text"
-                            placeholder="prestatorId"
-                            value={prestator}
-                            onChange={(e) => setPrestator(e.target.value)}
-                        />
-                    </label>
-                </div>
-
-                <div className="flex gap-3 flex-wrap">
-                    <a
-                        href={exportComenziHref}
-                        className="inline-flex items-center px-4 py-2 rounded-full bg-[#d8e5cf] hover:bg-[#b7d2b3] border border-[#c7b07a] no-underline text-[#2c3a2f]"
-                    >
-                        Export CSV Comenzi
-                    </a>
-
-                    <a
-                        href={exportRezervariHref}
-                        className="inline-flex items-center px-4 py-2 rounded-full bg-[#cfe1ff] hover:bg-[#b9d0ff] border border-[#9cb7ff] no-underline text-[#102a56]"
-                    >
-                        Export CSV RezervÄƒri
-                    </a>
-                </div>
-            </div>
-
-            {/* Comenzi pe lunÄƒ */}
-            {comenziPeLuna?.length > 0 && (
-                <div className="mb-8 card">
-                    <h3 className="text-xl font-semibold mb-2">ðŸ“… Comenzi pe lunÄƒ</h3>
-                    <Bar data={dataComenziLuna} options={optionsComenziLuna} />
-                </div>
-            )}
-
-            {/* Top produse */}
-            {topProduse?.length > 0 && (
-                <div className="mb-8 card">
-                    <h3 className="text-xl font-semibold mb-2">ðŸŽ‚ Top produse vÃ¢ndute</h3>
-                    <Pie data={dataPie} />
-                </div>
-            )}
-
-            {/* Venituri */}
-            <div className="mb-8 card">
-                <h3 className="text-xl font-semibold mb-2">ðŸ“ˆ Grafic venituri comenzi</h3>
-                <Bar data={dataVenituri} options={optionsVenituri} />
-            </div>
-
-            {/* Top clienÈ›i */}
-            {topClienti?.length > 0 && (
-                <div className="card">
-                    <h3 className="text-xl font-semibold mb-2">ðŸ† Top clienÈ›i</h3>
-                    <ul className="list-disc ml-6">
-                        {topClienti.map((client) => (
-                            <li key={client.clientId || client._id}>
-                                {client.nume || `Client ID: ${client.clientId || client._id}`}
-                                {" â€” Total: "}
-                                {Number(client.total ?? client.totalCheltuit ?? 0)} MDL
-                                {" â€” Comenzi: "}
-                                {Number(client.count ?? client.nrComenzi ?? 0)}
-                            </li>
-                        ))}
-                    </ul>
-                </div>
-            )}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+        <div className="border rounded p-3 bg-white">
+          <div className="text-sm text-gray-600">Total comenzi</div>
+          <div className="text-2xl font-bold">{totalOrders}</div>
         </div>
-    );
+        <div className="border rounded p-3 bg-white">
+          <div className="text-sm text-gray-600">Venituri</div>
+          <div className="text-2xl font-bold">{totalRevenue.toFixed(2)} MDL</div>
+        </div>
+        <div className="border rounded p-3 bg-white">
+          <div className="text-sm text-gray-600">Profit estimat</div>
+          <div className="text-2xl font-bold">{profitEstim.toFixed(2)} MDL</div>
+        </div>
+      </div>
+
+      <div className="border rounded p-4 bg-white space-y-3">
+        <h2 className="text-lg font-semibold">Export rezervari pe zi</h2>
+        <div className="flex gap-2 items-center">
+          <input type="date" value={dateRez} onChange={(e) => setDateRez(e.target.value)} className="border rounded p-2" />
+          <button
+            className="border px-3 py-2 rounded"
+            onClick={() => dateRez && window.open(`${BASE_URL}/calendar/admin/${dateRez}/export`, "_blank")}
+          >
+            Export CSV rezervari
+          </button>
+        </div>
+      </div>
+
+      <div className="border rounded p-4 bg-white">
+        <h2 className="text-lg font-semibold mb-2">Comenzi (filtrate)</h2>
+        <div className="space-y-2 max-h-[400px] overflow-auto">
+          {filtered.map((c) => (
+            <div key={c._id} className="border-b pb-2 text-sm">
+              #{c.numeroComanda || c._id.slice(-6)} - {c.dataLivrare || c.dataRezervare} - {c.status || "plasata"} - {c.total || 0} MDL
+            </div>
+          ))}
+          {filtered.length === 0 && <div className="text-gray-500">Nu exista comenzi in interval.</div>}
+        </div>
+      </div>
+    </div>
+  );
 }
 

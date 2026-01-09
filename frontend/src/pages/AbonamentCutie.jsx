@@ -1,56 +1,34 @@
-﻿import React, { useEffect, useState } from "react";
-import { Elements } from "@stripe/react-stripe-js";
-import { loadStripe } from "@stripe/stripe-js";
+import { Link } from "react-router-dom";
 
-import AbonamentCutieForm from "./AbonamentCutieForm";
-import { ENV } from "../lib/env";
-import api, { getJson, BASE_URL } from '/src/lib/api.js';
-
-const STRIPE_PK = ENV.STRIPE_PK;
-const stripePromise = STRIPE_PK ? loadStripe(STRIPE_PK) : null;
-const API = ENV.API_URL || "/api";
+const PLANS = [
+  { id: "basic", name: "Basic", price: 400, desc: "2 deserturi artizanale + surpriza" },
+  { id: "premium", name: "Premium", price: 600, desc: "4 deserturi + selectie sezoniera" },
+  { id: "deluxe", name: "Deluxe", price: 900, desc: "6 deserturi + bonus personalizat" },
+];
 
 export default function AbonamentCutiePage() {
-    const [clientSecret, setClientSecret] = useState(null);
-    const [loading, setLoading] = useState(false);
+  return (
+    <div className="max-w-5xl mx-auto p-6 space-y-6">
+      <header>
+        <h1 className="text-3xl font-bold">Cutia lunara</h1>
+        <p className="text-gray-600">Abonament lunar cu deserturi artizanale si surprize de sezon.</p>
+      </header>
 
-    useEffect(() => {
-        let cancelled = false;
-        async function createIntent() {
-            if (!stripePromise) return; // fÄƒrÄƒ cheie publicÄƒ, nu iniÈ›ializa
-            try {
-                setLoading(true);
-                const { data } = await api.post(`${API}/payments/create-intent`, {
-                    product: "cutie-lunara",
-                });
-                if (!cancelled) setClientSecret(data.clientSecret);
-            } catch (e) {
-                console.error(e);
-                if (!cancelled) alert("Nu am putut iniÈ›ializa plata.");
-            } finally {
-                if (!cancelled) setLoading(false);
-            }
-        }
-        createIntent();
-        return () => { cancelled = true; };
-    }, []);
-
-    // dacÄƒ nu avem cheie Stripe, afiÈ™Äƒm mesaj È™i nu crÄƒpÄƒm aplicaÈ›ia
-    if (!STRIPE_PK) {
-        return <div className="p-6">Plata Stripe este dezactivatÄƒ (lipseÈ™te VITE_STRIPE_PK).</div>;
-    }
-
-    if (loading || !clientSecret) {
-        return <div className="p-6">Se Ã®ncarcÄƒ plataâ€¦</div>;
-    }
-
-    return (
-        <Elements
-            stripe={stripePromise}
-            options={{ clientSecret, appearance: { theme: "stripe" } }}
-        >
-            <AbonamentCutieForm />
-        </Elements>
-    );
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        {PLANS.map((plan) => (
+          <div key={plan.id} className="border rounded-lg p-4 bg-white space-y-2">
+            <h2 className="text-xl font-semibold">{plan.name}</h2>
+            <div className="text-2xl font-bold text-pink-600">{plan.price} MDL</div>
+            <p className="text-sm text-gray-600">{plan.desc}</p>
+            <Link
+              to={`/abonament/form?plan=${plan.id}`}
+              className="inline-block mt-2 px-3 py-2 rounded bg-pink-500 text-white"
+            >
+              Alege planul
+            </Link>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
 }
-

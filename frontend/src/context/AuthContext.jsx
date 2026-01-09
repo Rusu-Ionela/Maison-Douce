@@ -22,7 +22,9 @@ export function AuthProvider({ children }) {
         (async () => {
             try {
                 const r = await api.get("/utilizatori/me");
-                setUser(r.data || null);
+                const u = r.data || null;
+                if (u && u.id && !u._id) u._id = u.id;
+                setUser(u);
             } catch (e) {
                 console.warn("/utilizatori/me a eșuat", e?.response?.status);
                 localStorage.removeItem("token");
@@ -49,20 +51,49 @@ export function AuthProvider({ children }) {
         }
 
         const loggedUser = data.user || data;
+        if (loggedUser && loggedUser.id && !loggedUser._id) loggedUser._id = loggedUser.id;
         setUser(loggedUser);
 
         return loggedUser;
     };
 
+    const register = async ({ name, prenume, email, password, role, inviteCode, telefon, adresa }) => {
+        const payload = {
+            nume: name,
+            prenume: prenume || "",
+            email,
+            parola: password,
+            rol: role || "client",
+            inviteCode,
+            telefon,
+            adresa,
+        };
+        const r = await api.post("/utilizatori/register", payload);
+        const data = r.data || {};
+
+        if (data.token) {
+            localStorage.setItem("token", data.token);
+            api.defaults.headers.common.Authorization = `Bearer ${data.token}`;
+        }
+
+        const registeredUser = data.user || null;
+        if (registeredUser && registeredUser.id && !registeredUser._id) {
+            registeredUser._id = registeredUser.id;
+        }
+        setUser(registeredUser);
+        return registeredUser;
+    };
+
 
     const logout = () => {
         localStorage.removeItem("token");
+        delete api.defaults.headers.common.Authorization;
         setUser(null);
     };
 
     return (
         <AuthContext.Provider
-            value={{ user, isAuthenticated: !!user, loading, login, logout }}
+            value={{ user, isAuthenticated: !!user, loading, login, register, logout }}
         >
             {children}
         </AuthContext.Provider>

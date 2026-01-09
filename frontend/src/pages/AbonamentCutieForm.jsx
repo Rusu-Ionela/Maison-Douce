@@ -1,48 +1,66 @@
-﻿import React, { useState } from "react";
-import { PaymentElement, useElements, useStripe } from "@stripe/react-stripe-js";
-import api, { getJson, BASE_URL } from '/src/lib/api.js';
+import { useState } from "react";
+import { useSearchParams } from "react-router-dom";
+import api from "/src/lib/api.js";
+import { useAuth } from "../context/AuthContext";
 
 export default function AbonamentCutieForm() {
-    const stripe = useStripe();
-    const elements = useElements();
-    const [saving, setSaving] = useState(false);
-    const [error, setError] = useState("");
+  const { user } = useAuth() || {};
+  const [sp] = useSearchParams();
+  const initialPlan = sp.get("plan") || "basic";
+  const [plan, setPlan] = useState(initialPlan);
+  const [preferinte, setPreferinte] = useState("");
+  const [msg, setMsg] = useState("");
+  const [loading, setLoading] = useState(false);
 
-    async function handleSubmit(e) {
-        e.preventDefault();
-        if (!stripe || !elements) return;
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    setMsg("");
 
-        setSaving(true);
-        setError("");
-
-        const { error: err } = await stripe.confirmPayment({
-            elements,
-            confirmParams: {
-                return_url: window.location.origin + "/abonament-cutie/succes", // pagina ta de succes
-            },
-        });
-
-        if (err) setError(err.message || "Eroare la confirmarea plÄƒÈ›ii.");
-        setSaving(false);
+    if (!user?._id) {
+      setMsg("Autentifica-te pentru a porni abonamentul.");
+      return;
     }
 
-    return (
-        <form onSubmit={handleSubmit} className="max-w-md mx-auto p-4 space-y-4 border rounded">
-            <h1 className="text-xl font-semibold">PlatÄƒ â€žCutia luniiâ€</h1>
+    try {
+      setLoading(true);
+      await api.post("/cutie-lunara", { plan, preferinte });
+      setMsg("Abonament activat cu succes.");
+    } catch (e) {
+      setMsg(e?.response?.data?.message || "Eroare la activarea abonamentului.");
+    } finally {
+      setLoading(false);
+    }
+  };
 
-            {/* UI all-in-one de la Stripe */}
-            <PaymentElement />
+  return (
+    <div className="max-w-lg mx-auto p-6 space-y-4">
+      <h1 className="text-2xl font-semibold">Aboneaza-te la cutia lunara</h1>
+      {msg && <div className="text-rose-700">{msg}</div>}
 
-            {error && <div className="text-red-600 text-sm">{error}</div>}
+      <form onSubmit={handleSubmit} className="space-y-3">
+        <label className="block text-sm text-gray-700">
+          Plan
+          <select value={plan} onChange={(e) => setPlan(e.target.value)} className="mt-1 border rounded p-2 w-full">
+            <option value="basic">Basic</option>
+            <option value="premium">Premium</option>
+            <option value="deluxe">Deluxe</option>
+          </select>
+        </label>
 
-            <button
-                type="submit"
-                disabled={!stripe || !elements || saving}
-                className="border px-4 py-2 rounded"
-            >
-                {saving ? "Se proceseazÄƒâ€¦" : "PlÄƒteÈ™te"}
-            </button>
-        </form>
-    );
+        <label className="block text-sm text-gray-700">
+          Preferinte / alergii
+          <textarea
+            className="mt-1 border rounded p-2 w-full min-h-[90px]"
+            value={preferinte}
+            onChange={(e) => setPreferinte(e.target.value)}
+            placeholder="Ex: fara nuci, fara gluten"
+          />
+        </label>
+
+        <button type="submit" className="bg-pink-500 text-white px-4 py-2 rounded" disabled={loading}>
+          {loading ? "Se salveaza..." : "Activeaza abonamentul"}
+        </button>
+      </form>
+    </div>
+  );
 }
-

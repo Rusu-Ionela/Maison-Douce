@@ -1,5 +1,5 @@
 // frontend/src/pages/AdminCalendar.jsx
-import React, { useState, useEffect } from "react";
+import React, { useEffect, useState } from "react";
 import api from "../lib/api.js";
 import { buttons, inputs, cards, badges } from "../lib/tailwindComponents";
 
@@ -9,6 +9,8 @@ export default function AdminCalendar() {
   const [loading, setLoading] = useState(false);
   const [slots, setSlots] = useState([]);
   const [error, setError] = useState("");
+  const [newSlotTime, setNewSlotTime] = useState("");
+  const [newSlotCapacity, setNewSlotCapacity] = useState(1);
 
   const dateStr = selectedDate.toISOString().split("T")[0];
 
@@ -25,14 +27,11 @@ export default function AdminCalendar() {
         ]);
 
         setSlots(slotsRes.data.slots || []);
-        const rez =
-          reservationsRes.data?.rezervari ||
-          reservationsRes.data ||
-          [];
+        const rez = reservationsRes.data?.rezervari || reservationsRes.data || [];
         setReservations(rez);
       } catch (err) {
         console.error(err);
-        setError("Eroare la incarcarea datelor");
+        setError("Eroare la incarcare");
       } finally {
         setLoading(false);
       }
@@ -40,22 +39,42 @@ export default function AdminCalendar() {
     fetchData();
   }, [dateStr]);
 
+  const refreshSlots = async () => {
+    const { data } = await api.get("/calendar/availability/default", {
+      params: { from: dateStr, to: dateStr },
+    });
+    setSlots(data.slots || []);
+  };
+
   const addTimeSlot = async () => {
     try {
-      const time = prompt("Introdu ora (HH:mm):");
-      if (!time) return;
+      if (!newSlotTime) {
+        setError("Introdu o ora pentru slot.");
+        return;
+      }
 
       await api.post("/calendar/availability/default", {
-        slots: [{ date: dateStr, time, capacity: 1 }],
+        slots: [{ date: dateStr, time: newSlotTime, capacity: Number(newSlotCapacity || 1) }],
       });
 
-      const { data } = await api.get("/calendar/availability/default", {
-        params: { from: dateStr, to: dateStr },
-      });
-      setSlots(data.slots || []);
+      await refreshSlots();
+      setNewSlotTime("");
+      setNewSlotCapacity(1);
     } catch (err) {
       console.error(err);
       setError("Eroare la adaugarea slotului");
+    }
+  };
+
+  const blockSlot = async (time) => {
+    try {
+      await api.post("/calendar/availability/default", {
+        slots: [{ date: dateStr, time, capacity: 0 }],
+      });
+      await refreshSlots();
+    } catch (err) {
+      console.error(err);
+      setError("Eroare la blocarea slotului");
     }
   };
 
@@ -64,18 +83,14 @@ export default function AdminCalendar() {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-purple-50 to-pink-50 py-8 px-4 sm:px-6 lg:px-8">
+    <div className="min-h-screen bg-gradient-to-br from-rose-50 to-pink-50 py-8 px-4 sm:px-6 lg:px-8">
       <div className="max-w-6xl mx-auto">
         <div className="mb-8">
-          <h1 className="text-4xl font-bold text-gray-900 mb-6">
-            Calendar Admin
-          </h1>
+          <h1 className="text-4xl font-bold text-gray-900 mb-6">Calendar Admin</h1>
 
           <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-center">
             <div>
-              <label className="block text-sm font-semibold text-gray-700 mb-2">
-                Selecteaza data
-              </label>
+              <label className="block text-sm font-semibold text-gray-700 mb-2">Selecteaza data</label>
               <input
                 type="date"
                 value={dateStr}
@@ -83,17 +98,27 @@ export default function AdminCalendar() {
                 className={inputs.default}
               />
             </div>
-            <div className="flex gap-3 flex-wrap">
-              <button
-                onClick={addTimeSlot}
-                className={`${buttons.secondary} flex items-center gap-2`}
-              >
-                + Adauga interval
-              </button>
-              <button
-                onClick={onExport}
-                className={`${buttons.success} flex items-center gap-2`}
-              >
+            <div className="flex gap-3 flex-wrap items-center">
+              <div className="flex flex-wrap gap-2 items-center">
+                <input
+                  type="time"
+                  value={newSlotTime}
+                  onChange={(e) => setNewSlotTime(e.target.value)}
+                  className={inputs.default}
+                />
+                <input
+                  type="number"
+                  min={0}
+                  value={newSlotCapacity}
+                  onChange={(e) => setNewSlotCapacity(e.target.value)}
+                  className={inputs.default}
+                  style={{ maxWidth: 120 }}
+                />
+                <button onClick={addTimeSlot} className={`${buttons.secondary} flex items-center gap-2`}>
+                  + Adauga/actualizeaza interval
+                </button>
+              </div>
+              <button onClick={onExport} className={`${buttons.success} flex items-center gap-2`}>
                 Export CSV
               </button>
             </div>
@@ -117,36 +142,28 @@ export default function AdminCalendar() {
             <div className={`lg:col-span-1 ${cards.elevated}`}>
               <h2 className="text-xl font-bold text-gray-900 mb-4">Intervale</h2>
               {slots.length === 0 ? (
-                <p className="text-gray-500 text-center py-6">
-                  Nu exista sloturi pentru aceasta zi.
-                </p>
+                <p className="text-gray-500 text-center py-6">Nu exista sloturi pentru aceasta zi.</p>
               ) : (
                 <div className="space-y-2">
                   {slots.map((slot) => (
                     <div
                       key={`${slot.date}_${slot.time}`}
                       className={`p-4 rounded-lg border-2 transition-all ${
-                        slot.free > 0
-                          ? "border-green-300 bg-green-50"
-                          : "border-red-300 bg-red-50"
+                        slot.free > 0 ? "border-green-300 bg-green-50" : "border-red-300 bg-red-50"
                       }`}
                     >
-                      <div className="font-semibold text-gray-900 text-lg">
-                        {slot.time}
-                      </div>
+                      <div className="font-semibold text-gray-900 text-lg">{slot.time}</div>
                       <div className="flex justify-between mt-2 text-sm">
                         <span className="text-gray-700">
-                          <span className="font-semibold">{slot.used}</span>/
-                          {slot.capacity} ocupate
+                          <span className="font-semibold">{slot.used}</span>/{slot.capacity} ocupate
                         </span>
-                        <span
-                          className={`font-semibold ${
-                            slot.free > 0 ? "text-green-600" : "text-red-600"
-                          }`}
-                        >
+                        <span className={`font-semibold ${slot.free > 0 ? "text-green-600" : "text-red-600"}`}>
                           {slot.free} libere
                         </span>
                       </div>
+                      <button className="mt-2 text-xs text-red-600 underline" onClick={() => blockSlot(slot.time)}>
+                        Blocheaza slot
+                      </button>
                     </div>
                   ))}
                 </div>
@@ -157,19 +174,12 @@ export default function AdminCalendar() {
             <div className="lg:col-span-2">
               <div className={cards.elevated}>
                 <h2 className="text-xl font-bold text-gray-900 mb-4">
-                  Rezervari / Comenzi -{" "}
-                  {selectedDate.toLocaleDateString("ro-RO", {
-                    year: "numeric",
-                    month: "long",
-                    day: "numeric",
-                  })}
+                  Rezervari / Comenzi - {selectedDate.toLocaleDateString("ro-RO", { year: "numeric", month: "long", day: "numeric" })}
                 </h2>
 
                 {reservations.length === 0 ? (
                   <div className="text-center py-8">
-                    <p className="text-gray-500 text-lg">
-                      Nu exista intrari pentru aceasta data
-                    </p>
+                    <p className="text-gray-500 text-lg">Nu exista intrari pentru aceasta data</p>
                   </div>
                 ) : (
                   <div className="space-y-3">
@@ -184,37 +194,23 @@ export default function AdminCalendar() {
                               <span className="text-lg font-semibold text-gray-900">
                                 {res.timeSlot || res.startTime || "-"}
                               </span>
-                              <span className="text-sm font-medium text-gray-600">
-                                -
-                              </span>
-                              <span className="text-gray-700 font-medium">
-                                {res.clientName || "Client"}
-                              </span>
-                              <span className={badges.info}>
-                                {res.type === "comanda" ? "Comanda" : "Rezervare"}
-                              </span>
+                              <span className="text-sm font-medium text-gray-600">-</span>
+                              <span className="text-gray-700 font-medium">{res.clientName || "Client"}</span>
+                              <span className={badges.info}>{res.type === "comanda" ? "Comanda" : "Rezervare"}</span>
                             </div>
 
-                            {res.itemsSummary && (
-                              <p className="text-sm text-gray-700 mb-2">
-                                {res.itemsSummary}
-                              </p>
-                            )}
+                            {res.itemsSummary && <p className="text-sm text-gray-700 mb-2">{res.itemsSummary}</p>}
 
                             <div className="text-sm text-gray-600 mb-2">
                               {res.handoffMethod === "delivery" ? (
                                 <div className="flex items-start gap-2">
-                                  <span>🚚</span>
                                   <div>
                                     <p className="font-medium">Livrare</p>
-                                    <p className="text-gray-500">
-                                      {res.deliveryAddress || "-"}
-                                    </p>
+                                    <p className="text-gray-500">{res.deliveryAddress || "-"}</p>
                                   </div>
                                 </div>
                               ) : (
                                 <div className="flex items-center gap-2">
-                                  <span>🏬</span>
                                   <p>Ridicare din laborator</p>
                                 </div>
                               )}
@@ -226,19 +222,13 @@ export default function AdminCalendar() {
                               ) : (
                                 <span className={badges.warning}>Neplatit</span>
                               )}
-                              <span className={badges.info}>
-                                {res.status || res.handoffStatus || "-"}
-                              </span>
+                              <span className={badges.info}>{res.status || res.handoffStatus || "-"}</span>
                             </div>
                           </div>
 
                           <div className="text-right">
-                            <div className="text-2xl font-bold text-pink-600">
-                              {res.total} MDL
-                            </div>
-                            <p className="text-xs text-gray-500 mt-1">
-                              {res.handoffStatus}
-                            </p>
+                            <div className="text-2xl font-bold text-pink-600">{res.total} MDL</div>
+                            <p className="text-xs text-gray-500 mt-1">{res.handoffStatus}</p>
                           </div>
                         </div>
                       </div>
@@ -253,4 +243,3 @@ export default function AdminCalendar() {
     </div>
   );
 }
-

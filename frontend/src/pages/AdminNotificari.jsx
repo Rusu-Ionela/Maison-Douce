@@ -1,66 +1,106 @@
-﻿import React, { useEffect, useState } from "react";
-import api, { getJson, BASE_URL } from '/src/lib/api.js';
+import { useEffect, useState } from "react";
+import api from "/src/lib/api.js";
 
 export default function AdminNotificari() {
-    const [notificari, setNotificari] = useState([]);
-    const [loading, setLoading] = useState(true);
+  const [notificari, setNotificari] = useState([]);
+  const [form, setForm] = useState({ userId: "", titlu: "", mesaj: "", tip: "info" });
+  const [msg, setMsg] = useState("");
 
-    async function fetchNotificari() {
-        try {
-            const data = (await api.get("/notificari")).data;
-            setNotificari(Array.isArray(data) ? data : []);
-        } catch (e) {
-            console.error("Eroare la preluarea notificÄƒrilor:", e);
-            setNotificari([]);
-        } finally { setLoading(false); }
+  const load = async () => {
+    const data = (await api.get("/notificari")).data;
+    setNotificari(Array.isArray(data) ? data : []);
+  };
+
+  useEffect(() => {
+    load().catch(() => setNotificari([]));
+  }, []);
+
+  const markAsRead = async (id) => {
+    await api.put(`/notificari/${id}/citita`);
+    load();
+  };
+
+  const remove = async (id) => {
+    await api.delete(`/notificari/${id}`);
+    load();
+  };
+
+  const send = async (e) => {
+    e.preventDefault();
+    setMsg("");
+    try {
+      await api.post("/notificari", form);
+      setMsg("Notificare trimisa.");
+      setForm({ userId: "", titlu: "", mesaj: "", tip: "info" });
+      load();
+    } catch (e) {
+      setMsg(e?.response?.data?.message || "Eroare la trimitere.");
     }
+  };
 
-    useEffect(() => { fetchNotificari(); }, []);
+  return (
+    <div className="max-w-5xl mx-auto p-6 space-y-4">
+      <h1 className="text-2xl font-bold">Notificari admin</h1>
+      {msg && <div className="text-sm text-rose-700">{msg}</div>}
 
-    const markAsRead = async (id) => {
-        try {
-            await api.put(`/notificari/${id}/citita`);
-            setNotificari((list) => list.map(n => n._id === id ? { ...n, citita: true } : n));
-        } catch (e) { console.error("Eroare la marcare ca citit:", e); }
-    };
+      <form onSubmit={send} className="bg-white border rounded-lg p-4 grid grid-cols-1 md:grid-cols-4 gap-3">
+        <input
+          value={form.userId}
+          onChange={(e) => setForm((f) => ({ ...f, userId: e.target.value }))}
+          placeholder="User ID client"
+          className="border rounded p-2 md:col-span-1"
+          required
+        />
+        <input
+          value={form.titlu}
+          onChange={(e) => setForm((f) => ({ ...f, titlu: e.target.value }))}
+          placeholder="Titlu"
+          className="border rounded p-2 md:col-span-1"
+        />
+        <input
+          value={form.mesaj}
+          onChange={(e) => setForm((f) => ({ ...f, mesaj: e.target.value }))}
+          placeholder="Mesaj"
+          className="border rounded p-2 md:col-span-2"
+          required
+        />
+        <select
+          value={form.tip}
+          onChange={(e) => setForm((f) => ({ ...f, tip: e.target.value }))}
+          className="border rounded p-2 md:col-span-1"
+        >
+          <option value="info">info</option>
+          <option value="status">status</option>
+          <option value="warning">warning</option>
+          <option value="update">update</option>
+        </select>
+        <button className="bg-pink-500 text-white px-4 py-2 rounded md:col-span-3" type="submit">
+          Trimite notificare
+        </button>
+      </form>
 
-    const deleteNotificare = async (id) => {
-        try {
-            await api.delete(`/notificari/${id}`);
-            setNotificari((list) => list.filter(n => n._id !== id));
-        } catch (e) { console.error("Eroare la È™tergerea notificÄƒrii:", e); }
-    };
-
-    if (loading) return <div className="p-6">Se Ã®ncarcÄƒâ€¦</div>;
-
-    return (
-        <div className="p-6">
-            <h1 className="text-2xl font-bold mb-4">ðŸ”” NotificÄƒri</h1>
-            {notificari.length === 0 ? (
-                <p className="text-gray-600">Nu ai notificÄƒri.</p>
-            ) : (
-                <ul className="space-y-4">
-                    {notificari.map((n) => (
-                        <li key={n._id} className="border p-4 rounded shadow flex justify-between items-center">
-                            <div>
-                                <p className={n.citita ? "text-gray-500" : "text-black font-semibold"}>{n.mesaj}</p>
-                                <small className="text-gray-400">{new Date(n.data || n.createdAt).toLocaleString()}</small>
-                            </div>
-                            <div className="flex space-x-2">
-                                {!n.citita && (
-                                    <button onClick={() => markAsRead(n._id)} className="bg-green-600 text-white px-3 py-1 rounded">
-                                        Marcat citit
-                                    </button>
-                                )}
-                                <button onClick={() => deleteNotificare(n._id)} className="bg-red-600 text-white px-3 py-1 rounded">
-                                    È˜terge
-                                </button>
-                            </div>
-                        </li>
-                    ))}
-                </ul>
-            )}
-        </div>
-    );
+      <div className="space-y-3">
+        {notificari.map((n) => (
+          <div key={n._id} className="border p-3 rounded bg-white flex justify-between gap-3">
+            <div>
+              <div className="font-semibold">{n.titlu || "Notificare"}</div>
+              <div className="text-sm text-gray-700">{n.mesaj}</div>
+              <div className="text-xs text-gray-500">{new Date(n.data).toLocaleString()}</div>
+            </div>
+            <div className="flex gap-2">
+              {!n.citita && (
+                <button onClick={() => markAsRead(n._id)} className="border px-3 py-1 rounded text-sm">
+                  Marcat citit
+                </button>
+              )}
+              <button onClick={() => remove(n._id)} className="border px-3 py-1 rounded text-sm">
+                Sterge
+              </button>
+            </div>
+          </div>
+        ))}
+        {notificari.length === 0 && <div className="text-gray-500">Nu exista notificari.</div>}
+      </div>
+    </div>
+  );
 }
-

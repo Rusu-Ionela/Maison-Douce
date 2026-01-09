@@ -1,79 +1,93 @@
-﻿// src/pages/AdminDashboard.jsx
-import React, { useEffect, useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
-import api, { getJson, BASE_URL } from '/src/lib/api.js';
+import { useEffect, useMemo, useState } from "react";
+import { Link } from "react-router-dom";
+import api from "/src/lib/api.js";
 
 export default function AdminDashboard() {
-    const navigate = useNavigate();
-    const [torturi, setTorturi] = useState([]);
+  const [comenzi, setComenzi] = useState([]);
+  const [rezervari, setRezervari] = useState([]);
+  const [notificari, setNotificari] = useState([]);
 
-    useEffect(() => {
-        (async () => {
-            try {
-                const res = await api.get("/torturi", { params: { activ: true, limit: 50 } });
-                // backend /api/torturi returneazÄƒ { items, total, page, pages }
-                setTorturi(Array.isArray(res.data?.items) ? res.data.items : []);
-            } catch (err) {
-                console.error("Eroare la preluarea torturilor:", err);
-            }
-        })();
-    }, []);
+  useEffect(() => {
+    api.get("/comenzi").then((r) => setComenzi(Array.isArray(r.data) ? r.data : []));
+    api.get("/rezervari").then((r) => setRezervari(Array.isArray(r.data) ? r.data : []));
+    api.get("/notificari").then((r) => setNotificari(Array.isArray(r.data) ? r.data : []));
+  }, []);
 
-    const handleLogout = () => {
-        localStorage.removeItem("admin");
-        navigate("/");
+  const stats = useMemo(() => {
+    const onlyOrders = comenzi.filter((c) => c._source !== "rezervare");
+    const totalRevenue = onlyOrders.reduce((sum, c) => sum + Number(c.total || 0), 0);
+    const byStatus = onlyOrders.reduce((acc, c) => {
+      const key = c.status || "noua";
+      acc[key] = (acc[key] || 0) + 1;
+      return acc;
+    }, {});
+    return {
+      totalRevenue,
+      totalOrders: onlyOrders.length,
+      inWork: byStatus["in_lucru"] || 0,
+      finished: byStatus["gata"] || 0,
+      newOrders: byStatus["plasata"] || 0,
     };
+  }, [comenzi]);
 
-    const handleDelete = async (id) => {
-        if (!window.confirm("EÈ™ti sigur cÄƒ vrei sÄƒ È™tergi acest tort?")) return;
-        try {
-            await api.delete(`/torturi/${id}`);
-            setTorturi((prev) => prev.filter((t) => t._id !== id));
-        } catch (err) {
-            console.error("Eroare la È™tergere:", err);
-            alert("A apÄƒrut o eroare la È™tergerea tortului.");
-        }
-    };
+  const today = new Date().toISOString().slice(0, 10);
+  const tomorrow = new Date(Date.now() + 86400000).toISOString().slice(0, 10);
+  const rezervariAzi = rezervari.filter((r) => r.date === today).length;
+  const rezervariMaine = rezervari.filter((r) => r.date === tomorrow).length;
 
-    return (
-        <div className="p-6">
-            <h1 className="text-2xl font-bold mb-4">ðŸ“‹ Admin Dashboard</h1>
-
-            <button onClick={handleLogout} className="bg-red-500 text-white px-4 py-2 rounded mb-4">
-                Logout
-            </button>
-
-            <div className="flex flex-wrap gap-3 mb-4">
-                <Link to="/admin/rapoarte" className="bg-purple-500 text-white px-4 py-2 rounded">
-                    ðŸ“Š Vezi Rapoarte Admin
-                </Link>
-                <button onClick={() => navigate("/admin/comenzi")} className="bg-indigo-600 text-white px-4 py-2 rounded">
-                    ðŸ“¥ Vezi Comenzile Personalizate
-                </button>
-                <Link to="/admin/torturi/add" className="bg-blue-500 text-white px-4 py-2 rounded">
-                    âž• AdaugÄƒ Tort Nou
-                </Link>
-            </div>
-
-            <h2 className="text-xl font-semibold mb-2">Torturi disponibile:</h2>
-            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-6">
-                {torturi.map((tort) => (
-                    <div key={tort._id} className="border p-4 rounded shadow">
-                        <img src={tort.imagine} alt={tort.nume} className="mb-2 w-full h-40 object-cover rounded" />
-                        <h3 className="text-lg font-semibold">{tort.nume}</h3>
-                        <p className="text-sm mt-1">Ingrediente: {(tort.ingrediente || []).join(", ")}</p>
-                        <div className="mt-3 flex flex-wrap gap-2">
-                            <Link to={`/admin/torturi/edit/${tort._id}`} className="bg-yellow-500 text-white px-3 py-1 rounded">
-                                EditeazÄƒ
-                            </Link>
-                            <button onClick={() => handleDelete(tort._id)} className="bg-red-500 text-white px-3 py-1 rounded">
-                                È˜terge
-                            </button>
-                        </div>
-                    </div>
-                ))}
-            </div>
+  return (
+    <div className="max-w-6xl mx-auto p-6 space-y-6">
+      <header className="flex items-center justify-between">
+        <div>
+          <h1 className="text-2xl font-bold">Admin Dashboard</h1>
+          <p className="text-gray-600">Rezumat activitate si acces rapid</p>
         </div>
-    );
-}
+        <div className="flex flex-wrap gap-2">
+          <Link to="/admin/comenzi" className="px-3 py-2 rounded border">Comenzi</Link>
+          <Link to="/admin/calendar" className="px-3 py-2 rounded border">Calendar</Link>
+          <Link to="/admin/torturi" className="px-3 py-2 rounded border">Torturi</Link>
+          <Link to="/admin/comenzi-personalizate" className="px-3 py-2 rounded border">Personalizate</Link>
+          <Link to="/admin/fidelizare" className="px-3 py-2 rounded border">Fidelizare</Link>
+          <Link to="/admin/albume" className="px-3 py-2 rounded border">Albume</Link>
+          <Link to="/admin/production" className="px-3 py-2 rounded border">Productie</Link>
+        </div>
+      </header>
 
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+        <div className="bg-white border rounded-lg p-4">
+          <div className="text-sm text-gray-600">Comenzi noi</div>
+          <div className="text-2xl font-bold">{stats.newOrders}</div>
+        </div>
+        <div className="bg-white border rounded-lg p-4">
+          <div className="text-sm text-gray-600">In lucru</div>
+          <div className="text-2xl font-bold">{stats.inWork}</div>
+        </div>
+        <div className="bg-white border rounded-lg p-4">
+          <div className="text-sm text-gray-600">Finalizate</div>
+          <div className="text-2xl font-bold">{stats.finished}</div>
+        </div>
+        <div className="bg-white border rounded-lg p-4">
+          <div className="text-sm text-gray-600">Venituri</div>
+          <div className="text-2xl font-bold">{stats.totalRevenue.toFixed(2)} MDL</div>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div className="bg-white border rounded-lg p-4">
+          <h2 className="font-semibold mb-2">Rezervari</h2>
+          <p>Azi: {rezervariAzi}</p>
+          <p>Maine: {rezervariMaine}</p>
+        </div>
+        <div className="bg-white border rounded-lg p-4">
+          <h2 className="font-semibold mb-2">Notificari rapide</h2>
+          {notificari.slice(0, 5).map((n) => (
+            <div key={n._id} className="text-sm text-gray-700 border-b py-1">
+              {n.titlu || "Notificare"} - {n.mesaj}
+            </div>
+          ))}
+          {notificari.length === 0 && <div className="text-sm text-gray-500">Nu exista notificari.</div>}
+        </div>
+      </div>
+    </div>
+  );
+}

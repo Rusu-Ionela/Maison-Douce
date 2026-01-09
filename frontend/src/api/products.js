@@ -2,6 +2,7 @@ import api from "/src/lib/api.js";
 
 export const ProductsAPI = {
   list: (params = {}) => api.get("/torturi", { params }).then((r) => r.data),
+  get: (id) => api.get(`/torturi/${id}`).then((r) => r.data),
 
   // admin (daca ai upload imagine):
   create: (formData) =>
