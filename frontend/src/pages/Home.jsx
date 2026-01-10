@@ -122,7 +122,14 @@ export default function Home() {
           </div>
           <div className="flex-1">
             <div className="rounded-3xl overflow-hidden shadow-xl border border-pink-100">
-              <img src="/images/royalcake.jpg" alt="Tort pastel" className="w-full h-full object-cover" />
+              <img
+                src="/images/royalcake.jpg"
+                alt="Tort pastel"
+                loading="eager"
+                decoding="async"
+                fetchpriority="high"
+                className="w-full h-full object-cover"
+              />
             </div>
           </div>
         </div>
@@ -209,7 +216,13 @@ export default function Home() {
           </div>
           <div className="reveal">
             <div className="rounded-[32px] overflow-hidden shadow-lg border border-rose-100">
-              <img src="/images/despre mine.jpg" alt="Ionela Rusu" className="w-full h-full object-cover" />
+              <img
+                src="/images/despre mine.jpg"
+                alt="Ionela Rusu"
+                loading="lazy"
+                decoding="async"
+                className="w-full h-full object-cover"
+              />
             </div>
           </div>
         </div>
@@ -225,7 +238,13 @@ export default function Home() {
           {iconics.map((p, i) => (
             <article key={i} className="reveal bg-white rounded-2xl shadow-md overflow-hidden border border-rose-100">
               <div className="h-48 w-full overflow-hidden">
-                <img src={p.img} alt={p.title} className="h-full w-full object-cover" />
+                <img
+                  src={p.img}
+                  alt={p.title}
+                  loading="lazy"
+                  decoding="async"
+                  className="h-full w-full object-cover"
+                />
               </div>
               <div className="p-4">
                 <h3 className="font-semibold text-gray-900">{p.title}</h3>
@@ -251,7 +270,13 @@ export default function Home() {
           {popular.map((p) => (
             <article key={p._id} className="reveal bg-white rounded-2xl shadow-md overflow-hidden border border-rose-100">
               <div className="h-40 w-full overflow-hidden">
-                <img src={p.imagine || "/images/placeholder.png"} alt={p.nume} className="h-full w-full object-cover" />
+                <img
+                  src={p.imagine || "/images/placeholder.png"}
+                  alt={p.nume}
+                  loading="lazy"
+                  decoding="async"
+                  className="h-full w-full object-cover"
+                />
               </div>
               <div className="p-4">
                 <h3 className="font-semibold text-gray-900">{p.nume}</h3>
@@ -280,7 +305,13 @@ export default function Home() {
           {noutati.map((p) => (
             <article key={p._id} className="reveal bg-white rounded-2xl shadow-md overflow-hidden border border-rose-100">
               <div className="h-40 w-full overflow-hidden">
-                <img src={p.imagine || "/images/placeholder.png"} alt={p.nume} className="h-full w-full object-cover" />
+                <img
+                  src={p.imagine || "/images/placeholder.png"}
+                  alt={p.nume}
+                  loading="lazy"
+                  decoding="async"
+                  className="h-full w-full object-cover"
+                />
               </div>
               <div className="p-4">
                 <h3 className="font-semibold text-gray-900">{p.nume}</h3>
@@ -311,7 +342,13 @@ export default function Home() {
           {promotii.map((p) => (
             <article key={p._id} className="reveal bg-white rounded-2xl shadow-md overflow-hidden border border-rose-100">
               <div className="h-40 w-full overflow-hidden">
-                <img src={p.imagine || "/images/placeholder.png"} alt={p.nume} className="h-full w-full object-cover" />
+                <img
+                  src={p.imagine || "/images/placeholder.png"}
+                  alt={p.nume}
+                  loading="lazy"
+                  decoding="async"
+                  className="h-full w-full object-cover"
+                />
               </div>
               <div className="p-4">
                 <h3 className="font-semibold text-gray-900">{p.nume}</h3>
@@ -345,7 +382,13 @@ export default function Home() {
           </div>
           <div className="reveal">
             <div className="rounded-[28px] overflow-hidden shadow-lg border border-rose-100">
-              <img src="/images/cosmos.jpg" alt="Cutia lunara" className="w-full h-full object-cover" />
+              <img
+                src="/images/cosmos.jpg"
+                alt="Cutia lunara"
+                loading="lazy"
+                decoding="async"
+                className="w-full h-full object-cover"
+              />
             </div>
           </div>
         </div>
@@ -404,7 +447,13 @@ export default function Home() {
         <div className="grid md:grid-cols-2 gap-10 items-center">
           <div className="reveal">
             <div className="rounded-[28px] overflow-hidden shadow-lg border border-rose-100">
-              <img src="/images/capusuni in ciocolata.jpg" alt="capsuni in ciocolata" className="w-full h-full object-cover" />
+              <img
+                src="/images/capusuni in ciocolata.jpg"
+                alt="capsuni in ciocolata"
+                loading="lazy"
+                decoding="async"
+                className="w-full h-full object-cover"
+              />
             </div>
           </div>
           <div className="reveal space-y-3">
@@ -436,7 +485,13 @@ export default function Home() {
           {tailor.map((p, i) => (
             <article key={i} className="reveal bg-white rounded-2xl shadow-md overflow-hidden border border-rose-100">
               <div className="h-40 w-full overflow-hidden">
-                <img src={p.img} alt={p.title} className="h-full w-full object-cover" />
+                <img
+                  src={p.img}
+                  alt={p.title}
+                  loading="lazy"
+                  decoding="async"
+                  className="h-full w-full object-cover"
+                />
               </div>
               <div className="p-4 flex items-center justify-between">
                 <h3 className="font-semibold text-gray-900">{p.title}</h3>

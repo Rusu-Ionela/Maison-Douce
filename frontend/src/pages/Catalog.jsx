@@ -252,6 +252,8 @@ export default function Catalog() {
                     <img
                       src={p.imagine || "/images/placeholder.png"}
                       alt={p.nume}
+                      loading="lazy"
+                      decoding="async"
                       className="h-full w-full object-cover"
                     />
                   </div>

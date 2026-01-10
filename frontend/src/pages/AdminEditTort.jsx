@@ -12,7 +12,7 @@ function AdminEditTort() {
 
   // Preia tortul existent
   useEffect(() => {
-    api.get(`http://localhost:5000/api/torturi/${id}`)
+    api.get(`/torturi/${id}`)
       .then((res) => {
         const tort = res.data;
         setNume(tort.nume);
@@ -32,7 +32,7 @@ function AdminEditTort() {
       imagine,
     };
 
-    api.put(`http://localhost:5000/api/torturi/${id}`, tortActualizat)
+    api.put(`/torturi/${id}`, tortActualizat)
       .then(() => {
         alert('Tortul a fost actualizat!');
         navigate('/admin/panel');

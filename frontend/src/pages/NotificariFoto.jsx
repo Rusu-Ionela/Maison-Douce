@@ -6,14 +6,18 @@ function NotificariFoto() {
 
     useEffect(() => {
         const fetchNotificari = async () => {
-            const res = await api.get(`http://localhost:5000/api/notificari-foto/${localStorage.getItem('utilizatorId')}`);
+            const userId =
+                localStorage.getItem("userId") ||
+                localStorage.getItem("utilizatorId");
+            if (!userId) return;
+            const res = await api.get(`/notificari-foto/${userId}`);
             setNotificari(res.data);
         };
         fetchNotificari();
     }, []);
 
     const citesteNotificare = async (id) => {
-        await api.put(`http://localhost:5000/api/notificari-foto/citeste/${id}`);
+        await api.put(`/notificari-foto/citeste/${id}`);
         setNotificari(notificari.map(n => n._id === id ? { ...n, citit: true } : n));
     };
 

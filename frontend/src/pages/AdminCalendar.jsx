@@ -1,6 +1,6 @@
 // frontend/src/pages/AdminCalendar.jsx
 import React, { useEffect, useState } from "react";
-import api from "../lib/api.js";
+import api, { BASE_URL } from "../lib/api.js";
 import { buttons, inputs, cards, badges } from "../lib/tailwindComponents";
 
 export default function AdminCalendar() {
@@ -79,7 +79,7 @@ export default function AdminCalendar() {
   };
 
   const onExport = () => {
-    window.open(`/api/calendar/admin/${dateStr}/export`, "_blank");
+    window.open(`${BASE_URL}/calendar/admin/${dateStr}/export`, "_blank");
   };
 
   return (

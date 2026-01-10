@@ -9,7 +9,9 @@ const sockets = new Map();
  * Nu se conectează până nu confirmă că serverul e UP (prin /health).
  */
 export function getSocket(namespace = "") {
-    const base = import.meta.env.VITE_API_URL || "http://localhost:5000";
+    const apiBase = import.meta.env.VITE_API_URL || "http://localhost:5000/api";
+    const normalizedApi = apiBase.replace(/\/$/, "");
+    const base = normalizedApi.replace(/\/api$/, "");
     const ns = namespace ? (namespace.startsWith("/") ? namespace : `/${namespace}`) : "";
     const url = `${base}${ns}`;
 
@@ -24,7 +26,11 @@ export function getSocket(namespace = "") {
     });
 
     // Încearcă să vadă dacă serverul e online; dacă da, pornește conexiunea
-    fetch(`${base}/health`, { cache: "no-store" })
+    const healthUrl = normalizedApi.endsWith("/api")
+        ? `${normalizedApi}/health`
+        : `${normalizedApi}/api/health`;
+
+    fetch(healthUrl, { cache: "no-store" })
         .then(() => socket.connect())
         .catch(() => {
             console.warn(`[socket] server offline, skip connect for ${url}`);

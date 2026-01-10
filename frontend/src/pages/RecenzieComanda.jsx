@@ -1,30 +1,33 @@
 import { useEffect, useState } from "react";
+import { useParams } from "react-router-dom";
 import api from "/src/lib/api.js";
 
 export default function RecenzieComanda({ comandaId }) {
+  const params = useParams();
+  const resolvedId = comandaId || params.comandaId;
   const [recenzie, setRecenzie] = useState(null);
   const [nota, setNota] = useState(5);
   const [comentariu, setComentariu] = useState("");
   const [foto, setFoto] = useState("");
 
   useEffect(() => {
-    if (!comandaId) return;
+    if (!resolvedId) return;
     api
-      .get(`/recenzii/comanda/${comandaId}`)
+      .get(`/recenzii/comanda/${resolvedId}`)
       .then((res) => setRecenzie(res.data || null))
       .catch(() => setRecenzie(null));
-  }, [comandaId]);
+  }, [resolvedId]);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     try {
       await api.post("/recenzii/comanda", {
-        comandaId,
+        comandaId: resolvedId,
         nota,
         comentariu,
         foto,
       });
-      const res = await api.get(`/recenzii/comanda/${comandaId}`);
+      const res = await api.get(`/recenzii/comanda/${resolvedId}`);
       setRecenzie(res.data || null);
     } catch (err) {
       alert("Eroare la trimiterea recenziei.");

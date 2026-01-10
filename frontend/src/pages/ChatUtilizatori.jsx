@@ -22,7 +22,7 @@ export default function ChatUtilizatori() {
     // iniÈ›ializeazÄƒ socket + listener-e
     useEffect(() => {
         setStatus("connecting");
-        const socket = getSocket("/user-chat");
+        const socket = getSocket();
         socketRef.current = socket;
 
         const handleConnect = () => setStatus("online");
