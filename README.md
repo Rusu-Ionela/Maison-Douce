@@ -81,6 +81,22 @@ npm install
 npm run dev
 ```
 
+## 4.1 Checklist functional (rapid)
+
+Ruleaza un set minim de fluxuri (seed user, slot, comanda, notificari, album).
+Necesita backend pornit si `MONGODB_URI` setat.
+
+Din root:
+```powershell
+npm run checklist
+```
+
+Din backend:
+```powershell
+cd backend
+npm run checklist
+```
+
 ## 5. Test Stripe webhook local (pasi)
 1. Instaleaza Stripe CLI: https://stripe.com/docs/stripe-cli
 2. Autentificare: `stripe login`
