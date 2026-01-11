@@ -1,8 +1,12 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import api from "/src/lib/api.js";
+import { useAuth } from "../context/AuthContext";
 
 export default function AdminDashboard() {
+  const { user } = useAuth() || {};
+  const role = user?.rol || user?.role;
+  const isAdmin = role === "admin";
   const [comenzi, setComenzi] = useState([]);
   const [rezervari, setRezervari] = useState([]);
   const [notificari, setNotificari] = useState([]);
@@ -47,7 +51,7 @@ export default function AdminDashboard() {
           <Link to="/admin/calendar" className="px-3 py-2 rounded border">Calendar</Link>
           <Link to="/admin/torturi" className="px-3 py-2 rounded border">Torturi</Link>
           <Link to="/admin/comenzi-personalizate" className="px-3 py-2 rounded border">Personalizate</Link>
-          <Link to="/admin/fidelizare" className="px-3 py-2 rounded border">Fidelizare</Link>
+          {isAdmin && <Link to="/admin/fidelizare" className="px-3 py-2 rounded border">Fidelizare</Link>}
           <Link to="/admin/albume" className="px-3 py-2 rounded border">Albume</Link>
           <Link to="/admin/production" className="px-3 py-2 rounded border">Productie</Link>
         </div>

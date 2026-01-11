@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import api from "/src/lib/api.js";
 import { useAuth } from "../context/AuthContext";
 import RecenzieComanda from "./RecenzieComanda";
+import { getPushSubscription, subscribePush, unsubscribePush } from "/src/lib/push.js";
 
 const emptyProfile = {
   nume: "",
@@ -11,7 +12,7 @@ const emptyProfile = {
   adresa: "",
   adreseSalvate: [],
   preferinte: { alergii: [], evit: [], note: "" },
-  setariNotificari: { email: true, inApp: true },
+  setariNotificari: { email: true, inApp: true, push: true },
 };
 
 export default function ProfilClient() {
@@ -24,6 +25,7 @@ export default function ProfilClient() {
   const [saving, setSaving] = useState(false);
   const [msg, setMsg] = useState("");
   const [newAddress, setNewAddress] = useState({ label: "", address: "" });
+  const [pushState, setPushState] = useState({ supported: false, subscribed: false, busy: false, message: "" });
 
   useEffect(() => {
     if (!user?._id) return;
@@ -35,6 +37,24 @@ export default function ProfilClient() {
       setariNotificari: user.setariNotificari || emptyProfile.setariNotificari,
     }));
   }, [user]);
+
+  useEffect(() => {
+    if (!user?._id) return;
+    const supported = "Notification" in window && "serviceWorker" in navigator;
+    if (!supported) {
+      setPushState((s) => ({ ...s, supported: false }));
+      return;
+    }
+    setPushState((s) => ({ ...s, supported: true }));
+    (async () => {
+      try {
+        const sub = await getPushSubscription();
+        setPushState((s) => ({ ...s, subscribed: !!sub }));
+      } catch {
+        setPushState((s) => ({ ...s, subscribed: false }));
+      }
+    })();
+  }, [user?._id]);
 
   useEffect(() => {
     if (!user?._id) return;
@@ -73,6 +93,43 @@ export default function ProfilClient() {
       setMsg(e?.response?.data?.message || "Eroare la actualizare profil.");
     } finally {
       setSaving(false);
+    }
+  };
+
+  const togglePush = async (enable) => {
+    if (!pushState.supported) {
+      setPushState((s) => ({ ...s, message: "Push nu este suportat pe acest browser." }));
+      return;
+    }
+    setPushState((s) => ({ ...s, busy: true, message: "" }));
+    try {
+      if (enable) {
+        const res = await subscribePush();
+        if (!res.ok) {
+          const reason =
+            res.reason === "no-vapid"
+              ? "Push nu este configurat pe server."
+              : "Nu s-a putut activa push.";
+          setPushState((s) => ({ ...s, message: reason }));
+        } else {
+          setPushState((s) => ({ ...s, subscribed: true }));
+          setProfile((p) => ({
+            ...p,
+            setariNotificari: { ...p.setariNotificari, push: true },
+          }));
+        }
+      } else {
+        await unsubscribePush();
+        setPushState((s) => ({ ...s, subscribed: false }));
+        setProfile((p) => ({
+          ...p,
+          setariNotificari: { ...p.setariNotificari, push: false },
+        }));
+      }
+    } catch {
+      setPushState((s) => ({ ...s, message: "Eroare la actualizare push." }));
+    } finally {
+      setPushState((s) => ({ ...s, busy: false }));
     }
   };
 
@@ -290,6 +347,22 @@ export default function ProfilClient() {
               />
               In-app
             </label>
+            <div className="flex flex-wrap items-center gap-3 text-sm">
+              <span className="text-gray-700">
+                Push: {pushState.subscribed ? "activ" : "inactiv"}
+              </span>
+              <button
+                type="button"
+                disabled={pushState.busy}
+                className="px-3 py-1 rounded border border-rose-200 text-pink-600 disabled:opacity-60"
+                onClick={() => togglePush(!pushState.subscribed)}
+              >
+                {pushState.subscribed ? "Dezactiveaza push" : "Activeaza push"}
+              </button>
+              {pushState.message && (
+                <span className="text-xs text-rose-600">{pushState.message}</span>
+              )}
+            </div>
           </div>
 
           <button

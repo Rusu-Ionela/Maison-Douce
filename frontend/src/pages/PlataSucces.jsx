@@ -5,15 +5,23 @@ import api from "/src/lib/api.js";
 export default function PlataSucces() {
   const [sp] = useSearchParams();
   const comandaId = sp.get("comandaId");
+  const paymentIntentId = sp.get("payment_intent");
+  const sessionId = sp.get("session_id");
   const [comanda, setComanda] = useState(null);
 
   useEffect(() => {
     if (!comandaId) return;
+    if (paymentIntentId) {
+      api.post("/stripe/confirm-payment", { paymentIntentId, comandaId }).catch(() => {});
+    }
+    if (sessionId) {
+      api.post("/stripe/confirm-session", { sessionId, comandaId }).catch(() => {});
+    }
     api
       .get(`/comenzi/${comandaId}`)
       .then((res) => setComanda(res.data))
       .catch(() => setComanda(null));
-  }, [comandaId]);
+  }, [comandaId, paymentIntentId, sessionId]);
 
   return (
     <div className="max-w-3xl mx-auto p-6">

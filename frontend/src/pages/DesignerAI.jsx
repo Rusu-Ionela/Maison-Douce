@@ -1,4 +1,5 @@
 import { useState } from "react";
+import api from "/src/lib/api.js";
 
 const PALETTE = ["#f7c9d4", "#f6e3cc", "#d9e7c6", "#e6d8f5", "#f2d4e7"];
 
@@ -42,11 +43,30 @@ export default function DesignerAI() {
   const [img, setImg] = useState("");
   const [loading, setLoading] = useState(false);
 
-  const generate = () => {
+  const [source, setSource] = useState("");
+
+  const generate = async () => {
     setLoading(true);
-    const next = buildPreviewSvg(prompt);
-    setImg(next);
-    setLoading(false);
+    setSource("");
+    try {
+      const res = await api.post("/ai/generate-cake", { prompt });
+      const url = res?.data?.imageUrl;
+      if (url) {
+        setImg(url);
+        setSource(res?.data?.source || "ai");
+        return;
+      }
+      const next = buildPreviewSvg(prompt);
+      setImg(next);
+      setSource("local");
+    } catch (e) {
+      console.warn("AI generate failed, fallback to local:", e?.message || e);
+      const next = buildPreviewSvg(prompt);
+      setImg(next);
+      setSource("local");
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -61,11 +81,18 @@ export default function DesignerAI() {
         {loading ? "Generez..." : "Genereaza"}
       </button>
       {img && (
-        <img
-          src={img}
-          alt="previzualizare tort"
-          className="mt-4 rounded shadow"
-        />
+        <div className="mt-4">
+          <img
+            src={img}
+            alt="previzualizare tort"
+            className="rounded shadow"
+          />
+          {source && (
+            <div className="text-xs text-gray-500 mt-1">
+              Sursa: {source === "openai" ? "AI" : source}
+            </div>
+          )}
+        </div>
       )}
     </div>
   );

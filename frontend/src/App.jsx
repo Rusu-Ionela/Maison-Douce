@@ -117,19 +117,23 @@ function RequireAuth({ children }) {
   return children;
 }
 
-function RequireAdmin({ children }) {
+function RequireRole({ children, roles }) {
   const { isAuthenticated, user, loading } =
     useAuth() || { isAuthenticated: false, user: null, loading: false };
-  const isAdmin =
-    isAuthenticated &&
-    (user?.role === "admin" ||
-      user?.role === "patiser" ||
-      user?.rol === "admin" ||
-      user?.rol === "patiser");
+  const role = user?.rol || user?.role;
+  const isAllowed = isAuthenticated && (roles || []).includes(role);
   if (loading) return <Loading />;
   if (!isAuthenticated) return <Navigate to="/admin/login" replace />;
-  if (!isAdmin) return <Navigate to="/" replace />;
+  if (!isAllowed) return <Navigate to="/" replace />;
   return children;
+}
+
+function RequireAdmin({ children }) {
+  return <RequireRole roles={["admin"]}>{children}</RequireRole>;
+}
+
+function RequireStaff({ children }) {
+  return <RequireRole roles={["admin", "patiser"]}>{children}</RequireRole>;
 }
 
 export default function App() {
@@ -238,17 +242,17 @@ export default function App() {
           <Route
             path="/chat/history"
             element={
-              <RequireAdmin>
+              <RequireStaff>
                 <ChatHistory />
-              </RequireAdmin>
+              </RequireStaff>
             }
           />
           <Route
             path="/chat/utilizatori"
             element={
-              <RequireAdmin>
+              <RequireStaff>
                 <ChatUtilizatori />
-              </RequireAdmin>
+              </RequireStaff>
             }
           />
           <Route
@@ -296,81 +300,81 @@ export default function App() {
           <Route
             path="/admin"
             element={
-              <RequireAdmin>
+              <RequireStaff>
                 <AdminDashboard />
-              </RequireAdmin>
+              </RequireStaff>
             }
           />
           <Route
             path="/admin/panel"
             element={
-              <RequireAdmin>
+              <RequireStaff>
                 <AdminPanel />
-              </RequireAdmin>
+              </RequireStaff>
             }
           />
           <Route
             path="/admin/produse"
             element={
-              <RequireAdmin>
+              <RequireStaff>
                 <AdminProduse />
-              </RequireAdmin>
+              </RequireStaff>
             }
           />
           <Route
             path="/admin/torturi"
             element={
-              <RequireAdmin>
+              <RequireStaff>
                 <AdminTorturi />
-              </RequireAdmin>
+              </RequireStaff>
             }
           />
           <Route
             path="/admin/comenzi"
             element={
-              <RequireAdmin>
+              <RequireStaff>
                 <AdminComenzi />
-              </RequireAdmin>
+              </RequireStaff>
             }
           />
           <Route
             path="/admin/comenzi-personalizate"
             element={
-              <RequireAdmin>
+              <RequireStaff>
                 <AdminComenziPersonalizate />
-              </RequireAdmin>
+              </RequireStaff>
             }
           />
           <Route
             path="/admin/comenzi-complete"
             element={
-              <RequireAdmin>
+              <RequireStaff>
                 <AdminComenziComplete />
-              </RequireAdmin>
+              </RequireStaff>
             }
           />
           <Route
             path="/admin/calendar"
             element={
-              <RequireAdmin>
+              <RequireStaff>
                 <AdminCalendar />
-              </RequireAdmin>
+              </RequireStaff>
             }
           />
           <Route
             path="/admin/calendar-livrare"
             element={
-              <RequireAdmin>
+              <RequireStaff>
                 <AdminCalendarLivrare />
-              </RequireAdmin>
+              </RequireStaff>
             }
           />
           <Route
             path="/admin/calendar-view"
             element={
-              <RequireAdmin>
+              <RequireStaff>
                 <AdminCalendarView />
-              </RequireAdmin>
+              </RequireStaff>
             }
           />
           <Route
@@ -384,9 +388,9 @@ export default function App() {
           <Route
             path="/admin/raport-rezervari"
             element={
-              <RequireAdmin>
+              <RequireStaff>
                 <RaportRezervariPrestator />
-              </RequireAdmin>
+              </RequireStaff>
             }
           />
           <Route
@@ -400,17 +404,17 @@ export default function App() {
           <Route
             path="/admin/notificari"
             element={
-              <RequireAdmin>
+              <RequireStaff>
                 <AdminNotificari />
-              </RequireAdmin>
+              </RequireStaff>
             }
           />
           <Route
             path="/admin/notificari-foto"
             element={
-              <RequireAdmin>
+              <RequireStaff>
                 <NotificariFoto />
-              </RequireAdmin>
+              </RequireStaff>
             }
           />
           <Route
@@ -424,65 +428,65 @@ export default function App() {
           <Route
             path="/admin/production"
             element={
-              <RequireAdmin>
+              <RequireStaff>
                 <AdminProduction />
-              </RequireAdmin>
+              </RequireStaff>
             }
           />
           <Route
             path="/admin/albume"
             element={
-              <RequireAdmin>
+              <RequireStaff>
                 <AdminAlbume />
-              </RequireAdmin>
+              </RequireStaff>
             }
           />
           <Route
             path="/admin/adauga-produs"
             element={
-              <RequireAdmin>
+              <RequireStaff>
                 <AdminAdaugaProdus />
-              </RequireAdmin>
+              </RequireStaff>
             }
           />
           <Route
             path="/admin/add-produs"
             element={
-              <RequireAdmin>
+              <RequireStaff>
                 <AdminAddProdus />
-              </RequireAdmin>
+              </RequireStaff>
             }
           />
           <Route
             path="/admin/add-tort"
             element={
-              <RequireAdmin>
+              <RequireStaff>
                 <AdminAddTort />
-              </RequireAdmin>
+              </RequireStaff>
             }
           />
           <Route
             path="/admin/edit-produs/:id"
             element={
-              <RequireAdmin>
+              <RequireStaff>
                 <AdminEditProdus />
-              </RequireAdmin>
+              </RequireStaff>
             }
           />
           <Route
             path="/admin/edit-tort/:id"
             element={
-              <RequireAdmin>
+              <RequireStaff>
                 <AdminEditTort />
-              </RequireAdmin>
+              </RequireStaff>
             }
           />
           <Route
             path="/admin/catalog"
             element={
-              <RequireAdmin>
+              <RequireStaff>
                 <AdminCatalog />
-              </RequireAdmin>
+              </RequireStaff>
             }
           />
 
