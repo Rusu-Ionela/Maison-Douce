@@ -23,9 +23,12 @@ const RezervareSchema = new mongoose.Schema(
         },
         deliveryFee: { type: Number, default: 0 },
         deliveryAddress: { type: String },
+        deliveryInstructions: { type: String, default: "" },
+        deliveryWindow: { type: String, default: "" },
 
         subtotal: { type: Number, default: 0 },
         total: { type: Number, default: 0 },
+        notes: { type: String, default: "" },
 
         paymentStatus: {
             type: String,

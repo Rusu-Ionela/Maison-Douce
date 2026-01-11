@@ -3,6 +3,7 @@ const Stripe = require("stripe");
 const Comanda = require("../models/Comanda");
 const Fidelizare = require("../models/Fidelizare");
 const FidelizareConfig = require("../models/FidelizareConfig");
+const { notifyUser, notifyAdmins } = require("../utils/notifications");
 
 const stripeKey =
   process.env.STRIPE_SECRET_KEY ||
@@ -77,6 +78,21 @@ module.exports = async (req, res) => {
           await comanda.save();
           console.log("[stripe webhook] Comanda marked as paid");
 
+          if (comanda.clientId) {
+            await notifyUser(comanda.clientId, {
+              titlu: "Plata confirmata",
+              mesaj: `Plata pentru comanda #${comanda.numeroComanda || comanda._id} a fost confirmata.`,
+              tip: "plata",
+              link: `/plata?comandaId=${comanda._id}`,
+            });
+          }
+          await notifyAdmins({
+            titlu: "Plata confirmata",
+            mesaj: `Plata confirmata pentru comanda #${comanda.numeroComanda || comanda._id}.`,
+            tip: "plata",
+            link: "/admin/comenzi",
+          });
+
           const total = Number(comanda.totalFinal || comanda.total || 0);
           const cfg = await getFidelizareConfig();
           const earned = calcPoints(total, cfg);
@@ -135,6 +151,35 @@ module.exports = async (req, res) => {
       }
     } else if (event.type === "payment_intent.succeeded") {
       console.log(`[stripe webhook] payment_intent.succeeded (logged for future use)`);
+    } else if (
+      event.type === "payment_intent.payment_failed" ||
+      event.type === "checkout.session.async_payment_failed"
+    ) {
+      const obj = event.data.object || {};
+      const orderId =
+        obj?.metadata?.orderId || obj?.client_reference_id || obj?.metadata?.order_id;
+      if (orderId) {
+        const comanda = await Comanda.findById(orderId);
+        if (comanda) {
+          comanda.paymentStatus = "failed";
+          comanda.statusPlata = "failed";
+          await comanda.save();
+          if (comanda.clientId) {
+            await notifyUser(comanda.clientId, {
+              titlu: "Plata esuata",
+              mesaj: `Plata pentru comanda #${comanda.numeroComanda || comanda._id} a esuat.`,
+              tip: "warning",
+              link: `/plata?comandaId=${comanda._id}`,
+            });
+          }
+          await notifyAdmins({
+            titlu: "Plata esuata",
+            mesaj: `Plata esuata pentru comanda #${comanda.numeroComanda || comanda._id}.`,
+            tip: "warning",
+            link: "/admin/comenzi",
+          });
+        }
+      }
     } else {
       console.log(`[stripe webhook] Unhandled event type: ${event.type}`);
     }

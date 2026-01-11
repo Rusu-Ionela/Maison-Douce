@@ -241,40 +241,57 @@ router.put("/me", authRequired, async (req, res) => {
     }
 });
 
-/* ==== RESET PAROLĂ ==== */
+/* ==== RESET PAROLA ==== */
 // POST /api/utilizatori/reset-password
-// Body: { email, newPassword }
+// Body: { email?, newPassword, token? }
 router.post("/reset-password", async (req, res) => {
     try {
-        const { email, newPassword } = req.body;
+        const { email, newPassword, token } = req.body || {};
 
-        if (!email || !newPassword) {
+        if (!newPassword) {
             return res.status(400).json({
-                message: "Email și parolă nouă sunt necesare",
+                message: "Parola noua este necesara",
             });
         }
 
-        const user = await Utilizator.findOne({ email }).select(
-            "+parolaHash +parola"
-        );
-        if (!user) {
-            return res.status(404).json({
-                message: "Nu există utilizator cu acest email",
-            });
+        let user = null;
+        if (token) {
+            user = await Utilizator.findOne({
+                resetToken: token,
+                resetTokenExp: { $gt: new Date() },
+            }).select("+parolaHash +parola");
+            if (!user) {
+                return res.status(400).json({ message: "Token invalid sau expirat." });
+            }
+        } else {
+            if (process.env.NODE_ENV === "production") {
+                return res.status(400).json({ message: "Tokenul de resetare este obligatoriu." });
+            }
+            if (!email) {
+                return res.status(400).json({ message: "Emailul este obligatoriu." });
+            }
+            user = await Utilizator.findOne({ email }).select("+parolaHash +parola");
+            if (!user) {
+                return res.status(404).json({
+                    message: "Nu exista utilizator cu acest email",
+                });
+            }
         }
 
         await user.setPassword(newPassword);
+        user.resetToken = "";
+        user.resetTokenExp = undefined;
         await user.save();
 
         res.json({
             ok: true,
-            message: "Parola a fost resetată cu succes",
+            message: "Parola a fost resetata cu succes",
         });
     } catch (e) {
         console.error("reset-password error:", e.message);
         res
             .status(500)
-            .json({ message: "Eroare server la resetare parolă" });
+            .json({ message: "Eroare server la resetare parola" });
     }
 });
 
@@ -286,3 +303,4 @@ router.post("/logout", (req, res) => {
 });
 
 module.exports = router;
+

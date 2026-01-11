@@ -45,9 +45,9 @@ router.get("/room/:room", authRequired, async (req, res) => {
 // POST /api/mesaje-chat - salveaza un mesaj
 router.post("/", authRequired, async (req, res) => {
   try {
-    const { autor, utilizator, text, room, authorId, fileUrl, fileName } = req.body;
+    const { autor, utilizator, text, room, authorId, fileUrl, fileName, rol } = req.body;
     if (!text && !fileUrl) {
-      return res.status(400).json({ message: "Campul 'text' este obligatoriu" });
+      return res.status(400).json({ message: "Text sau fisier este obligatoriu" });
     }
 
     if (room && !isAdmin(req)) {
@@ -58,17 +58,31 @@ router.post("/", authRequired, async (req, res) => {
       }
     }
 
+    const currentRole = req.user?.rol || req.user?.role || rol || "";
     const payload = {
       text: String(text || "").trim() || "Fisier atasat",
       data: new Date(),
-      utilizator: utilizator || autor || "client",
+      utilizator: utilizator || autor || req.user?.nume || req.user?.name || "client",
+      rol: currentRole,
     };
     if (room) payload.room = String(room);
-    if (authorId) payload.authorId = String(authorId);
+    if (authorId || req.user?._id || req.user?.id) {
+      payload.authorId = String(authorId || req.user?._id || req.user?.id);
+    }
     if (fileUrl) payload.fileUrl = fileUrl;
     if (fileName) payload.fileName = fileName;
 
     const msg = await MesajChat.create(payload);
+
+    try {
+      const io = require("../socket").getIO();
+      if (room) {
+        io.to(String(room)).emit("receiveMessage", payload);
+      } else {
+        io.emit("receiveMessage", payload);
+      }
+    } catch {}
+
     res.status(201).json(msg);
   } catch (e) {
     console.error("POST /mesaje-chat error:", e);

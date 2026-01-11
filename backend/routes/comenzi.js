@@ -8,10 +8,13 @@ const { authRequired, roleCheck } = require("../middleware/auth");
 const Comanda = require("../models/Comanda");
 const Rezervare = require("../models/Rezervare");
 const CalendarPrestator = require("../models/CalendarPrestator");
-const Notificare = require("../models/Notificare");
+const CalendarDayCapacity = require("../models/CalendarDayCapacity");
+const { notifyUser, notifyAdmins } = require("../utils/notifications");
+const Utilizator = require("../models/Utilizator");
 // const Utilizator = require("../models/Utilizator"); // folosește dacă vrei populate
 
 const LIVRARE_FEE = 100;
+const MIN_LEAD_HOURS = Number(process.env.MIN_LEAD_HOURS || 24);
 
 /* ---------------------- Helpers Comanda ---------------------- */
 function calcSubtotal(items = []) {
@@ -30,43 +33,87 @@ function normalizeItems(rawItems = [], produse = []) {
     return [];
 }
 
+function isBeforeMinLead(dateStr, timeStr) {
+    if (!dateStr || !timeStr) return false;
+    const [h, m] = String(timeStr).split(":").map(Number);
+    const target = new Date(`${dateStr}T00:00:00`);
+    target.setHours(Number.isFinite(h) ? h : 0, Number.isFinite(m) ? m : 0, 0, 0);
+    const min = new Date();
+    min.setHours(min.getHours() + MIN_LEAD_HOURS);
+    return target < min;
+}
+
+async function isDayCapacityFull(prestatorId, dateStr) {
+    const dayCap = await CalendarDayCapacity.findOne({ prestatorId, date: dateStr }).lean();
+    if (!dayCap || dayCap.capacity == null) return false;
+    const CalendarSlotEntry = require("../models/CalendarSlotEntry");
+    const usedAgg = await CalendarSlotEntry.aggregate([
+        { $match: { prestatorId, date: dateStr } },
+        { $group: { _id: null, used: { $sum: "$used" } } },
+    ]);
+    const used = usedAgg[0]?.used || 0;
+    return used >= Number(dayCap.capacity || 0);
+}
+
 /* ---------------------- Helpers Rezervare -> Admin view ---------------------- */
 function startHour(ts = "") {
     const [start] = String(ts).split("-");
     return start || "";
 }
-function mapRezervareToComanda(r) {
+function mapRezervareToComanda(r, userMap = new Map()) {
+    const user = userMap.get(String(r.clientId)) || {};
     return {
         _id: r._id,
+        numeroComanda: r.numeroComanda,
         // pentru AdminCalendar, coloana "Client" — poți popula ulterior numele
         clientId: r.clientId,
+        clientName: user.name || user.nume || "",
+        clientEmail: user.email || "",
+        clientTelefon: user.telefon || "",
         dataLivrare: r.date,
         oraLivrare: startHour(r.timeSlot),
         metodaLivrare: r.handoffMethod === "delivery" ? "livrare" : "ridicare" /* align cu Comanda */,
         adresaLivrare: r.deliveryAddress || "",
+        deliveryInstructions: r.deliveryInstructions || "",
+        deliveryWindow: r.deliveryWindow || "",
         items: [], // poți pune rezumat produse dacă le salvezi pe Rezervare
         status: r.status,              // "pending" | "confirmed" | "cancelled"
         handoffStatus: r.handoffStatus, // "scheduled" | "to_courier" | "to_pickup" | "delivered" | "picked_up"
         subtotal: r.subtotal,
         taxaLivrare: r.deliveryFee || 0,
         total: r.total,
+        notesClient: r.notes || "",
+        paymentStatus: r.paymentStatus || "",
         _source: "rezervare",
     };
 }
-function mapComandaToAdmin(c) {
+function mapComandaToAdmin(c, userMap = new Map()) {
+    const user = userMap.get(String(c.clientId)) || {};
     return {
         _id: c._id,
         clientId: c.clientId,
+        clientName: user.name || user.nume || "",
+        clientEmail: user.email || "",
+        clientTelefon: user.telefon || "",
+        numeroComanda: c.numeroComanda,
         dataLivrare: c.dataLivrare,
         oraLivrare: c.oraLivrare,
         metodaLivrare: c.metodaLivrare, // "livrare" | "ridicare"
         adresaLivrare: c.adresaLivrare || "",
+        deliveryInstructions: c.deliveryInstructions || "",
+        deliveryWindow: c.deliveryWindow || "",
+        attachments: Array.isArray(c.attachments) ? c.attachments : [],
         items: c.items || [],
         status: c.status,
         handoffStatus: c.handoffStatus, // dacă ai în model
         subtotal: c.subtotal,
         taxaLivrare: c.taxaLivrare || 0,
         total: c.total,
+        totalFinal: c.totalFinal,
+        notesClient: c.notesClient || "",
+        notesAdmin: c.notesAdmin || "",
+        paymentStatus: c.paymentStatus || "",
+        statusPlata: c.statusPlata || "",
         _source: "comanda",
     };
 }
@@ -89,9 +136,17 @@ router.post("/", authRequired, async (req, res) => {
             note,
             preferinte,
             imagineGenerata,
+            deliveryInstructions,
+            deliveryWindow,
+            attachments,
         } = req.body;
 
         if (!clientId) return res.status(400).json({ message: "clientId este obligatoriu." });
+        if (dataLivrare && oraLivrare && isBeforeMinLead(dataLivrare, oraLivrare)) {
+            return res.status(400).json({
+                message: `Alege un interval cu minim ${MIN_LEAD_HOURS} ore inainte.`,
+            });
+        }
 
         const items = normalizeItems(rawItems, produse);
         const subtotal = calcSubtotal(items);
@@ -106,27 +161,32 @@ router.post("/", authRequired, async (req, res) => {
             totalFinal: subtotal + taxaLivrare,
             metodaLivrare,
             adresaLivrare: metodaLivrare === "livrare" ? adresaLivrare : undefined,
+            deliveryInstructions: deliveryInstructions || "",
+            deliveryWindow: deliveryWindow || "",
+            attachments: Array.isArray(attachments) ? attachments : [],
             dataLivrare,
             oraLivrare,
             prestatorId,
             note,
             preferinte,
             imagineGenerata,
+            notesClient: note || "",
             status: "plasata",
             statusHistory: [{ status: "plasata", note: "Comanda creata" }],
         });
 
-        try {
-            await Notificare.create({
-                userId: clientId,
-                titlu: "Comanda primita",
-                mesaj: `Comanda #${comanda.numeroComanda || comanda._id} a fost inregistrata.`,
-                tip: "comanda",
-                link: `/plata?comandaId=${comanda._id}`,
-            });
-        } catch (e) {
-            console.warn("Notificare create failed:", e.message);
-        }
+        await notifyUser(clientId, {
+            titlu: "Comanda primita",
+            mesaj: `Comanda #${comanda.numeroComanda || comanda._id} a fost inregistrata.`,
+            tip: "comanda",
+            link: `/plata?comandaId=${comanda._id}`,
+        });
+        await notifyAdmins({
+            titlu: "Comanda noua",
+            mesaj: `Comanda #${comanda.numeroComanda || comanda._id} a fost plasata.`,
+            tip: "comanda",
+            link: "/admin/comenzi",
+        });
 
         res.status(201).json(comanda);
     } catch (e) {
@@ -156,10 +216,19 @@ router.post("/creeaza-cu-slot", authRequired, async (req, res) => {
             note,
             preferinte,
             imagineGenerata,
+            deliveryInstructions,
+            deliveryWindow,
+            attachments,
         } = req.body;
 
         if (!clientId) throw new Error("clientId obligatoriu.");
         if (!dataLivrare || !oraLivrare) throw new Error("dataLivrare și oraLivrare sunt obligatorii.");
+        if (isBeforeMinLead(dataLivrare, oraLivrare)) {
+            throw new Error(`Alege un interval cu minim ${MIN_LEAD_HOURS} ore inainte.`);
+        }
+        if (await isDayCapacityFull(prestatorId, dataLivrare)) {
+            throw new Error("Capacitatea zilei este atinsa. Alege alta data.");
+        }
 
         // 1) Blochează slotul — preferăm CalendarSlotEntry (atomic), fallback la CalendarPrestator
         const CalendarSlotEntry = require('../models/CalendarSlotEntry');
@@ -206,12 +275,16 @@ router.post("/creeaza-cu-slot", authRequired, async (req, res) => {
                 totalFinal: subtotal + taxaLivrare,
                 metodaLivrare,
                 adresaLivrare: metodaLivrare === "livrare" ? adresaLivrare : undefined,
+                deliveryInstructions: deliveryInstructions || "",
+                deliveryWindow: deliveryWindow || "",
+                attachments: Array.isArray(attachments) ? attachments : [],
                 dataLivrare,
                 oraLivrare,
                 prestatorId,
                 note,
                 preferinte,
                 imagineGenerata,
+                notesClient: note || "",
                 status: "in_asteptare",
                 statusHistory: [{ status: "in_asteptare", note: "Comanda creata cu slot" }],
             }],
@@ -219,17 +292,18 @@ router.post("/creeaza-cu-slot", authRequired, async (req, res) => {
         );
 
         await session.commitTransaction();
-        try {
-            await Notificare.create({
-                userId: clientId,
-                titlu: "Comanda primita",
-                mesaj: `Comanda #${comanda.numeroComanda || comanda._id} a fost inregistrata.`,
-                tip: "comanda",
-                link: `/plata?comandaId=${comanda._id}`,
-            });
-        } catch (e) {
-            console.warn("Notificare create failed:", e.message);
-        }
+        await notifyUser(clientId, {
+            titlu: "Comanda primita",
+            mesaj: `Comanda #${comanda.numeroComanda || comanda._id} a fost inregistrata.`,
+            tip: "comanda",
+            link: `/plata?comandaId=${comanda._id}`,
+        });
+        await notifyAdmins({
+            titlu: "Comanda noua",
+            mesaj: `Comanda #${comanda.numeroComanda || comanda._id} a fost plasata.`,
+            tip: "comanda",
+            link: "/admin/comenzi",
+        });
         res.status(201).json(comanda);
     } catch (e) {
         await session.abortTransaction();
@@ -252,9 +326,28 @@ router.get("/", authRequired, roleCheck("admin", "patiser"), async (_req, res) =
             Rezervare.find({}).lean(),
         ]);
 
+        const userIds = new Set();
+        comenzi.forEach((c) => c.clientId && userIds.add(String(c.clientId)));
+        rezervari.forEach((r) => r.clientId && userIds.add(String(r.clientId)));
+
+        const userMap = new Map();
+        if (userIds.size) {
+            const users = await Utilizator.find(
+                { _id: { $in: Array.from(userIds) } },
+                { nume: 1, name: 1, email: 1, telefon: 1 }
+            ).lean();
+            users.forEach((u) =>
+                userMap.set(String(u._id), {
+                    name: u.nume || u.name || "Client",
+                    email: u.email || "",
+                    telefon: u.telefon || "",
+                })
+            );
+        }
+
         const mapped = [
-            ...comenzi.map(mapComandaToAdmin),
-            ...rezervari.map(mapRezervareToComanda),
+            ...comenzi.map((c) => mapComandaToAdmin(c, userMap)),
+            ...rezervari.map((r) => mapRezervareToComanda(r, userMap)),
         ];
 
         mapped.sort((a, b) => {
@@ -335,17 +428,12 @@ router.patch("/:id/status", authRequired, async (req, res) => {
                 : [{ status: nou, note: req.body?.note || "" }];
             await doc.save();
 
-            try {
-                await Notificare.create({
-                    userId: doc.clientId,
-                    titlu: "Status comanda actualizat",
-                    mesaj: `Comanda #${doc.numeroComanda || doc._id} este acum: ${nou}.`,
-                    tip: "status",
-                    link: `/plata?comandaId=${doc._id}`,
-                });
-            } catch (e) {
-                console.warn("Notificare status failed:", e.message);
-            }
+            await notifyUser(doc.clientId, {
+                titlu: "Status comanda actualizat",
+                mesaj: `Comanda #${doc.numeroComanda || doc._id} este acum: ${nou}.`,
+                tip: "status",
+                link: `/plata?comandaId=${doc._id}`,
+            });
 
             return res.json({ ok: true, _source: "comanda" });
         }
@@ -384,6 +472,65 @@ router.patch("/:id/status", authRequired, async (req, res) => {
     }
 });
 
+// PATCH /api/comenzi/:id/price
+// Body: { subtotal?, taxaLivrare?, deliveryFee?, total?, totalFinal?, discountTotal?, notesAdmin?, note? }
+router.patch("/:id/price", authRequired, roleCheck("admin", "patiser"), async (req, res) => {
+    try {
+        const {
+            subtotal,
+            taxaLivrare,
+            deliveryFee,
+            total,
+            totalFinal,
+            discountTotal,
+            notesAdmin,
+            note,
+        } = req.body || {};
+
+        const comanda = await Comanda.findById(req.params.id);
+        if (!comanda) return res.status(404).json({ message: "Comanda inexistentŽŸ." });
+
+        const updates = {};
+        if (subtotal != null) updates.subtotal = Number(subtotal || 0);
+        if (taxaLivrare != null) updates.taxaLivrare = Number(taxaLivrare || 0);
+        if (deliveryFee != null && updates.taxaLivrare == null) {
+            updates.taxaLivrare = Number(deliveryFee || 0);
+        }
+        if (discountTotal != null) updates.discountTotal = Number(discountTotal || 0);
+        if (total != null) updates.total = Number(total || 0);
+        if (totalFinal != null) updates.totalFinal = Number(totalFinal || 0);
+        if (notesAdmin != null) updates.notesAdmin = String(notesAdmin);
+
+        const nextSubtotal = updates.subtotal ?? comanda.subtotal ?? 0;
+        const nextTaxa = updates.taxaLivrare ?? comanda.taxaLivrare ?? 0;
+        if (updates.total == null && (updates.subtotal != null || updates.taxaLivrare != null)) {
+            updates.total = Number(nextSubtotal || 0) + Number(nextTaxa || 0);
+        }
+        if (updates.totalFinal == null && updates.total != null) {
+            updates.totalFinal = updates.total;
+        }
+
+        Object.assign(comanda, updates);
+        const noteText = note || "Pret actualizat";
+        comanda.statusHistory = Array.isArray(comanda.statusHistory)
+            ? [...comanda.statusHistory, { status: "pret_actualizat", note: noteText }]
+            : [{ status: "pret_actualizat", note: noteText }];
+        await comanda.save();
+
+        await notifyUser(comanda.clientId, {
+            titlu: "Comanda actualizata",
+            mesaj: `Pret nou pentru comanda #${comanda.numeroComanda || comanda._id}: ${comanda.totalFinal || comanda.total} MDL.`,
+            tip: "update",
+            link: `/plata?comandaId=${comanda._id}`,
+        });
+
+        res.json({ ok: true, comanda });
+    } catch (e) {
+        console.error("price update error:", e);
+        res.status(500).json({ message: "Eroare la actualizare pret." });
+    }
+});
+
 // PATCH /api/comenzi/:id/schedule
 // Body: { dataLivrare, oraLivrare }
 router.patch("/:id/schedule", authRequired, roleCheck("admin", "patiser"), async (req, res) => {
@@ -401,6 +548,18 @@ router.patch("/:id/schedule", authRequired, roleCheck("admin", "patiser"), async
 
         const prevDate = comanda.dataLivrare;
         const prevTime = comanda.oraLivrare;
+        const isSameDay = prevDate && prevDate === dataLivrare;
+
+        if (isBeforeMinLead(dataLivrare, oraLivrare)) {
+            return res.status(400).json({
+                message: `Alege un interval cu minim ${MIN_LEAD_HOURS} ore inainte.`,
+            });
+        }
+        if (!isSameDay && (await isDayCapacityFull(prestatorId, dataLivrare))) {
+            return res.status(409).json({
+                message: "Capacitatea zilei este atinsa. Alege alta data.",
+            });
+        }
 
         if (prevDate && prevTime) {
             try {
@@ -431,19 +590,12 @@ router.patch("/:id/schedule", authRequired, roleCheck("admin", "patiser"), async
             ? [...comanda.statusHistory, { status: "reprogramata", note: "Data/ora modificata" }]
             : [{ status: "reprogramata", note: "Data/ora modificata" }];
         await comanda.save();
-
-        try {
-            await Notificare.create({
-                userId: comanda.clientId,
-                titlu: "Comanda reprogramata",
-                mesaj: `Comanda #${comanda.numeroComanda || comanda._id} a fost reprogramata la ${dataLivrare} ${oraLivrare}.`,
-                tip: "update",
-                link: `/plata?comandaId=${comanda._id}`,
-            });
-        } catch (e) {
-            console.warn("Notificare schedule failed:", e.message);
-        }
-
+        await notifyUser(comanda.clientId, {
+            titlu: "Comanda reprogramata",
+            mesaj: `Comanda #${comanda.numeroComanda || comanda._id} a fost reprogramata la ${dataLivrare} ${oraLivrare}.`,
+            tip: "update",
+            link: `/plata?comandaId=${comanda._id}`,
+        });
         res.json({ ok: true });
     } catch (e) {
         console.error("schedule update error:", e);
@@ -465,19 +617,12 @@ router.patch("/:id/refuza", authRequired, roleCheck("admin", "patiser"), async (
             ? [...comanda.statusHistory, { status: "refuzata", note: comanda.motivRefuz }]
             : [{ status: "refuzata", note: comanda.motivRefuz }];
         await comanda.save();
-
-        try {
-            await Notificare.create({
-                userId: comanda.clientId,
-                titlu: "Comanda refuzata",
-                mesaj: comanda.motivRefuz,
-                tip: "warning",
-                link: `/plata?comandaId=${comanda._id}`,
-            });
-        } catch (e) {
-            console.warn("Notificare refuz failed:", e.message);
-        }
-
+        await notifyUser(comanda.clientId, {
+            titlu: "Comanda refuzata",
+            mesaj: comanda.motivRefuz,
+            tip: "warning",
+            link: `/plata?comandaId=${comanda._id}`,
+        });
         res.json({ ok: true });
     } catch (e) {
         console.error("refuza error:", e);
@@ -611,3 +756,7 @@ router.patch("/:id/cancel", authRequired, async (req, res) => {
 });
 
 module.exports = router;
+
+
+
+

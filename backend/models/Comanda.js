@@ -55,6 +55,14 @@ const ComandaSchema = new mongoose.Schema(
       default: "ridicare",
     },
     adresaLivrare: String,
+    deliveryInstructions: String,
+    deliveryWindow: String,
+    attachments: [
+      {
+        url: String,
+        name: String,
+      },
+    ],
     handoffStatus: String, // compat calendar
     handoffMethod: String, // compat calendar
 

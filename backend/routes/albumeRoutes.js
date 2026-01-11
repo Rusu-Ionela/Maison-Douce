@@ -2,8 +2,8 @@
 const router = require("express").Router();
 const { authRequired } = require("../middleware/auth");
 const Album = require("../models/Album");
-const Notificare = require("../models/Notificare");
 const NotificareFoto = require("../models/NotificareFoto");
+const { notifyUser, notifyAdmins } = require("../utils/notifications");
 
 router.get("/", authRequired, async (req, res) => {
   try {
@@ -20,10 +20,10 @@ router.get("/", authRequired, async (req, res) => {
 router.post("/", authRequired, async (req, res) => {
   try {
     const role = req.user?.rol || req.user?.role;
-    const { titlu, fisiere = [], utilizatorId } = req.body || {};
+    const { titlu, fisiere = [], utilizatorId, comandaId } = req.body || {};
     const ownerId = role === "admin" || role === "patiser" ? (utilizatorId || req.user._id) : req.user._id;
 
-    const alb = await Album.create({ titlu, fisiere, utilizatorId: ownerId });
+    const alb = await Album.create({ titlu, fisiere, utilizatorId: ownerId, comandaId });
 
     if (String(ownerId) !== String(req.user._id)) {
       try {
@@ -31,16 +31,22 @@ router.post("/", authRequired, async (req, res) => {
           utilizatorId: ownerId,
           mesaj: `Album nou incarcat: ${titlu || "Album"}`,
         });
-        await Notificare.create({
-          userId: ownerId,
-          titlu: "Album actualizat",
-          mesaj: `Au fost incarcate poze noi in albumul ${titlu || "comenzii"}.`,
-          tip: "album",
-          link: "/albume",
-        });
       } catch (e) {
         console.warn("Notificare album failed:", e?.message || e);
       }
+      await notifyUser(ownerId, {
+        titlu: "Album actualizat",
+        mesaj: `Au fost incarcate poze noi in albumul ${titlu || "comenzii"}.`,
+        tip: "album",
+        link: "/albume",
+      });
+    } else {
+      await notifyAdmins({
+        titlu: "Album nou incarcat",
+        mesaj: `Clientul a incarcat un album: ${titlu || "Album"}.`,
+        tip: "album",
+        link: "/admin/albume",
+      });
     }
 
     res.status(201).json(alb);

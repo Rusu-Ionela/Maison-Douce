@@ -2,6 +2,7 @@
 const router = require("express").Router();
 const { authRequired, roleCheck } = require("../middleware/auth");
 const Rezervare = require("../models/Rezervare");
+const { notifyUser } = require("../utils/notifications");
 
 // GET /api/rezervari
 router.get("/", authRequired, async (req, res) => {
@@ -43,9 +44,15 @@ router.get("/:id", authRequired, async (req, res) => {
 router.patch("/:id/status", authRequired, roleCheck("admin", "patiser"), async (req, res) => {
   try {
     const { status } = req.body;
-    const r = await Rezervare.findByIdAndUpdate(req.params.id, { $set: { status } }, { new: true });
-    if (!r) return res.status(404).json({ message: "Rezervare inexistenta" });
-    res.json(r);
+  const r = await Rezervare.findByIdAndUpdate(req.params.id, { $set: { status } }, { new: true });
+  if (!r) return res.status(404).json({ message: "Rezervare inexistenta" });
+  await notifyUser(r.clientId, {
+    titlu: "Rezervare actualizata",
+    mesaj: `Rezervarea ta este acum: ${status}.`,
+    tip: "rezervare",
+    link: "/calendar",
+  });
+  res.json(r);
   } catch (e) {
     res.status(500).json({ message: "Eroare la actualizare status" });
   }

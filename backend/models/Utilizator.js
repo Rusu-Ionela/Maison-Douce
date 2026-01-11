@@ -38,6 +38,10 @@ const UtilizatorSchema = new mongoose.Schema({
         inApp: { type: Boolean, default: true },
     },
 
+    // reset parola (token temporar)
+    resetToken: { type: String, default: "" },
+    resetTokenExp: { type: Date },
+
     // folosim doar parolaHash; ținem compat cu 'parola' dacă există deja
     parolaHash: { type: String, select: false },
     parola: { type: String, select: false }, // DOAR pt compat (va fi ștearsă la next-save)

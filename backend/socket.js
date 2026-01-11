@@ -1,6 +1,8 @@
 // backend/socket.js
 let io;
-const MesajChat = require('./models/MesajChat');
+const MesajChat = require("./models/MesajChat");
+const Utilizator = require("./models/Utilizator");
+const { notifyAdmins } = require("./utils/notifications");
 
 function init(server) {
     const { Server } = require("socket.io");
@@ -35,24 +37,62 @@ function init(server) {
         socket.on("sendMessage", async (data) => {
             try {
                 const text = String(data?.text || "").trim();
-                if (!text) return;
+                const fileUrl = data?.fileUrl ? String(data.fileUrl) : "";
+                const fileName = data?.fileName ? String(data.fileName) : "";
+                if (!text && !fileUrl) return;
                 const utilizator = data?.utilizator ? String(data.utilizator) : "Anonim";
                 const room = data?.room ? String(data.room) : null;
                 const authorId = data?.authorId ? String(data.authorId) : socket.id;
+                const rol = data?.rol || data?.role || "";
+
+                let senderRole = rol;
+                if (!senderRole && authorId && authorId.length >= 12) {
+                    try {
+                        const user = await Utilizator.findById(authorId).lean();
+                        senderRole = user?.rol || user?.role || "";
+                    } catch { }
+                }
 
                 // persist message (non-blocking but awaited for reliability)
                 try {
-                    await MesajChat.create({ text, utilizator, room, authorId, data: new Date() });
+                    await MesajChat.create({
+                        text,
+                        utilizator,
+                        room,
+                        authorId,
+                        rol: senderRole,
+                        fileUrl,
+                        fileName,
+                        data: new Date(),
+                    });
                 } catch (dbErr) {
                     console.warn("Failed to persist chat message:", dbErr?.message || dbErr);
                 }
 
-                const payload = { text, utilizator, at: Date.now(), room, authorId };
+                const payload = {
+                    text,
+                    utilizator,
+                    rol: senderRole,
+                    at: Date.now(),
+                    room,
+                    authorId,
+                    fileUrl,
+                    fileName,
+                };
 
                 if (room) {
                     io.to(room).emit("receiveMessage", payload);
                 } else {
                     io.emit("receiveMessage", payload);
+                }
+
+                if (!["admin", "patiser"].includes(String(senderRole || ""))) {
+                    await notifyAdmins({
+                        titlu: "Mesaj nou",
+                        mesaj: `Mesaj nou de la ${utilizator}.`,
+                        tip: "chat",
+                        link: "/chat/utilizatori",
+                    });
                 }
             } catch (err) {
                 console.error("sendMessage handler error:", err);
