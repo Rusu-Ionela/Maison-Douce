@@ -9,7 +9,7 @@ function RecenziiPrestator() {
   const [recenzii, setRecenzii] = useState([]);
   const [stele, setStele] = useState(5);
   const [comentariu, setComentariu] = useState("");
-  const [foto, setFoto] = useState("");
+  const [photoFile, setPhotoFile] = useState(null);
   const [msg, setMsg] = useState("");
 
   useEffect(() => {
@@ -31,16 +31,23 @@ function RecenziiPrestator() {
     }
     setMsg("");
     try {
+      let fotoUrl = "";
+      if (photoFile) {
+        const fd = new FormData();
+        fd.append("file", photoFile);
+        const upload = await api.post("/upload", fd);
+        fotoUrl = upload.data?.url || "";
+      }
       await api.post("/recenzii/prestator", {
         prestatorId,
         stele,
         comentariu,
-        foto,
+        foto: fotoUrl,
       });
       const res = await api.get(`/recenzii/prestator/${prestatorId}`);
       setRecenzii(Array.isArray(res.data) ? res.data : []);
       setComentariu("");
-      setFoto("");
+      setPhotoFile(null);
     } catch (e) {
       setMsg(e?.response?.data?.message || "Eroare la trimitere recenzie.");
     }
@@ -78,9 +85,9 @@ function RecenziiPrestator() {
         className="border w-full p-2 mt-2"
       />
       <input
-        value={foto}
-        onChange={(e) => setFoto(e.target.value)}
-        placeholder="Link foto (optional)"
+        type="file"
+        accept="image/*"
+        onChange={(e) => setPhotoFile(e.target.files?.[0] || null)}
         className="border w-full p-2 mt-2"
       />
       <button onClick={adaugaRecenzie} className="bg-green-500 text-white px-4 py-2 rounded mt-2">

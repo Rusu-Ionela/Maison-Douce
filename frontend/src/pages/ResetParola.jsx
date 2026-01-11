@@ -5,6 +5,7 @@ import api from "/src/lib/api.js";
 export default function ResetParola() {
   const [sp] = useSearchParams();
   const emailFromQuery = sp.get("email") || "";
+  const tokenFromQuery = sp.get("token") || "";
   const [email, setEmail] = useState(emailFromQuery);
   const [newPassword, setNewPassword] = useState("");
   const [msg, setMsg] = useState("");
@@ -21,9 +22,11 @@ export default function ResetParola() {
     setMsg("");
     setLoading(true);
     try {
+      const payload = tokenFromQuery
+        ? { token: tokenFromQuery, newPassword }
+        : { email, newPassword };
       const { data } = await api.post("/utilizatori/reset-password", {
-        email,
-        newPassword,
+        ...payload,
       });
       setMsg(data.message || "Parola a fost resetata.");
     } catch (e) {
@@ -68,6 +71,7 @@ export default function ResetParola() {
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   required
+                  disabled={!!tokenFromQuery}
                 />
               </div>
 

@@ -171,6 +171,7 @@ export default function CakeConstructor2D({ designId: propDesignId }) {
       qty: 1,
       options,
       variantKey: JSON.stringify(options),
+      prepHours: timpOre,
     });
     alert("Design salvat si adaugat in cos.");
   };

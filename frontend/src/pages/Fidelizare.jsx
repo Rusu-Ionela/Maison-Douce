@@ -85,6 +85,27 @@ export default function Fidelizare() {
       </div>
 
       <div className="bg-white border rounded-lg p-4 space-y-3">
+        <h2 className="text-xl font-semibold">Istoric puncte</h2>
+        {!wallet?.istoric?.length && <div className="text-gray-600">Nu exista tranzactii.</div>}
+        {wallet?.istoric?.length > 0 && (
+          <div className="space-y-2 text-sm">
+            {wallet.istoric.map((h, idx) => (
+              <div key={`${h.data || idx}`} className="border rounded p-2">
+                <div className="font-semibold">{h.tip === "earn" ? "Castig" : "Consum"}</div>
+                <div className="text-gray-600">
+                  {h.puncte} puncte {h.sursa ? `· ${h.sursa}` : ""}
+                </div>
+                {h.descriere && <div className="text-gray-700">{h.descriere}</div>}
+                <div className="text-xs text-gray-500">
+                  {h.data ? new Date(h.data).toLocaleString() : ""}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      <div className="bg-white border rounded-lg p-4 space-y-3">
         <h2 className="text-xl font-semibold">Statistici personale</h2>
         <div className="text-sm text-gray-700">
           Produse preferate: {stats.top.length ? stats.top.join(", ") : "in curs de calcul"}

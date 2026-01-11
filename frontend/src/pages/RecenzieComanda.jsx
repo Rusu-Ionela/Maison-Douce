@@ -8,7 +8,7 @@ export default function RecenzieComanda({ comandaId }) {
   const [recenzie, setRecenzie] = useState(null);
   const [nota, setNota] = useState(5);
   const [comentariu, setComentariu] = useState("");
-  const [foto, setFoto] = useState("");
+  const [photoFile, setPhotoFile] = useState(null);
 
   useEffect(() => {
     if (!resolvedId) return;
@@ -21,14 +21,22 @@ export default function RecenzieComanda({ comandaId }) {
   const handleSubmit = async (e) => {
     e.preventDefault();
     try {
+      let fotoUrl = "";
+      if (photoFile) {
+        const fd = new FormData();
+        fd.append("file", photoFile);
+        const upload = await api.post("/upload", fd);
+        fotoUrl = upload.data?.url || "";
+      }
       await api.post("/recenzii/comanda", {
         comandaId: resolvedId,
         nota,
         comentariu,
-        foto,
+        foto: fotoUrl,
       });
       const res = await api.get(`/recenzii/comanda/${resolvedId}`);
       setRecenzie(res.data || null);
+      setPhotoFile(null);
     } catch (err) {
       alert("Eroare la trimiterea recenziei.");
     }
@@ -64,11 +72,11 @@ export default function RecenzieComanda({ comandaId }) {
         required
       />
 
-      <label className="block mb-2">Link foto (optional):</label>
+      <label className="block mb-2">Foto (optional):</label>
       <input
-        value={foto}
-        onChange={(e) => setFoto(e.target.value)}
-        placeholder="https://..."
+        type="file"
+        accept="image/*"
+        onChange={(e) => setPhotoFile(e.target.files?.[0] || null)}
         className="border p-2 w-full mb-2"
       />
 

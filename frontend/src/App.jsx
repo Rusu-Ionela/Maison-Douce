@@ -238,17 +238,17 @@ export default function App() {
           <Route
             path="/chat/history"
             element={
-              <RequireAuth>
+              <RequireAdmin>
                 <ChatHistory />
-              </RequireAuth>
+              </RequireAdmin>
             }
           />
           <Route
             path="/chat/utilizatori"
             element={
-              <RequireAuth>
+              <RequireAdmin>
                 <ChatUtilizatori />
-              </RequireAuth>
+              </RequireAdmin>
             }
           />
           <Route

@@ -33,7 +33,14 @@ export function CartProvider({ children }) {
             if (existing) {
                 return prev.map((p) =>
                     p.id === item.id && p.variantKey === item.variantKey
-                        ? { ...p, qty: p.qty + (item.qty || 1) }
+                        ? {
+                            ...p,
+                            qty: p.qty + (item.qty || 1),
+                            prepHours: Math.max(
+                                Number(p.prepHours || 0),
+                                Number(item.prepHours || item.timpPreparareOre || 0)
+                            ),
+                        }
                         : p
                 );
             }
@@ -47,6 +54,7 @@ export function CartProvider({ children }) {
                     qty: Number(item.qty || 1),
                     options: item.options || {},
                     variantKey: item.variantKey || "",
+                    prepHours: Number(item.prepHours || item.timpPreparareOre || 0),
                 },
             ];
         });

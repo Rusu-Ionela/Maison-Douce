@@ -282,6 +282,7 @@ export default function Catalog() {
                             price: p.pret || 0,
                             image: p.imagine,
                             qty: 1,
+                            prepHours: p.timpPreparareOre || 24,
                           })
                         }
                       >

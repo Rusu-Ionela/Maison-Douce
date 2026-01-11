@@ -59,7 +59,7 @@ export default function AdminDashboard() {
           <div className="text-2xl font-bold">{stats.newOrders}</div>
         </div>
         <div className="bg-white border rounded-lg p-4">
-          <div className="text-sm text-gray-600">In lucru</div>
+          <div className="text-sm text-gray-600">In productie</div>
           <div className="text-2xl font-bold">{stats.inWork}</div>
         </div>
         <div className="bg-white border rounded-lg p-4">

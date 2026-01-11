@@ -19,6 +19,7 @@ function VizualizareAlbume() {
         {albume.map((album) => (
           <div key={album._id} className="border p-4 rounded">
             <h3 className="font-semibold">{album.titlu}</h3>
+            {album.comandaId && <div className="text-xs text-gray-500">Comanda: {album.comandaId}</div>}
             <div className="grid grid-cols-2 md:grid-cols-3 gap-2 mt-2">
               {album.fisiere.map((f, index) => (
                 <img key={index} src={f} alt="Fisier" className="w-full h-32 object-cover rounded" />

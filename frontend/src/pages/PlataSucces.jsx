@@ -24,10 +24,46 @@ export default function PlataSucces() {
         <div className="border rounded-lg p-4 bg-white space-y-2">
           <div className="font-semibold">Numar comanda: {comanda.numeroComanda || comanda._id}</div>
           <div>Status initial: {comanda.status || "plasata"}</div>
-          <div>Total: {comanda.total} MDL</div>
+          <div>Total: {comanda.totalFinal || comanda.total} MDL</div>
           <div>
             Livrare: {comanda.dataLivrare || "-"} {comanda.oraLivrare || ""}
           </div>
+          <div>Metoda: {comanda.metodaLivrare || "ridicare"}</div>
+          {comanda.adresaLivrare && <div>Adresa: {comanda.adresaLivrare}</div>}
+          {comanda.deliveryWindow && <div>Fereastra: {comanda.deliveryWindow}</div>}
+          {comanda.deliveryInstructions && <div>Instructiuni: {comanda.deliveryInstructions}</div>}
+          {comanda.notesClient && <div>Note client: {comanda.notesClient}</div>}
+
+          <div className="pt-2 border-t">
+            <div className="font-semibold mb-1">Produse</div>
+            {(comanda.items || []).length === 0 && <div className="text-sm text-gray-600">Nu exista produse.</div>}
+            <ul className="text-sm text-gray-700 space-y-1">
+              {(comanda.items || []).map((it, idx) => (
+                <li key={`${it.productId || it._id || idx}`}>
+                  {it.name || it.nume || "Produs"} x{it.qty || it.cantitate || 1} ({it.price || it.pret || 0} MDL)
+                </li>
+              ))}
+            </ul>
+          </div>
+
+          {Array.isArray(comanda.attachments) && comanda.attachments.length > 0 && (
+            <div className="pt-2 border-t">
+              <div className="font-semibold mb-1">Atasamente</div>
+              <div className="space-y-1">
+                {comanda.attachments.map((f, idx) => (
+                  <a
+                    key={`${f.url || idx}`}
+                    href={f.url}
+                    className="text-pink-600 underline text-sm block"
+                    target="_blank"
+                    rel="noreferrer"
+                  >
+                    {f.name || `Fisier ${idx + 1}`}
+                  </a>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
       )}
 

@@ -4,15 +4,18 @@ import api from "/src/lib/api.js";
 function ResetareParola() {
   const [email, setEmail] = useState("");
   const [mesaj, setMesaj] = useState("");
+  const [link, setLink] = useState("");
   const [loading, setLoading] = useState(false);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     setMesaj("");
+    setLink("");
     setLoading(true);
     try {
       const res = await api.post("/reset-parola/send-reset-email", { email });
       setMesaj(res.data?.message || res.data?.mesaj || "Verifica emailul pentru link-ul de resetare.");
+      if (res.data?.link) setLink(res.data.link);
     } catch (err) {
       console.error("Eroare:", err);
       setMesaj(err?.response?.data?.message || "Eroare la trimitere email.");
@@ -38,6 +41,14 @@ function ResetareParola() {
         </button>
       </form>
       {mesaj && <p className="mt-4">{mesaj}</p>}
+      {link && (
+        <div className="mt-3 text-sm">
+          Link reset:{" "}
+          <a className="text-pink-600 underline break-all" href={link}>
+            {link}
+          </a>
+        </div>
+      )}
     </div>
   );
 }

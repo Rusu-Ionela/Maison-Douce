@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import api from "/src/lib/api.js";
 
-const STATUSES = ["plasata", "acceptata", "in_lucru", "gata", "livrata", "ridicata", "anulata", "refuzata"];
+const STATUSES = ["plasata", "in_asteptare", "acceptata", "in_lucru", "gata", "livrata", "ridicata", "anulata", "refuzata"];
 
 export default function AdminComenzi() {
   const [list, setList] = useState([]);
@@ -11,12 +11,15 @@ export default function AdminComenzi() {
   const [msg, setMsg] = useState("");
   const [schedule, setSchedule] = useState({ id: null, data: "", ora: "" });
   const [refuz, setRefuz] = useState({ id: null, motiv: "" });
+  const [priceEdit, setPriceEdit] = useState({ id: null, total: "", note: "" });
 
   const load = async () => {
     setLoading(true);
     try {
       const res = await api.get("/comenzi");
-      setList(Array.isArray(res.data) ? res.data : []);
+      const all = Array.isArray(res.data) ? res.data : [];
+      const onlyOrders = all.filter((c) => c._source !== "rezervare");
+      setList(onlyOrders);
     } catch {
       setList([]);
     } finally {
@@ -63,6 +66,26 @@ export default function AdminComenzi() {
     load();
   };
 
+  const submitPrice = async (id) => {
+    if (!id || priceEdit.id !== id) return;
+    const totalVal = Number(priceEdit.total || 0);
+    if (!Number.isFinite(totalVal) || totalVal <= 0) {
+      setMsg("Introdu un pret valid.");
+      return;
+    }
+    try {
+      await api.patch(`/comenzi/${id}/price`, {
+        total: totalVal,
+        notesAdmin: priceEdit.note || "",
+        note: priceEdit.note || "",
+      });
+      setPriceEdit({ id: null, total: "", note: "" });
+      load();
+    } catch (e) {
+      setMsg(e?.response?.data?.message || "Eroare la actualizare pret.");
+    }
+  };
+
   return (
     <div className="max-w-6xl mx-auto p-6 space-y-4">
       <h1 className="text-2xl font-bold">Comenzi</h1>
@@ -95,10 +118,38 @@ export default function AdminComenzi() {
             <div className="text-sm text-gray-600">
               {c.dataLivrare || c.dataRezervare || "-"} {c.oraLivrare || c.oraRezervare || ""}
             </div>
+            <div className="text-sm text-gray-700">
+              Client: {c.clientName || c.clientId || "-"}
+              {c.clientEmail ? ` · ${c.clientEmail}` : ""}
+              {c.clientTelefon ? ` · ${c.clientTelefon}` : ""}
+            </div>
+            <div className="text-sm text-gray-600">
+              {c.metodaLivrare === "livrare" ? "Livrare" : "Ridicare"}
+              {c.adresaLivrare ? ` · ${c.adresaLivrare}` : ""}
+            </div>
+            {c.deliveryWindow && <div className="text-xs text-gray-500">Fereastra: {c.deliveryWindow}</div>}
+            {c.deliveryInstructions && <div className="text-xs text-gray-500">Instructiuni: {c.deliveryInstructions}</div>}
+            {c.notesClient && <div className="text-xs text-gray-500">Note client: {c.notesClient}</div>}
+            {c.notesAdmin && <div className="text-xs text-gray-500">Note admin: {c.notesAdmin}</div>}
             <div className="text-sm">
               {(c.items || []).map((it) => `${it.name || it.nume} x${it.qty || it.cantitate || 1}`).join(" | ")}
             </div>
-            <div className="text-sm font-semibold">Total: {c.total || 0} MDL</div>
+            {Array.isArray(c.attachments) && c.attachments.length > 0 && (
+              <div className="text-xs text-gray-600 space-y-1">
+                {c.attachments.map((a, idx) => (
+                  <a
+                    key={`${a.url || idx}`}
+                    href={a.url}
+                    className="text-pink-600 underline block"
+                    target="_blank"
+                    rel="noreferrer"
+                  >
+                    {a.name || `Fisier ${idx + 1}`}
+                  </a>
+                ))}
+              </div>
+            )}
+            <div className="text-sm font-semibold">Total: {c.totalFinal || c.total || 0} MDL</div>
             <div className="text-xs text-gray-500">Plata: {c.paymentStatus || c.statusPlata || "unpaid"}</div>
 
             <div className="flex flex-wrap gap-2">
@@ -120,6 +171,46 @@ export default function AdminComenzi() {
             </div>
 
             <div className="flex flex-col gap-2 pt-2 border-t">
+              <div className="text-sm font-semibold">Actualizare pret</div>
+              <div className="flex flex-col gap-2">
+                <div className="flex gap-2">
+                  <input
+                    type="number"
+                    value={priceEdit.id === c._id ? priceEdit.total : String(c.totalFinal || c.total || "")}
+                    onFocus={() =>
+                      setPriceEdit({
+                        id: c._id,
+                        total: String(c.totalFinal || c.total || 0),
+                        note: priceEdit.id === c._id ? priceEdit.note : "",
+                      })
+                    }
+                    onChange={(e) =>
+                      setPriceEdit((prev) => ({
+                        id: c._id,
+                        total: e.target.value,
+                        note: prev.id === c._id ? prev.note : "",
+                      }))
+                    }
+                    className="border rounded p-1 flex-1"
+                  />
+                  <button className="border px-2 py-1 rounded text-xs" onClick={() => submitPrice(c._id)}>
+                    Salveaza
+                  </button>
+                </div>
+                <input
+                  value={priceEdit.id === c._id ? priceEdit.note : ""}
+                  onChange={(e) =>
+                    setPriceEdit((prev) => ({
+                      id: c._id,
+                      total: prev.id === c._id ? prev.total : String(c.totalFinal || c.total || 0),
+                      note: e.target.value,
+                    }))
+                  }
+                  placeholder="Nota (optional)"
+                  className="border rounded p-1"
+                />
+              </div>
+
               <div className="text-sm font-semibold">Reprogramare</div>
               <div className="flex gap-2">
                 <input

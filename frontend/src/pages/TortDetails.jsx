@@ -16,7 +16,8 @@ export default function TortDetails() {
   const [marime, setMarime] = useState("");
   const [portii, setPortii] = useState("");
   const [reviews, setReviews] = useState([]);
-  const [reviewForm, setReviewForm] = useState({ stele: 5, comentariu: "", foto: "" });
+  const [reviewForm, setReviewForm] = useState({ stele: 5, comentariu: "" });
+  const [reviewFile, setReviewFile] = useState(null);
   const [sendingReview, setSendingReview] = useState(false);
   const [reviewMsg, setReviewMsg] = useState("");
 
@@ -79,6 +80,7 @@ export default function TortDetails() {
       qty,
       options,
       variantKey,
+      prepHours: tort.timpPreparareOre || 24,
     });
   };
 
@@ -95,15 +97,23 @@ export default function TortDetails() {
     setSendingReview(true);
     setReviewMsg("");
     try {
+      let fotoUrl = "";
+      if (reviewFile) {
+        const fd = new FormData();
+        fd.append("file", reviewFile);
+        const upload = await api.post("/upload", fd);
+        fotoUrl = upload.data?.url || "";
+      }
       await api.post("/recenzii/produs", {
         tortId: id,
         stele: Number(reviewForm.stele || 5),
         comentariu: reviewForm.comentariu,
-        foto: reviewForm.foto || "",
+        foto: fotoUrl,
       });
       const res = await api.get(`/recenzii/produs/${id}`);
       setReviews(Array.isArray(res.data) ? res.data : []);
-      setReviewForm({ stele: 5, comentariu: "", foto: "" });
+      setReviewForm({ stele: 5, comentariu: "" });
+      setReviewFile(null);
     } catch (e) {
       console.error("Review error:", e);
       setReviewMsg(e?.response?.data?.message || "Nu am putut trimite recenzia.");
@@ -270,11 +280,11 @@ export default function TortDetails() {
               </select>
             </label>
             <label className="text-sm font-semibold text-gray-700 sm:col-span-2">
-              Link foto (optional)
+              Foto (optional)
               <input
-                value={reviewForm.foto}
-                onChange={(e) => setReviewForm((s) => ({ ...s, foto: e.target.value }))}
-                placeholder="https://..."
+                type="file"
+                accept="image/*"
+                onChange={(e) => setReviewFile(e.target.files?.[0] || null)}
                 className="mt-1 w-full rounded-lg border border-rose-200 px-3 py-2"
               />
             </label>

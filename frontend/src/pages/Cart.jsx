@@ -5,6 +5,7 @@ import { useAuth } from "../context/AuthContext";
 import { OrdersAPI } from "../api/orders";
 import { getAvailability } from "../api/calendar";
 import SlotPicker from "../components/SlotPicker";
+import api from "/src/lib/api.js";
 import { buttons, cards, inputs, containers } from "/src/lib/tailwindComponents.js";
 
 export default function Cart() {
@@ -14,14 +15,69 @@ export default function Cart() {
 
   const [metodaLivrare, setMetodaLivrare] = useState("ridicare");
   const [adresa, setAdresa] = useState("");
+  const [addressMode, setAddressMode] = useState("saved");
+  const [selectedAddressIdx, setSelectedAddressIdx] = useState("");
   const [date, setDate] = useState("");
   const [time, setTime] = useState("");
   const [slots, setSlots] = useState(null);
   const [loadingSlots, setLoadingSlots] = useState(false);
   const [notes, setNotes] = useState("");
+  const [deliveryInstructions, setDeliveryInstructions] = useState("");
+  const [windowStart, setWindowStart] = useState("");
+  const [windowEnd, setWindowEnd] = useState("");
+  const [attachments, setAttachments] = useState([]);
   const LIVRARE_FEE = 100;
-  const MIN_LEAD_HOURS = 24;
   const prestatorId = import.meta.env.VITE_PRESTATOR_ID || "default";
+
+  const addressOptions = useMemo(() => {
+    const options = [];
+    if (user?.adresa) {
+      const hasDefault = (user?.adreseSalvate || []).some((a) => a?.isDefault);
+      options.push({
+        label: "Adresa principala",
+        address: user.adresa,
+        isDefault: !hasDefault,
+      });
+    }
+    (user?.adreseSalvate || []).forEach((a, idx) => {
+      if (!a?.address) return;
+      options.push({
+        label: a.label || `Adresa ${idx + 1}`,
+        address: a.address,
+        isDefault: !!a.isDefault,
+      });
+    });
+    return options;
+  }, [user]);
+
+  const defaultAddressIdx = useMemo(() => {
+    const idx = addressOptions.findIndex((a) => a.isDefault);
+    if (idx >= 0) return String(idx);
+    return addressOptions.length ? "0" : "";
+  }, [addressOptions]);
+
+  useEffect(() => {
+    if (metodaLivrare !== "livrare") return;
+    if (!addressOptions.length) {
+      setAddressMode("custom");
+      return;
+    }
+    if (!selectedAddressIdx) {
+      setSelectedAddressIdx(defaultAddressIdx);
+    }
+  }, [metodaLivrare, addressOptions, defaultAddressIdx, selectedAddressIdx]);
+
+  useEffect(() => {
+    if (addressMode !== "saved") return;
+    const idx = Number(selectedAddressIdx);
+    if (Number.isNaN(idx) || !addressOptions[idx]) return;
+    setAdresa(addressOptions[idx].address);
+  }, [addressMode, selectedAddressIdx, addressOptions]);
+
+  const leadHours = useMemo(() => {
+    const maxPrep = items.reduce((max, it) => Math.max(max, Number(it.prepHours || 0)), 0);
+    return Math.max(24, maxPrep || 0);
+  }, [items]);
 
   const total = subtotal + (metodaLivrare === "livrare" ? LIVRARE_FEE : 0);
 
@@ -36,9 +92,9 @@ export default function Cart() {
 
   const minDate = useMemo(() => {
     const now = new Date();
-    now.setHours(now.getHours() + MIN_LEAD_HOURS);
+    now.setHours(now.getHours() + leadHours);
     return now.toISOString().slice(0, 10);
-  }, [MIN_LEAD_HOURS]);
+  }, [leadHours]);
 
   const slotIsValid = () => {
     if (!date || !time) return false;
@@ -46,8 +102,28 @@ export default function Cart() {
     const dt = new Date(date);
     dt.setHours(h || 0, m || 0, 0, 0);
     const min = new Date();
-    min.setHours(min.getHours() + MIN_LEAD_HOURS);
+    min.setHours(min.getHours() + leadHours);
     return dt >= min;
+  };
+
+  const buildDeliveryWindow = () => {
+    if (!windowStart && !windowEnd) return "";
+    if (windowStart && windowEnd) return `${windowStart}-${windowEnd}`;
+    return windowStart || windowEnd || "";
+  };
+
+  const uploadAttachments = async () => {
+    if (!attachments.length) return [];
+    const uploaded = [];
+    for (const file of attachments) {
+      const fd = new FormData();
+      fd.append("file", file);
+      const res = await api.post("/upload", fd);
+      const url = res.data?.url;
+      if (!url) throw new Error("Upload failed");
+      uploaded.push({ url, name: file.name });
+    }
+    return uploaded;
   };
 
   async function checkout() {
@@ -65,11 +141,19 @@ export default function Cart() {
       return;
     }
     if (!slotIsValid()) {
-      alert(`Alege un slot cu minim ${MIN_LEAD_HOURS}h inainte.`);
+      alert(`Alege un slot cu minim ${leadHours}h inainte.`);
       return;
     }
     if (metodaLivrare === "livrare" && !adresa.trim()) {
       alert("Completeaza adresa.");
+      return;
+    }
+
+    let uploaded = [];
+    try {
+      uploaded = await uploadAttachments();
+    } catch (e) {
+      alert("Nu am putut incarca atasamentele. Incearca din nou.");
       return;
     }
 
@@ -84,6 +168,9 @@ export default function Cart() {
       })),
       metodaLivrare: metodaLivrare === "livrare" ? "livrare" : "ridicare",
       adresaLivrare: metodaLivrare === "livrare" ? adresa.trim() : undefined,
+      deliveryInstructions: metodaLivrare === "livrare" ? deliveryInstructions.trim() : "",
+      deliveryWindow: metodaLivrare === "livrare" ? buildDeliveryWindow() : "",
+      attachments: uploaded,
       dataLivrare: date,
       oraLivrare: time,
       prestatorId,
@@ -93,6 +180,10 @@ export default function Cart() {
     try {
       const comanda = await OrdersAPI.create(payload);
       clear();
+      setAttachments([]);
+      setDeliveryInstructions("");
+      setWindowStart("");
+      setWindowEnd("");
       nav(`/plata?comandaId=${comanda._id}`);
     } catch (e) {
       alert(e?.response?.data?.message || "Eroare la creare comanda.");
@@ -179,6 +270,9 @@ export default function Cart() {
                   <SlotPicker slots={slots} date={date} value={time} onChange={setTime} />
                 )}
               </div>
+              <div className="text-xs text-gray-500 mb-3">
+                Timp minim de pregatire: {leadHours}h.
+              </div>
 
               <label className="block text-sm font-semibold text-gray-700 mb-2">Metoda predarii</label>
               <select
@@ -191,12 +285,78 @@ export default function Cart() {
               </select>
 
               {metodaLivrare === "livrare" && (
-                <input
-                  className={`${inputs.default} mb-4`}
-                  placeholder="Adresa livrare"
-                  value={adresa}
-                  onChange={(e) => setAdresa(e.target.value)}
-                />
+                <div className="mb-4 space-y-3">
+                  <div>
+                    <label className="block text-sm font-semibold text-gray-700 mb-2">Adresa livrare</label>
+                    {addressOptions.length > 0 && (
+                      <div className="flex flex-wrap gap-2 mb-2">
+                        <select
+                          value={addressMode}
+                          onChange={(e) => setAddressMode(e.target.value)}
+                          className={`${inputs.default} flex-1`}
+                        >
+                          <option value="saved">Adrese salvate</option>
+                          <option value="custom">Adresa noua</option>
+                        </select>
+                        {addressMode === "saved" && (
+                          <select
+                            value={selectedAddressIdx}
+                            onChange={(e) => setSelectedAddressIdx(e.target.value)}
+                            className={`${inputs.default} flex-1`}
+                          >
+                            {addressOptions.map((opt, idx) => (
+                              <option key={`${opt.label}_${idx}`} value={String(idx)}>
+                                {opt.label}
+                              </option>
+                            ))}
+                          </select>
+                        )}
+                      </div>
+                    )}
+                    {addressMode === "saved" && selectedAddressIdx !== "" ? (
+                      <div className="text-sm text-gray-600 border rounded-lg p-2 bg-gray-50">
+                        {adresa || "Selecteaza o adresa salvata."}
+                      </div>
+                    ) : (
+                      <input
+                        className={inputs.default}
+                        placeholder="Adresa livrare"
+                        value={adresa}
+                        onChange={(e) => setAdresa(e.target.value)}
+                      />
+                    )}
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-semibold text-gray-700 mb-2">
+                      Fereastra livrare (optional)
+                    </label>
+                    <div className="grid grid-cols-2 gap-2">
+                      <input
+                        type="time"
+                        value={windowStart}
+                        onChange={(e) => setWindowStart(e.target.value)}
+                        className={inputs.default}
+                      />
+                      <input
+                        type="time"
+                        value={windowEnd}
+                        onChange={(e) => setWindowEnd(e.target.value)}
+                        className={inputs.default}
+                      />
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-semibold text-gray-700 mb-2">Instructiuni curier</label>
+                    <textarea
+                      className={`${inputs.default} min-h-[80px]`}
+                      placeholder="Etaj, interfon, indicatii speciale..."
+                      value={deliveryInstructions}
+                      onChange={(e) => setDeliveryInstructions(e.target.value)}
+                    />
+                  </div>
+                </div>
               )}
 
               <label className="block text-sm font-semibold text-gray-700 mb-2">Note comanda</label>
@@ -206,6 +366,19 @@ export default function Cart() {
                 value={notes}
                 onChange={(e) => setNotes(e.target.value)}
               />
+
+              <label className="block text-sm font-semibold text-gray-700 mb-2">Atasamente (optional)</label>
+              <input
+                type="file"
+                multiple
+                onChange={(e) => setAttachments(Array.from(e.target.files || []))}
+                className={`${inputs.default} mb-2`}
+              />
+              {attachments.length > 0 && (
+                <div className="text-xs text-gray-600 mb-3">
+                  Fisiere: {attachments.map((f) => f.name).join(", ")}
+                </div>
+              )}
 
               <div className="space-y-1 text-gray-700">
                 <div className="flex justify-between">
@@ -225,7 +398,17 @@ export default function Cart() {
               </div>
 
               <div className="mt-4 flex gap-2">
-                <button className={buttons.outline} onClick={clear}>
+                <button
+                  className={buttons.outline}
+                  onClick={() => {
+                    clear();
+                    setAttachments([]);
+                    setNotes("");
+                    setDeliveryInstructions("");
+                    setWindowStart("");
+                    setWindowEnd("");
+                  }}
+                >
                   Goleste cosul
                 </button>
                 <button className={buttons.primary} onClick={checkout}>

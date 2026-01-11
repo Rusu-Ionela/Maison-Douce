@@ -4,6 +4,7 @@ import api from "/src/lib/api.js";
 export default function AdminAlbume() {
   const [utilizatorId, setUtilizatorId] = useState("");
   const [titlu, setTitlu] = useState("");
+  const [comandaId, setComandaId] = useState("");
   const [fisiere, setFisiere] = useState([]);
   const [msg, setMsg] = useState("");
   const [albume, setAlbume] = useState([]);
@@ -40,10 +41,12 @@ export default function AdminAlbume() {
         titlu,
         fisiere: urls,
         utilizatorId,
+        comandaId: comandaId || undefined,
       });
 
       setMsg("Album creat si notificat clientul.");
       setTitlu("");
+      setComandaId("");
       setFisiere([]);
       await loadAlbume();
     } catch (e) {
@@ -75,6 +78,13 @@ export default function AdminAlbume() {
             placeholder="Titlu album"
             className="border p-2 w-full rounded"
           />
+          <input
+            type="text"
+            value={comandaId}
+            onChange={(e) => setComandaId(e.target.value)}
+            placeholder="Comanda ID (optional)"
+            className="border p-2 w-full rounded"
+          />
           <input type="file" multiple onChange={(e) => setFisiere(Array.from(e.target.files || []))} />
           <button type="submit" className="bg-pink-500 text-white px-4 py-2 rounded" disabled={loading}>
             {loading ? "Se salveaza..." : "Creeaza album"}
@@ -94,6 +104,7 @@ export default function AdminAlbume() {
           {albume.map((album) => (
             <div key={album._id} className="border p-3 rounded">
               <div className="font-semibold">{album.titlu}</div>
+              {album.comandaId && <div className="text-xs text-gray-500">Comanda: {album.comandaId}</div>}
               <div className="grid grid-cols-2 md:grid-cols-3 gap-2 mt-2">
                 {(album.fisiere || []).map((f, index) => (
                   <img key={index} src={f} alt="Fisier" className="w-full h-32 object-cover rounded" />

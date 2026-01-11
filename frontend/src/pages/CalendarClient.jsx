@@ -21,15 +21,73 @@ export default function CalendarClient() {
   const [time, setTime] = useState("");
   const [metoda, setMetoda] = useState("ridicare");
   const [adresa, setAdresa] = useState("");
+  const [addressMode, setAddressMode] = useState("saved");
+  const [selectedAddressIdx, setSelectedAddressIdx] = useState("");
   const [slots, setSlots] = useState([]);
   const [subtotal, setSubtotal] = useState(0);
   const [descriere, setDescriere] = useState("");
+  const [notes, setNotes] = useState("");
+  const [deliveryInstructions, setDeliveryInstructions] = useState("");
+  const [windowStart, setWindowStart] = useState("");
+  const [windowEnd, setWindowEnd] = useState("");
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState("");
   const [success, setSuccess] = useState(null);
 
   const prestatorId = import.meta.env.VITE_PRESTATOR_ID || "default";
   const selectedDate = calendarDate ? toDateStr(calendarDate) : "";
+  const leadHours = Number(import.meta.env.VITE_MIN_LEAD_HOURS || 24);
+
+  const addressOptions = useMemo(() => {
+    const options = [];
+    if (user?.adresa) {
+      const hasDefault = (user?.adreseSalvate || []).some((a) => a?.isDefault);
+      options.push({
+        label: "Adresa principala",
+        address: user.adresa,
+        isDefault: !hasDefault,
+      });
+    }
+    (user?.adreseSalvate || []).forEach((a, idx) => {
+      if (!a?.address) return;
+      options.push({
+        label: a.label || `Adresa ${idx + 1}`,
+        address: a.address,
+        isDefault: !!a.isDefault,
+      });
+    });
+    return options;
+  }, [user]);
+
+  const defaultAddressIdx = useMemo(() => {
+    const idx = addressOptions.findIndex((a) => a.isDefault);
+    if (idx >= 0) return String(idx);
+    return addressOptions.length ? "0" : "";
+  }, [addressOptions]);
+
+  useEffect(() => {
+    if (metoda !== "livrare") return;
+    if (!addressOptions.length) {
+      setAddressMode("custom");
+      return;
+    }
+    if (!selectedAddressIdx) {
+      setSelectedAddressIdx(defaultAddressIdx);
+    }
+  }, [metoda, addressOptions, defaultAddressIdx, selectedAddressIdx]);
+
+  useEffect(() => {
+    if (addressMode !== "saved") return;
+    const idx = Number(selectedAddressIdx);
+    if (Number.isNaN(idx) || !addressOptions[idx]) return;
+    setAdresa(addressOptions[idx].address);
+  }, [addressMode, selectedAddressIdx, addressOptions]);
+
+  const minDateTime = useMemo(() => {
+    const d = new Date();
+    d.setHours(d.getHours() + leadHours);
+    return d;
+  }, [leadHours]);
 
   useEffect(() => {
     const from = new Date();
@@ -54,10 +112,14 @@ export default function CalendarClient() {
 
   const daySlots = useMemo(() => {
     if (!selectedDate) return [];
-    return (slots || [])
-      .filter((s) => s.date === selectedDate)
-      .sort((a, b) => String(a.time || "").localeCompare(String(b.time || "")));
-  }, [slots, selectedDate]);
+    let filtered = (slots || []).filter((s) => s.date === selectedDate);
+    const minDateStr = toDateStr(minDateTime);
+    if (selectedDate === minDateStr) {
+      const minTime = minDateTime.toTimeString().slice(0, 5);
+      filtered = filtered.filter((s) => String(s.time || "") >= minTime);
+    }
+    return filtered.sort((a, b) => String(a.time || "").localeCompare(String(b.time || "")));
+  }, [slots, selectedDate, minDateTime]);
 
   const availableDates = useMemo(() => {
     const map = new Map();
@@ -70,11 +132,25 @@ export default function CalendarClient() {
 
   const tileDisabled = ({ date, view }) => {
     if (view !== "month") return false;
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    if (date < today) return true;
+    const minDay = new Date(minDateTime);
+    minDay.setHours(0, 0, 0, 0);
+    if (date < minDay) return true;
     const dateStr = toDateStr(date);
     return !availableDates.has(dateStr);
+  };
+
+  const slotIsValid = () => {
+    if (!selectedDate || !time) return false;
+    const [h, m] = String(time).split(":").map(Number);
+    const dt = new Date(selectedDate);
+    dt.setHours(h || 0, m || 0, 0, 0);
+    return dt >= minDateTime;
+  };
+
+  const buildDeliveryWindow = () => {
+    if (!windowStart && !windowEnd) return "";
+    if (windowStart && windowEnd) return `${windowStart}-${windowEnd}`;
+    return windowStart || windowEnd || "";
   };
 
   async function handleReserve(e) {
@@ -90,6 +166,10 @@ export default function CalendarClient() {
       setErr("Selecteaza data si ora.");
       return;
     }
+    if (!slotIsValid()) {
+      setErr(`Alege un slot cu minim ${leadHours}h inainte.`);
+      return;
+    }
 
     try {
       setLoading(true);
@@ -100,8 +180,11 @@ export default function CalendarClient() {
         time,
         metoda,
         adresaLivrare: metoda === "livrare" ? adresa : "",
+        deliveryInstructions: metoda === "livrare" ? deliveryInstructions.trim() : "",
+        deliveryWindow: metoda === "livrare" ? buildDeliveryWindow() : "",
         subtotal: Number(subtotal || 0),
         descriere: descriere || undefined,
+        notes: notes || undefined,
       };
 
       const data = await reserveSlot(payload);
@@ -186,7 +269,10 @@ export default function CalendarClient() {
                     <p>Se incarca intervalele...</p>
                   </div>
                 )}
-                <SlotPicker slots={{ slots }} date={selectedDate} value={time} onChange={setTime} />
+                <SlotPicker slots={daySlots} date={selectedDate} value={time} onChange={setTime} />
+                <p className="text-xs text-gray-500 mt-2">
+                  Timp minim de pregatire: {leadHours}h.
+                </p>
               </div>
 
               <div>
@@ -221,17 +307,82 @@ export default function CalendarClient() {
               </div>
 
               {metoda === "livrare" && (
-                <div className="p-4 bg-blue-50 rounded-lg border-l-4 border-blue-500">
-                  <label className="block text-sm font-semibold text-gray-700 mb-2">
-                    Adresa livrare
-                  </label>
-                  <input
-                    type="text"
-                    value={adresa}
-                    onChange={(e) => setAdresa(e.target.value)}
-                    className={inputs.default}
-                    placeholder="Strada, numar, bloc, apartament..."
-                  />
+                <div className="p-4 bg-blue-50 rounded-lg border-l-4 border-blue-500 space-y-3">
+                  <div>
+                    <label className="block text-sm font-semibold text-gray-700 mb-2">
+                      Adresa livrare
+                    </label>
+                    {addressOptions.length > 0 && (
+                      <div className="flex flex-wrap gap-2 mb-2">
+                        <select
+                          value={addressMode}
+                          onChange={(e) => setAddressMode(e.target.value)}
+                          className={`${inputs.default} flex-1`}
+                        >
+                          <option value="saved">Adrese salvate</option>
+                          <option value="custom">Adresa noua</option>
+                        </select>
+                        {addressMode === "saved" && (
+                          <select
+                            value={selectedAddressIdx}
+                            onChange={(e) => setSelectedAddressIdx(e.target.value)}
+                            className={`${inputs.default} flex-1`}
+                          >
+                            {addressOptions.map((opt, idx) => (
+                              <option key={`${opt.label}_${idx}`} value={String(idx)}>
+                                {opt.label}
+                              </option>
+                            ))}
+                          </select>
+                        )}
+                      </div>
+                    )}
+                    {addressMode === "saved" && selectedAddressIdx !== "" ? (
+                      <div className="text-sm text-gray-600 border rounded-lg p-2 bg-white">
+                        {adresa || "Selecteaza o adresa salvata."}
+                      </div>
+                    ) : (
+                      <input
+                        type="text"
+                        value={adresa}
+                        onChange={(e) => setAdresa(e.target.value)}
+                        className={inputs.default}
+                        placeholder="Strada, numar, bloc, apartament..."
+                      />
+                    )}
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-semibold text-gray-700 mb-2">
+                      Fereastra livrare (optional)
+                    </label>
+                    <div className="grid grid-cols-2 gap-2">
+                      <input
+                        type="time"
+                        value={windowStart}
+                        onChange={(e) => setWindowStart(e.target.value)}
+                        className={inputs.default}
+                      />
+                      <input
+                        type="time"
+                        value={windowEnd}
+                        onChange={(e) => setWindowEnd(e.target.value)}
+                        className={inputs.default}
+                      />
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-semibold text-gray-700 mb-2">
+                      Instructiuni curier
+                    </label>
+                    <textarea
+                      value={deliveryInstructions}
+                      onChange={(e) => setDeliveryInstructions(e.target.value)}
+                      className={`${inputs.default} min-h-[80px]`}
+                      placeholder="Etaj, interfon, indicatii speciale..."
+                    />
+                  </div>
                 </div>
               )}
 
@@ -259,6 +410,18 @@ export default function CalendarClient() {
                   onChange={(e) => setDescriere(e.target.value)}
                   className={`${inputs.default} min-h-[90px]`}
                   placeholder="Ex: Tort ciocolata 1kg, 8 persoane, mesaj: La multi ani!"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-semibold text-gray-700 mb-2">
+                  Note suplimentare
+                </label>
+                <textarea
+                  value={notes}
+                  onChange={(e) => setNotes(e.target.value)}
+                  className={`${inputs.default} min-h-[80px]`}
+                  placeholder="Detalii extra pentru patiser..."
                 />
               </div>
 

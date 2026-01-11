@@ -11,7 +11,10 @@ export default function AdminCalendar() {
   const [error, setError] = useState("");
   const [newSlotTime, setNewSlotTime] = useState("");
   const [newSlotCapacity, setNewSlotCapacity] = useState(1);
+  const [dayCapacity, setDayCapacity] = useState("");
+  const [savingCapacity, setSavingCapacity] = useState(false);
 
+  const prestatorId = import.meta.env.VITE_PRESTATOR_ID || "default";
   const dateStr = selectedDate.toISOString().split("T")[0];
 
   useEffect(() => {
@@ -19,16 +22,21 @@ export default function AdminCalendar() {
       setLoading(true);
       setError("");
       try {
-        const [slotsRes, reservationsRes] = await Promise.all([
-          api.get(`/calendar/availability/default`, {
+        const [slotsRes, reservationsRes, dayCapRes] = await Promise.all([
+          api.get(`/calendar/availability/${prestatorId}`, {
             params: { from: dateStr, to: dateStr },
           }),
           api.get(`/calendar/admin/${dateStr}`),
+          api.get(`/calendar/day-capacity/${prestatorId}`, {
+            params: { from: dateStr, to: dateStr },
+          }),
         ]);
 
         setSlots(slotsRes.data.slots || []);
         const rez = reservationsRes.data?.rezervari || reservationsRes.data || [];
         setReservations(rez);
+        const dayCap = Array.isArray(dayCapRes.data?.items) ? dayCapRes.data.items[0] : null;
+        setDayCapacity(dayCap?.capacity != null ? String(dayCap.capacity) : "");
       } catch (err) {
         console.error(err);
         setError("Eroare la incarcare");
@@ -37,10 +45,10 @@ export default function AdminCalendar() {
       }
     };
     fetchData();
-  }, [dateStr]);
+  }, [dateStr, prestatorId]);
 
   const refreshSlots = async () => {
-    const { data } = await api.get("/calendar/availability/default", {
+    const { data } = await api.get(`/calendar/availability/${prestatorId}`, {
       params: { from: dateStr, to: dateStr },
     });
     setSlots(data.slots || []);
@@ -53,7 +61,7 @@ export default function AdminCalendar() {
         return;
       }
 
-      await api.post("/calendar/availability/default", {
+      await api.post(`/calendar/availability/${prestatorId}`, {
         slots: [{ date: dateStr, time: newSlotTime, capacity: Number(newSlotCapacity || 1) }],
       });
 
@@ -68,13 +76,41 @@ export default function AdminCalendar() {
 
   const blockSlot = async (time) => {
     try {
-      await api.post("/calendar/availability/default", {
+      await api.post(`/calendar/availability/${prestatorId}`, {
         slots: [{ date: dateStr, time, capacity: 0 }],
       });
       await refreshSlots();
     } catch (err) {
       console.error(err);
       setError("Eroare la blocarea slotului");
+    }
+  };
+
+  const saveDayCapacity = async () => {
+    setError("");
+    setSavingCapacity(true);
+    try {
+      await api.post(`/calendar/day-capacity/${prestatorId}`, {
+        date: dateStr,
+        capacity: Number(dayCapacity || 0),
+      });
+    } catch (err) {
+      console.error(err);
+      setError("Eroare la salvarea capacitatii.");
+    } finally {
+      setSavingCapacity(false);
+    }
+  };
+
+  const updateReservationStatus = async (id, status) => {
+    try {
+      await api.patch(`/rezervari/${id}/status`, { status });
+      const res = await api.get(`/calendar/admin/${dateStr}`);
+      const rez = res.data?.rezervari || res.data || [];
+      setReservations(rez);
+    } catch (err) {
+      console.error(err);
+      setError("Eroare la actualizarea rezervarii.");
     }
   };
 
@@ -97,6 +133,26 @@ export default function AdminCalendar() {
                 onChange={(e) => setSelectedDate(new Date(e.target.value))}
                 className={inputs.default}
               />
+            </div>
+            <div>
+              <label className="block text-sm font-semibold text-gray-700 mb-2">Capacitate zi</label>
+              <div className="flex gap-2">
+                <input
+                  type="number"
+                  min={0}
+                  value={dayCapacity}
+                  onChange={(e) => setDayCapacity(e.target.value)}
+                  className={inputs.default}
+                  style={{ maxWidth: 140 }}
+                />
+                <button
+                  onClick={saveDayCapacity}
+                  className={buttons.secondary}
+                  disabled={savingCapacity}
+                >
+                  {savingCapacity ? "Se salveaza..." : "Salveaza"}
+                </button>
+              </div>
             </div>
             <div className="flex gap-3 flex-wrap items-center">
               <div className="flex flex-wrap gap-2 items-center">
@@ -199,6 +255,13 @@ export default function AdminCalendar() {
                               <span className={badges.info}>{res.type === "comanda" ? "Comanda" : "Rezervare"}</span>
                             </div>
 
+                            {(res.clientPhone || res.clientEmail) && (
+                              <div className="text-xs text-gray-600 mb-2">
+                                {res.clientPhone ? `Tel: ${res.clientPhone}` : ""}
+                                {res.clientPhone && res.clientEmail ? " · " : ""}
+                                {res.clientEmail ? `Email: ${res.clientEmail}` : ""}
+                              </div>
+                            )}
                             {res.itemsSummary && <p className="text-sm text-gray-700 mb-2">{res.itemsSummary}</p>}
 
                             <div className="text-sm text-gray-600 mb-2">
@@ -215,6 +278,12 @@ export default function AdminCalendar() {
                                 </div>
                               )}
                             </div>
+                            {res.deliveryWindow && (
+                              <div className="text-xs text-gray-500 mb-1">Fereastra: {res.deliveryWindow}</div>
+                            )}
+                            {res.deliveryInstructions && (
+                              <div className="text-xs text-gray-500 mb-2">Instructiuni: {res.deliveryInstructions}</div>
+                            )}
 
                             <div className="flex gap-2 flex-wrap">
                               {res.paymentStatus === "paid" ? (
@@ -224,6 +293,23 @@ export default function AdminCalendar() {
                               )}
                               <span className={badges.info}>{res.status || res.handoffStatus || "-"}</span>
                             </div>
+
+                            {res.type === "rezervare" && (
+                              <div className="flex gap-2 flex-wrap mt-2">
+                                <button
+                                  className="border px-2 py-1 rounded text-xs"
+                                  onClick={() => updateReservationStatus(res._id, "confirmed")}
+                                >
+                                  Confirma
+                                </button>
+                                <button
+                                  className="border px-2 py-1 rounded text-xs"
+                                  onClick={() => updateReservationStatus(res._id, "canceled")}
+                                >
+                                  Respinge
+                                </button>
+                              </div>
+                            )}
                           </div>
 
                           <div className="text-right">
