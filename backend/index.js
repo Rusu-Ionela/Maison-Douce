@@ -131,11 +131,13 @@ mount("/api/personalizare", "./routes/personalizare");
 mount("/api/coupon", "./routes/coupon");
 mount("/api/comenzi-personalizate", "./routes/comenziPersonalizate");
 mount("/api/cutie-lunara", "./routes/cutieLunara");
+mount("/api/ai", "./routes/ai");
 mount("/api/auth", "./routes/auth");
 
 // --- CHAT / MESAJE ---
 mount("/api/mesaje-chat", "./routes/mesajChat");
 mount("/api/chat", "./routes/chat");
+mount("/api/push", "./routes/push");
 
 // --- RESET PAROLĂ ---
 mount("/api/reset-parola", "./routes/resetParola");

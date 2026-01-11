@@ -126,7 +126,9 @@ router.post("/checkout-session", async (req, res) => {
     line_items,
     client_reference_id: orderId || undefined,
     metadata: { orderId: orderId || "" },
-    success_url: successUrl || `${BASE_CLIENT_URL}/plata/succes`,
+    success_url:
+      successUrl ||
+      `${BASE_CLIENT_URL}/plata/succes?session_id={CHECKOUT_SESSION_ID}`,
     cancel_url: cancelUrl || `${BASE_CLIENT_URL}/plata/eroare`,
   });
   res.json({ id: session.id, url: session.url, mode: STRIPE_MODE });
@@ -173,7 +175,7 @@ router.post("/create-checkout-session/:comandaId", async (req, res) => {
       metadata: { orderId: comandaId },
       success_url:
         successUrl ||
-        `${BASE_CLIENT_URL}/plata/succes?comandaId=${encodeURIComponent(comandaId)}`,
+        `${BASE_CLIENT_URL}/plata/succes?comandaId=${encodeURIComponent(comandaId)}&session_id={CHECKOUT_SESSION_ID}`,
       cancel_url:
         cancelUrl ||
         `${BASE_CLIENT_URL}/plata/eroare?c=${encodeURIComponent(comandaId)}`,
@@ -182,6 +184,92 @@ router.post("/create-checkout-session/:comandaId", async (req, res) => {
     res.json({ id: session.id, url: session.url, mode: STRIPE_MODE });
   } catch (e) {
     console.error("create-checkout-session error:", e.message);
+    res.status(500).json({ message: e.message || "Stripe error" });
+  }
+});
+
+// POST /api/stripe/confirm-payment
+// Body: { paymentIntentId, comandaId? }
+router.post("/confirm-payment", async (req, res) => {
+  try {
+    if (!stripe) {
+      return res.status(500).json({ message: "Stripe key missing" });
+    }
+    const { paymentIntentId, comandaId } = req.body || {};
+    if (!paymentIntentId) {
+      return res.status(400).json({ message: "paymentIntentId missing" });
+    }
+
+    const pi = await stripe.paymentIntents.retrieve(paymentIntentId);
+    if (!pi || pi.status !== "succeeded") {
+      return res.status(409).json({ message: "Payment not confirmed" });
+    }
+
+    const orderId =
+      comandaId || pi.metadata?.orderId || pi.metadata?.order_id || null;
+    if (!orderId) {
+      return res.status(400).json({ message: "orderId missing" });
+    }
+
+    const comanda = await Comanda.findById(orderId);
+    if (!comanda) return res.status(404).json({ message: "Comanda inexistenta" });
+
+    comanda.paymentStatus = "paid";
+    comanda.statusPlata = "paid";
+    if (["plasata", "in_asteptare", "inregistrata"].includes(comanda.status)) {
+      comanda.status = "confirmata";
+    }
+    comanda.statusHistory = Array.isArray(comanda.statusHistory)
+      ? [...comanda.statusHistory, { status: "paid", note: "Stripe payment confirmed (manual)" }]
+      : [{ status: "paid", note: "Stripe payment confirmed (manual)" }];
+    await comanda.save();
+
+    res.json({ ok: true, orderId, status: comanda.status });
+  } catch (e) {
+    console.error("confirm-payment error:", e.message);
+    res.status(500).json({ message: e.message || "Stripe error" });
+  }
+});
+
+// POST /api/stripe/confirm-session
+// Body: { sessionId, comandaId? }
+router.post("/confirm-session", async (req, res) => {
+  try {
+    if (!stripe) {
+      return res.status(500).json({ message: "Stripe key missing" });
+    }
+    const { sessionId, comandaId } = req.body || {};
+    if (!sessionId) {
+      return res.status(400).json({ message: "sessionId missing" });
+    }
+
+    const session = await stripe.checkout.sessions.retrieve(sessionId);
+    if (!session || session.payment_status !== "paid") {
+      return res.status(409).json({ message: "Payment not confirmed" });
+    }
+
+    const orderId =
+      comandaId || session.metadata?.orderId || session.client_reference_id || null;
+    if (!orderId) {
+      return res.status(400).json({ message: "orderId missing" });
+    }
+
+    const comanda = await Comanda.findById(orderId);
+    if (!comanda) return res.status(404).json({ message: "Comanda inexistenta" });
+
+    comanda.paymentStatus = "paid";
+    comanda.statusPlata = "paid";
+    if (["plasata", "in_asteptare", "inregistrata"].includes(comanda.status)) {
+      comanda.status = "confirmata";
+    }
+    comanda.statusHistory = Array.isArray(comanda.statusHistory)
+      ? [...comanda.statusHistory, { status: "paid", note: "Stripe session confirmed (manual)" }]
+      : [{ status: "paid", note: "Stripe session confirmed (manual)" }];
+    await comanda.save();
+
+    res.json({ ok: true, orderId, status: comanda.status });
+  } catch (e) {
+    console.error("confirm-session error:", e.message);
     res.status(500).json({ message: e.message || "Stripe error" });
   }
 });

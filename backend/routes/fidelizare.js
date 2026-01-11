@@ -61,7 +61,7 @@ router.get("/client/:userId", authRequired, async (req, res) => {
 router.get(
   "/admin/config",
   authRequired,
-  roleCheck("admin", "patiser"),
+  roleCheck("admin"),
   async (_req, res) => {
     try {
       const cfg = await ensureConfig();
@@ -79,7 +79,7 @@ router.get(
 router.put(
   "/admin/config",
   authRequired,
-  roleCheck("admin", "patiser"),
+  roleCheck("admin"),
   async (req, res) => {
     try {
       const update = {};
@@ -106,7 +106,7 @@ router.put(
 router.get(
   "/admin/user/:userId",
   authRequired,
-  roleCheck("admin", "patiser"),
+  roleCheck("admin"),
   async (req, res) => {
     try {
       const { userId } = req.params;
@@ -135,7 +135,7 @@ router.get(
 router.post(
   "/admin/voucher",
   authRequired,
-  roleCheck("admin", "patiser"),
+  roleCheck("admin"),
   async (req, res) => {
     try {
       const {
@@ -197,7 +197,7 @@ router.post(
  * POST /api/fidelizare/add-points
  * Adaugă puncte după o comandă (folosit de backend sau Stripe webhook)
  */
-router.post("/add-points", async (req, res) => {
+router.post("/add-points", authRequired, roleCheck("admin"), async (req, res) => {
   try {
     const { utilizatorId, puncte, sursa = "comanda", comandaId } = req.body;
 
@@ -471,9 +471,13 @@ router.post("/apply-points", authRequired, async (req, res) => {
  * GET /api/fidelizare/:utilizatorId
  * Preluare portofel complet (admin sau pentru debug)
  */
-router.get("/:utilizatorId", async (req, res) => {
+router.get("/:utilizatorId", authRequired, async (req, res) => {
   try {
     const { utilizatorId } = req.params;
+    const role = req.user?.rol || req.user?.role;
+    if (role !== "admin" && String(req.user?._id) !== String(utilizatorId)) {
+      return res.status(403).json({ ok: false, message: "Acces interzis" });
+    }
     let fidelizare = await Fidelizare.findOne({ utilizatorId });
 
     if (!fidelizare) {

@@ -1,21 +1,11 @@
 const express = require('express');
 const router = express.Router();
-const nodemailer = require("nodemailer");
 const Utilizator = require("../models/Utilizator");
 const crypto = require("crypto");
+const { sendEmail } = require("../utils/notifications");
 
 const BASE_CLIENT_URL = process.env.BASE_CLIENT_URL || "http://localhost:5173";
-const SMTP_USER = process.env.SMTP_USER || process.env.EMAIL_USER || "";
-const SMTP_PASS = process.env.SMTP_PASS || process.env.EMAIL_PASS || "";
 const RESET_TOKEN_TTL_MIN = Number(process.env.RESET_TOKEN_TTL_MIN || 60);
-
-function getTransport() {
-  if (!SMTP_USER || !SMTP_PASS) return null;
-  return nodemailer.createTransport({
-    service: "gmail",
-    auth: { user: SMTP_USER, pass: SMTP_PASS },
-  });
-}
 
 // Endpoint pentru trimitere email reset
 router.post("/send-reset-email", async (req, res) => {
@@ -39,20 +29,17 @@ router.post("/send-reset-email", async (req, res) => {
       token
     )}&email=${encodeURIComponent(email)}`;
 
-    const transport = getTransport();
-    if (!transport) {
+    const sent = await sendEmail(
+      email,
+      "Resetare parola TortApp",
+      `<p>Click aici pentru a reseta parola:</p><a href="${resetLink}">${resetLink}</a>`
+    );
+    if (!sent) {
       return res.json({
         message: "Link de resetare generat. Foloseste linkul pentru a continua.",
         link: resetLink,
       });
     }
-
-    await transport.sendMail({
-      from: `TortApp <${SMTP_USER}>`,
-      to: email,
-      subject: "Resetare parola TortApp",
-      html: `<p>Click aici pentru a reseta parola:</p><a href="${resetLink}">${resetLink}</a>`,
-    });
 
     res.json({ message: "Email de resetare trimis.", link: resetLink });
   } catch (err) {

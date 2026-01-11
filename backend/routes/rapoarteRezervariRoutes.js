@@ -1,11 +1,12 @@
 const express = require('express');
 const Rezervare = require('../models/Rezervare');
 const { Parser } = require('json2csv');
+const { authRequired, roleCheck } = require("../middleware/auth");
 const router = express.Router();
 
 
 // GET /api/rapoarte-rezervari/csv?from=YYYY-MM-DD&to=YYYY-MM-DD
-router.get('/csv', async (req, res) => {
+router.get('/csv', authRequired, roleCheck("admin"), async (req, res) => {
     const { from, to } = req.query;
     const match = {};
     if (from) match.createdAt = { $gte: new Date(from) };

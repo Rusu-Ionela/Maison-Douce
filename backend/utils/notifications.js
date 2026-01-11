@@ -2,11 +2,33 @@ const nodemailer = require("nodemailer");
 const Utilizator = require("../models/Utilizator");
 const Notificare = require("../models/Notificare");
 
+const { sendPushToUser, hasVapidConfig } = require("./push");
+
+const SMTP_HOST = process.env.SMTP_HOST || "";
+const SMTP_PORT = Number(process.env.SMTP_PORT || 587);
+const SMTP_SECURE = String(process.env.SMTP_SECURE || "").toLowerCase() === "true";
+const SMTP_SERVICE = process.env.SMTP_SERVICE || "";
 const SMTP_USER = process.env.SMTP_USER || process.env.EMAIL_USER || "";
 const SMTP_PASS = process.env.SMTP_PASS || process.env.EMAIL_PASS || "";
+const SMTP_FROM =
+  process.env.SMTP_FROM || (SMTP_USER ? `Maison-Douce <${SMTP_USER}>` : "Maison-Douce <no-reply@localhost>");
 
 function getTransport() {
   if (!SMTP_USER || !SMTP_PASS) return null;
+  if (SMTP_HOST) {
+    return nodemailer.createTransport({
+      host: SMTP_HOST,
+      port: SMTP_PORT,
+      secure: SMTP_SECURE,
+      auth: { user: SMTP_USER, pass: SMTP_PASS },
+    });
+  }
+  if (SMTP_SERVICE) {
+    return nodemailer.createTransport({
+      service: SMTP_SERVICE,
+      auth: { user: SMTP_USER, pass: SMTP_PASS },
+    });
+  }
   return nodemailer.createTransport({
     service: "gmail",
     auth: { user: SMTP_USER, pass: SMTP_PASS },
@@ -18,7 +40,7 @@ async function sendEmail(to, subject, html) {
   if (!transport) return false;
   try {
     await transport.sendMail({
-      from: `Maison-Douce <${SMTP_USER}>`,
+      from: SMTP_FROM,
       to,
       subject,
       html,
@@ -51,6 +73,7 @@ async function notifyUser(userId, payload) {
     const settings = user.setariNotificari || {};
     const inAppEnabled = settings.inApp !== false;
     const emailEnabled = settings.email !== false;
+    const pushEnabled = settings.push !== false;
 
     let notif = null;
     if (inAppEnabled) {
@@ -70,6 +93,14 @@ async function notifyUser(userId, payload) {
         payload.titlu || "Notificare",
         buildEmailHtml(payload)
       );
+    }
+
+    if (pushEnabled && hasVapidConfig()) {
+      await sendPushToUser(userId, {
+        title: payload.titlu || "Notificare",
+        body: payload.mesaj || "",
+        url: payload.link || "/profil",
+      });
     }
     return notif;
   } catch (e) {

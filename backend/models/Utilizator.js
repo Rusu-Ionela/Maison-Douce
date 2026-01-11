@@ -36,6 +36,7 @@ const UtilizatorSchema = new mongoose.Schema({
     setariNotificari: {
         email: { type: Boolean, default: true },
         inApp: { type: Boolean, default: true },
+        push: { type: Boolean, default: true },
     },
 
     // reset parola (token temporar)
