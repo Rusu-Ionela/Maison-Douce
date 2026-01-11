@@ -8,11 +8,11 @@ import { useAuth } from "../context/AuthContext";
 
 const publicKey = import.meta.env.VITE_STRIPE_PK;
 const missingStripeKey = !publicKey;
-if (missingStripeKey) {
-    console.info("Seteaza VITE_STRIPE_PK in frontend/.env.local pentru plata cu cardul.");
-}
+const isDev = import.meta.env.MODE !== "production";
+const canUseStripe = !missingStripeKey;
+const canUseDevPayments = missingStripeKey && isDev;
 
-const stripePromise = missingStripeKey ? null : loadStripe(publicKey);
+const stripePromise = canUseStripe ? loadStripe(publicKey) : null;
 
 function money(n) {
     return (Number(n || 0)).toFixed(2);
@@ -155,7 +155,7 @@ export default function Plata() {
 
     // 5) PaymentIntent cu total final
     const createPIWithAmount = async () => {
-        if (missingStripeKey) return;
+        if (!canUseStripe) return;
         setLoadingPI(true);
         setClientSecret("");
         try {
@@ -200,6 +200,7 @@ export default function Plata() {
 
     // 7) Stripe Checkout (redirect)
     const goCheckout = async () => {
+        if (!canUseStripe) return;
         if (!comandaId) return alert("Adauga comandaId in URL.");
         setCreatingCheckout(true);
         try {
@@ -212,6 +213,21 @@ export default function Plata() {
         } catch (e) {
             console.error(e);
             alert("Eroare la crearea sesiunii de plata.");
+        } finally {
+            setCreatingCheckout(false);
+        }
+    };
+
+    const simulatePayment = async () => {
+        if (!canUseDevPayments) return;
+        if (!comandaId) return alert("Adauga comandaId in URL.");
+        setCreatingCheckout(true);
+        try {
+            await api.post("/dev-payments/simulate-stripe", { comandaId });
+            window.location.href = `/plata/succes?comandaId=${comandaId}`;
+        } catch (e) {
+            console.error(e);
+            alert("Eroare la finalizarea platii.");
         } finally {
             setCreatingCheckout(false);
         }
@@ -298,21 +314,14 @@ export default function Plata() {
 
     // 10) Refa PaymentIntent cand se schimba totalul
     useEffect(() => {
-        if (!comandaId || !totalDeBaza || missingStripeKey) return;
+        if (!comandaId || !totalDeBaza || !canUseStripe) return;
         createPIWithAmount();
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [comandaId, totalDeBaza, reducerePct, discountFidelizare, missingStripeKey]);
+    }, [comandaId, totalDeBaza, reducerePct, discountFidelizare, canUseStripe]);
 
     return (
         <div className="max-w-4xl mx-auto px-4 py-6">
             <h1 className="text-3xl font-bold text-gray-900 mb-4">Plata comenzii</h1>
-
-            {missingStripeKey && (
-                <div className="mb-4 text-amber-900 bg-amber-50 border border-amber-200 rounded-md px-4 py-3">
-                    Pentru plata cu cardul, configureaza <code>VITE_STRIPE_PK</code> in <code>frontend/.env.local</code> (ex: <code>pk_test_...</code>)
-                    si reporneste <code>npm run dev</code>.
-                </div>
-            )}
 
             {!userId && (
                 <div className="mb-3 text-red-700 bg-red-50 border border-red-200 rounded-md px-4 py-2">
@@ -449,22 +458,35 @@ export default function Plata() {
                 )}
             </div>
 
-            {/* Stripe Checkout (redirect) */}
-            <div className="my-4">
-                <button
-                    onClick={goCheckout}
-                    disabled={creatingCheckout}
-                    className="px-4 py-2 rounded-lg bg-purple-500 text-white hover:bg-purple-600 disabled:opacity-50"
-                >
-                    {creatingCheckout ? "Se creeaza sesiunea..." : "Stripe Checkout (redirect)"}
-                </button>
-            </div>
+            {canUseStripe && (
+                <div className="my-4">
+                    <button
+                        onClick={goCheckout}
+                        disabled={creatingCheckout}
+                        className="px-4 py-2 rounded-lg bg-purple-500 text-white hover:bg-purple-600 disabled:opacity-50"
+                    >
+                        {creatingCheckout ? "Se creeaza sesiunea..." : "Stripe Checkout (redirect)"}
+                    </button>
+                </div>
+            )}
+
+            {canUseDevPayments && (
+                <div className="my-4">
+                    <button
+                        onClick={simulatePayment}
+                        disabled={creatingCheckout}
+                        className="px-4 py-2 rounded-lg bg-emerald-600 text-white hover:bg-emerald-700 disabled:opacity-50"
+                    >
+                        {creatingCheckout ? "Se finalizeaza..." : "Finalizeaza plata"}
+                    </button>
+                </div>
+            )}
 
             <hr style={{ margin: "24px 0" }} />
 
             {/* Varianta integrata (Payment Element) pentru totalul final */}
-            {loadingPI && <div>Se initializeaza plata...</div>}
-            {clientSecret && !missingStripeKey && (
+            {loadingPI && canUseStripe && <div>Se initializeaza plata...</div>}
+            {clientSecret && canUseStripe && (
                 <Elements stripe={stripePromise} options={{ clientSecret }}>
                     <PaymentForm clientSecret={clientSecret} displayTotal={totalFinal} comandaId={comandaId} />
                 </Elements>
