@@ -42,7 +42,7 @@ router.post("/send-reset-email", async (req, res) => {
     const transport = getTransport();
     if (!transport) {
       return res.json({
-        message: "SMTP nu este configurat. Foloseste linkul de resetare manual.",
+        message: "Link de resetare generat. Foloseste linkul pentru a continua.",
         link: resetLink,
       });
     }
