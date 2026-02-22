@@ -8,25 +8,59 @@ export default function PlataSucces() {
   const paymentIntentId = sp.get("payment_intent");
   const sessionId = sp.get("session_id");
   const [comanda, setComanda] = useState(null);
+  const [abonamentMsg, setAbonamentMsg] = useState("");
 
   useEffect(() => {
-    if (!comandaId) return;
-    if (paymentIntentId) {
-      api.post("/stripe/confirm-payment", { paymentIntentId, comandaId }).catch(() => {});
-    }
-    if (sessionId) {
-      api.post("/stripe/confirm-session", { sessionId, comandaId }).catch(() => {});
-    }
-    api
-      .get(`/comenzi/${comandaId}`)
-      .then((res) => setComanda(res.data))
-      .catch(() => setComanda(null));
+    if (!comandaId) return undefined;
+
+    let cancelled = false;
+
+    (async () => {
+      try {
+        if (paymentIntentId) {
+          await api.post("/stripe/confirm-payment", { paymentIntentId, comandaId });
+        }
+        if (sessionId) {
+          await api.post("/stripe/confirm-session", { sessionId, comandaId });
+        }
+
+        const { data } = await api.get(`/comenzi/${comandaId}`);
+        if (cancelled) return;
+        setComanda(data);
+
+        const isAbonament = data?.tip === "abonament_cutie";
+        const paid = data?.paymentStatus === "paid" || data?.statusPlata === "paid";
+
+        if (isAbonament && paid) {
+          try {
+            const activation = await api.post(`/cutie-lunara/activate-from-order/${comandaId}`);
+            if (activation?.data?.abonament?.activ) {
+              setAbonamentMsg("Abonamentul lunar a fost activat.");
+            }
+          } catch (err) {
+            setAbonamentMsg(
+              err?.response?.data?.message ||
+                "Plata este confirmata, dar activarea abonamentului trebuie verificata in profil."
+            );
+          }
+        } else {
+          setAbonamentMsg("");
+        }
+      } catch {
+        if (!cancelled) setComanda(null);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
   }, [comandaId, paymentIntentId, sessionId]);
 
   return (
     <div className="max-w-3xl mx-auto p-6">
       <h1 className="text-3xl font-bold mb-2">Plata reusita</h1>
       <p className="text-gray-700 mb-4">Multumim! Comanda ta a fost confirmata.</p>
+      {abonamentMsg && <p className="text-sm text-emerald-700 mb-4">{abonamentMsg}</p>}
 
       {comanda && (
         <div className="border rounded-lg p-4 bg-white space-y-2">

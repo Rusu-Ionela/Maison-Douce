@@ -1,13 +1,46 @@
 import { useState } from "react";
+import api from "/src/lib/api.js";
+
+function initialForm() {
+  return { nume: "", email: "", telefon: "", subiect: "", mesaj: "" };
+}
 
 export default function Contact() {
-  const [form, setForm] = useState({ nume: "", email: "", mesaj: "" });
-  const [msg, setMsg] = useState("");
+  const [form, setForm] = useState(initialForm());
+  const [loading, setLoading] = useState(false);
+  const [status, setStatus] = useState({ type: "", text: "" });
 
-  const submit = (e) => {
+  const onChange = (key, value) => {
+    setForm((prev) => ({ ...prev, [key]: value }));
+  };
+
+  const submit = async (e) => {
     e.preventDefault();
-    setMsg("Mesaj trimis. Revenim in cel mai scurt timp.");
-    setForm({ nume: "", email: "", mesaj: "" });
+    setStatus({ type: "", text: "" });
+    setLoading(true);
+
+    try {
+      const payload = {
+        nume: form.nume,
+        email: form.email,
+        telefon: form.telefon,
+        subiect: form.subiect,
+        mesaj: form.mesaj,
+      };
+      const { data } = await api.post("/contact", payload);
+      setStatus({
+        type: "success",
+        text: data?.message || "Mesaj trimis. Revenim in cel mai scurt timp.",
+      });
+      setForm(initialForm());
+    } catch (err) {
+      setStatus({
+        type: "error",
+        text: err?.response?.data?.message || "Nu am putut trimite mesajul. Incearca din nou.",
+      });
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -21,12 +54,17 @@ export default function Contact() {
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         <form onSubmit={submit} className="space-y-3 border rounded-lg p-4 bg-white">
           <h2 className="text-xl font-semibold">Trimite mesaj</h2>
-          {msg && <div className="text-green-700 text-sm">{msg}</div>}
+          {status.text && (
+            <div className={status.type === "success" ? "text-green-700 text-sm" : "text-rose-700 text-sm"}>
+              {status.text}
+            </div>
+          )}
+
           <input
             className="border rounded p-2 w-full"
             placeholder="Nume"
             value={form.nume}
-            onChange={(e) => setForm((f) => ({ ...f, nume: e.target.value }))}
+            onChange={(e) => onChange("nume", e.target.value)}
             required
           />
           <input
@@ -34,18 +72,34 @@ export default function Contact() {
             placeholder="Email"
             type="email"
             value={form.email}
-            onChange={(e) => setForm((f) => ({ ...f, email: e.target.value }))}
+            onChange={(e) => onChange("email", e.target.value)}
             required
+          />
+          <input
+            className="border rounded p-2 w-full"
+            placeholder="Telefon (optional)"
+            value={form.telefon}
+            onChange={(e) => onChange("telefon", e.target.value)}
+          />
+          <input
+            className="border rounded p-2 w-full"
+            placeholder="Subiect (optional)"
+            value={form.subiect}
+            onChange={(e) => onChange("subiect", e.target.value)}
           />
           <textarea
             className="border rounded p-2 w-full min-h-[120px]"
             placeholder="Mesaj"
             value={form.mesaj}
-            onChange={(e) => setForm((f) => ({ ...f, mesaj: e.target.value }))}
+            onChange={(e) => onChange("mesaj", e.target.value)}
             required
           />
-          <button className="bg-pink-500 text-white px-4 py-2 rounded" type="submit">
-            Trimite
+          <button
+            className="bg-pink-500 text-white px-4 py-2 rounded disabled:opacity-60 disabled:cursor-not-allowed"
+            type="submit"
+            disabled={loading}
+          >
+            {loading ? "Se trimite..." : "Trimite"}
           </button>
         </form>
 

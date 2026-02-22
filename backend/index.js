@@ -121,6 +121,7 @@ mount("/api/rapoarte-rezervari", "./routes/rapoarteRezervariRoutes");
 mount("/api/recenzii", "./routes/recenzii");
 mount("/api/albume", "./routes/albumeRoutes");
 mount("/api/partajare", "./routes/partajareRoutes");
+mount("/api/contact", "./routes/contact");
 mount("/api/upload", "./routes/upload");
 mount("/api/notificari", "./routes/notificari");
 mount("/api/notificari-foto", "./routes/notificariFotoRoutes");

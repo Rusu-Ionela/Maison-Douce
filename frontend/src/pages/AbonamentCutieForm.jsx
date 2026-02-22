@@ -1,10 +1,12 @@
 import { useState } from "react";
-import { useSearchParams } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import api from "/src/lib/api.js";
 import { useAuth } from "../context/AuthContext";
 
 export default function AbonamentCutieForm() {
   const { user } = useAuth() || {};
+  const userId = user?._id || user?.id;
+  const navigate = useNavigate();
   const [sp] = useSearchParams();
   const initialPlan = sp.get("plan") || "basic";
   const [plan, setPlan] = useState(initialPlan);
@@ -16,17 +18,22 @@ export default function AbonamentCutieForm() {
     e.preventDefault();
     setMsg("");
 
-    if (!user?._id) {
+    if (!userId) {
       setMsg("Autentifica-te pentru a porni abonamentul.");
       return;
     }
 
     try {
       setLoading(true);
-      await api.post("/cutie-lunara", { plan, preferinte });
-      setMsg("Abonament activat cu succes.");
+      const { data } = await api.post("/cutie-lunara/checkout", { plan, preferinte });
+      const comandaId = data?.comandaId;
+      if (!comandaId) {
+        setMsg("Nu am putut crea comanda de abonament.");
+        return;
+      }
+      navigate(`/plata?comandaId=${encodeURIComponent(comandaId)}`);
     } catch (e) {
-      setMsg(e?.response?.data?.message || "Eroare la activarea abonamentului.");
+      setMsg(e?.response?.data?.message || "Eroare la pornirea checkout-ului.");
     } finally {
       setLoading(false);
     }
@@ -58,7 +65,7 @@ export default function AbonamentCutieForm() {
         </label>
 
         <button type="submit" className="bg-pink-500 text-white px-4 py-2 rounded" disabled={loading}>
-          {loading ? "Se salveaza..." : "Activeaza abonamentul"}
+          {loading ? "Se pregateste checkout-ul..." : "Continua la plata"}
         </button>
       </form>
     </div>

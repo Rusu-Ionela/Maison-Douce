@@ -12,6 +12,15 @@ const CutieLunaraSchema = new mongoose.Schema(
         preferinte: { type: String, default: "" },
         activ: { type: Boolean, default: true },
         pretLunar: { type: Number, default: 0 },
+        statusPlata: {
+            type: String,
+            enum: ["pending", "paid", "failed"],
+            default: "pending",
+        },
+        pendingOrderId: { type: mongoose.Schema.Types.ObjectId, ref: "Comanda", default: null },
+        ultimaComandaId: { type: mongoose.Schema.Types.ObjectId, ref: "Comanda", default: null },
+        dataActivare: { type: Date, default: null },
+        ultimaPlataLa: { type: Date, default: null },
     },
     { timestamps: true }
 );

@@ -2,6 +2,7 @@
 const router = require("express").Router();
 const Stripe = require("stripe");
 const Comanda = require("../models/Comanda");
+const { activateCutieFromComanda } = require("../utils/subscriptions");
 
 const STRIPE_KEY =
   process.env.STRIPE_SECRET_KEY || process.env.STRIPE_SECRET || process.env.STRIPE_SK;
@@ -223,6 +224,7 @@ router.post("/confirm-payment", async (req, res) => {
       ? [...comanda.statusHistory, { status: "paid", note: "Stripe payment confirmed (manual)" }]
       : [{ status: "paid", note: "Stripe payment confirmed (manual)" }];
     await comanda.save();
+    await activateCutieFromComanda(comanda);
 
     res.json({ ok: true, orderId, status: comanda.status });
   } catch (e) {
@@ -266,6 +268,7 @@ router.post("/confirm-session", async (req, res) => {
       ? [...comanda.statusHistory, { status: "paid", note: "Stripe session confirmed (manual)" }]
       : [{ status: "paid", note: "Stripe session confirmed (manual)" }];
     await comanda.save();
+    await activateCutieFromComanda(comanda);
 
     res.json({ ok: true, orderId, status: comanda.status });
   } catch (e) {

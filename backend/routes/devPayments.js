@@ -3,6 +3,7 @@ const express = require("express");
 const router = express.Router();
 const Comanda = require("../models/Comanda");
 const Fidelizare = require("../models/Fidelizare");
+const { activateCutieFromComanda } = require("../utils/subscriptions");
 
 // POST /api/dev-payments/pay
 // Body: { comandaId, punctePer10 = 1 }
@@ -18,6 +19,7 @@ router.post("/pay", async (req, res) => {
     c.paymentStatus = "paid";
     c.statusPlata = "paid";
     await c.save();
+    await activateCutieFromComanda(c);
 
     const total = Number(c.total || 0);
     const points = Math.floor(total / 10) * Number(punctePer10);
@@ -67,6 +69,7 @@ router.post("/simulate-stripe", async (req, res) => {
     c.statusPlata = "paid";
     c.status = "confirmata";
     await c.save();
+    await activateCutieFromComanda(c);
 
     const earned = Math.floor((Number(c.total) || 0) * 0.1);
     let card = await Fidelizare.findOne({ utilizatorId: c.clientId });
