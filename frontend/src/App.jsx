@@ -82,6 +82,7 @@ const AdminNotificari = lazyPage("./pages/AdminNotificari.jsx");
 const AdminFidelizare = lazyPage("./pages/AdminFidelizare.jsx");
 const AdminAlbume = lazyPage("./pages/AdminAlbume.jsx");
 const AdminProduction = lazyPage("./pages/AdminProduction.jsx");
+const AdminContactMesaje = lazyPage("./pages/AdminContactMesaje.jsx");
 const AdminPanel = lazyPage("./pages/AdminPanel.jsx");
 const AdminAdaugaProdus = lazyPage("./pages/AdminAdaugaProdus.jsx");
 const AdminAddProdus = lazyPage("./pages/AdminAddProdus.jsx");
@@ -410,6 +411,14 @@ export default function App() {
             element={
               <RequireStaff>
                 <AdminNotificari />
+              </RequireStaff>
+            }
+          />
+          <Route
+            path="/admin/contact"
+            element={
+              <RequireStaff>
+                <AdminContactMesaje />
               </RequireStaff>
             }
           />

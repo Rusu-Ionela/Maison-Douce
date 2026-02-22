@@ -1,4 +1,6 @@
 const nodemailer = require("nodemailer");
+const fs = require("fs");
+const path = require("path");
 const Utilizator = require("../models/Utilizator");
 const Notificare = require("../models/Notificare");
 
@@ -12,6 +14,7 @@ const SMTP_USER = process.env.SMTP_USER || process.env.EMAIL_USER || "";
 const SMTP_PASS = process.env.SMTP_PASS || process.env.EMAIL_PASS || "";
 const SMTP_FROM =
   process.env.SMTP_FROM || (SMTP_USER ? `Maison-Douce <${SMTP_USER}>` : "Maison-Douce <no-reply@localhost>");
+const MAIL_OUTBOX_DIR = path.join(__dirname, "..", "uploads", "mail-outbox");
 
 function getTransport() {
   if (!SMTP_USER || !SMTP_PASS) return null;
@@ -35,9 +38,32 @@ function getTransport() {
   });
 }
 
+function persistMailOutbox(to, subject, html) {
+  try {
+    if (!fs.existsSync(MAIL_OUTBOX_DIR)) {
+      fs.mkdirSync(MAIL_OUTBOX_DIR, { recursive: true });
+    }
+    const fileName = `mail_${Date.now()}_${Math.random().toString(36).slice(2, 8)}.json`;
+    const payload = {
+      to,
+      subject,
+      html,
+      createdAt: new Date().toISOString(),
+      source: "local-outbox",
+    };
+    fs.writeFileSync(path.join(MAIL_OUTBOX_DIR, fileName), JSON.stringify(payload, null, 2), "utf8");
+    return true;
+  } catch (e) {
+    console.warn("Email outbox persist failed:", e?.message || e);
+    return false;
+  }
+}
+
 async function sendEmail(to, subject, html) {
   const transport = getTransport();
-  if (!transport) return false;
+  if (!transport) {
+    return persistMailOutbox(to, subject, html);
+  }
   try {
     await transport.sendMail({
       from: SMTP_FROM,
@@ -48,7 +74,7 @@ async function sendEmail(to, subject, html) {
     return true;
   } catch (e) {
     console.warn("Email send failed:", e?.message || e);
-    return false;
+    return persistMailOutbox(to, subject, html);
   }
 }
 

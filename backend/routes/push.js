@@ -5,6 +5,7 @@ const Utilizator = require("../models/Utilizator");
 const {
   getPublicKey,
   hasVapidConfig,
+  getVapidSource,
   saveSubscription,
   removeSubscription,
   sendPushToUser,
@@ -19,7 +20,11 @@ router.get("/public-key", (_req, res) => {
 
 // GET /api/push/status
 router.get("/status", (_req, res) => {
-  res.json({ configured: hasVapidConfig(), publicKey: !!getPublicKey() });
+  res.json({
+    configured: hasVapidConfig(),
+    publicKey: !!getPublicKey(),
+    source: getVapidSource(),
+  });
 });
 
 // POST /api/push/subscribe

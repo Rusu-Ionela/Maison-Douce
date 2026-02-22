@@ -6,7 +6,7 @@ export default function Navbar() {
   const [isOpen, setIsOpen] = useState(false);
   const { user, logout } = useAuth() || {};
   const role = user?.rol || user?.role;
-  const isAdmin = role === "admin" || role === "patiser";
+  const isAdmin = role === "admin" || role === "patiser" || role === "prestator";
 
   return (
     <header className="w-full bg-white shadow-md sticky top-0 z-50">
@@ -30,6 +30,9 @@ export default function Navbar() {
           <Link to="/contact" className="hover:text-pink-600">
             Contact
           </Link>
+          <Link to="/harta-site" className="hover:text-pink-600">
+            Harta site
+          </Link>
           <Link to="/fidelizare" className="hover:text-pink-600">
             Fidelizare
           </Link>
@@ -39,6 +42,16 @@ export default function Navbar() {
           {isAdmin && (
             <Link to="/admin/calendar" className="hover:text-pink-600">
               Admin
+            </Link>
+          )}
+          {isAdmin && (
+            <Link to="/admin/contabilitate" className="hover:text-pink-600">
+              Stoc studio
+            </Link>
+          )}
+          {isAdmin && (
+            <Link to="/admin/contact" className="hover:text-pink-600">
+              Mesaje contact
             </Link>
           )}
         </nav>
@@ -103,6 +116,9 @@ export default function Navbar() {
             <Link to="/contact" onClick={() => setIsOpen(false)}>
               Contact
             </Link>
+            <Link to="/harta-site" onClick={() => setIsOpen(false)}>
+              Harta site
+            </Link>
             <Link to="/fidelizare" onClick={() => setIsOpen(false)}>
               Fidelizare
             </Link>
@@ -112,6 +128,16 @@ export default function Navbar() {
             {isAdmin && (
               <Link to="/admin/calendar" onClick={() => setIsOpen(false)}>
                 Admin
+              </Link>
+            )}
+            {isAdmin && (
+              <Link to="/admin/contabilitate" onClick={() => setIsOpen(false)}>
+                Stoc studio
+              </Link>
+            )}
+            {isAdmin && (
+              <Link to="/admin/contact" onClick={() => setIsOpen(false)}>
+                Mesaje contact
               </Link>
             )}
             {user ? (

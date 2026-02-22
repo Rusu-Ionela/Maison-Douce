@@ -1,20 +1,80 @@
+const fs = require("fs");
+const path = require("path");
 const webPush = require("web-push");
 const PushSubscription = require("../models/PushSubscription");
 
-const VAPID_PUBLIC_KEY = process.env.VAPID_PUBLIC_KEY || "";
-const VAPID_PRIVATE_KEY = process.env.VAPID_PRIVATE_KEY || "";
+const ENV_VAPID_PUBLIC_KEY = process.env.VAPID_PUBLIC_KEY || "";
+const ENV_VAPID_PRIVATE_KEY = process.env.VAPID_PRIVATE_KEY || "";
 const VAPID_SUBJECT = process.env.VAPID_SUBJECT || "mailto:contact@localhost";
+const GENERATED_VAPID_FILE = path.join(__dirname, "..", ".generated-vapid.json");
 
-if (VAPID_PUBLIC_KEY && VAPID_PRIVATE_KEY) {
-  webPush.setVapidDetails(VAPID_SUBJECT, VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY);
+function readGeneratedKeys() {
+  try {
+    if (!fs.existsSync(GENERATED_VAPID_FILE)) return null;
+    const parsed = JSON.parse(fs.readFileSync(GENERATED_VAPID_FILE, "utf8"));
+    if (parsed?.publicKey && parsed?.privateKey) {
+      return {
+        publicKey: parsed.publicKey,
+        privateKey: parsed.privateKey,
+        source: "generated_file",
+      };
+    }
+  } catch (e) {
+    console.warn("Failed to read generated VAPID keys:", e?.message || e);
+  }
+  return null;
+}
+
+function writeGeneratedKeys(keys) {
+  try {
+    fs.writeFileSync(GENERATED_VAPID_FILE, JSON.stringify(keys, null, 2), "utf8");
+  } catch (e) {
+    console.warn("Failed to persist generated VAPID keys:", e?.message || e);
+  }
+}
+
+function resolveVapidKeys() {
+  if (ENV_VAPID_PUBLIC_KEY && ENV_VAPID_PRIVATE_KEY) {
+    return {
+      publicKey: ENV_VAPID_PUBLIC_KEY,
+      privateKey: ENV_VAPID_PRIVATE_KEY,
+      source: "env",
+    };
+  }
+
+  const fromFile = readGeneratedKeys();
+  if (fromFile) return fromFile;
+
+  try {
+    const generated = webPush.generateVAPIDKeys();
+    writeGeneratedKeys(generated);
+    return {
+      publicKey: generated.publicKey,
+      privateKey: generated.privateKey,
+      source: "generated_runtime",
+    };
+  } catch (e) {
+    console.warn("Unable to generate VAPID keys:", e?.message || e);
+    return { publicKey: "", privateKey: "", source: "missing" };
+  }
+}
+
+const runtimeVapid = resolveVapidKeys();
+
+if (runtimeVapid.publicKey && runtimeVapid.privateKey) {
+  webPush.setVapidDetails(VAPID_SUBJECT, runtimeVapid.publicKey, runtimeVapid.privateKey);
 }
 
 function hasVapidConfig() {
-  return Boolean(VAPID_PUBLIC_KEY && VAPID_PRIVATE_KEY);
+  return Boolean(runtimeVapid.publicKey && runtimeVapid.privateKey);
 }
 
 function getPublicKey() {
-  return VAPID_PUBLIC_KEY || null;
+  return runtimeVapid.publicKey || null;
+}
+
+function getVapidSource() {
+  return runtimeVapid.source || "missing";
 }
 
 async function saveSubscription(userId, sub) {
@@ -74,6 +134,7 @@ async function sendPushToUser(userId, payload) {
 module.exports = {
   hasVapidConfig,
   getPublicKey,
+  getVapidSource,
   saveSubscription,
   removeSubscription,
   sendPushToUser,

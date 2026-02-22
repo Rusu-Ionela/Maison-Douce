@@ -151,10 +151,9 @@ const stripeKey =
   process.env.STRIPE_SECRET ||
   process.env.STRIPE_SK ||
   "";
-if (stripeKey) {
-  mount("/api/stripe", "./routes/stripe");
-} else {
-  console.warn("⚠ STRIPE_SECRET_KEY missing — skipping /api/stripe");
+mount("/api/stripe", "./routes/stripe");
+if (!stripeKey) {
+  console.warn("STRIPE_SECRET_KEY missing - /api/stripe running in fallback mode");
 }
 
 // ❌ NU MAI MONTĂM notImplemented PESTE RUTELE REALE ❌
@@ -234,3 +233,4 @@ console.log("MONGO_URI =", MONGO_URI);
 process.on("unhandledRejection", (err) =>
   console.error("Unhandled rejection:", err)
 );
+

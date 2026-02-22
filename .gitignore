@@ -5,3 +5,8 @@
 
 # Dependencies
 node_modules/
+
+# Build artifacts and local runtime files
+frontend/dist/
+backend/.generated-vapid.json
+backend/uploads/mail-outbox/
