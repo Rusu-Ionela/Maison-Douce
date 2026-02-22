@@ -109,7 +109,9 @@ if (process.env.NODE_ENV !== "production") {
 mount("/api/utilizatori", "./routes/utilizatori");
 mount("/api/torturi", "./routes/torturi");
 mount("/api/ingrediente", "./routes/ingredient.routes");
+mount("/api/umpluturi", "./routes/umpluturi");
 mount("/api/produse-studio", "./routes/produseStudio");
+mount("/api/produseStudio", "./routes/produseStudio"); // legacy alias (compat)
 mount("/api/calendar", "./routes/calendar");
 mount("/api/calendar-admin", "./routes/calendarAdmin");
 mount("/api/rezervari", "./routes/rezervari");

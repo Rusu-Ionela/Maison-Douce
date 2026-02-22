@@ -9,6 +9,7 @@ const ingredientSchema = new mongoose.Schema(
       default: "ingredient",
     },
     cantitate: { type: Number, required: true },
+    pragMinim: { type: Number, default: 0, min: 0 },
     unitate: {
       type: String,
       enum: ["g", "kg", "ml", "l", "buc"],
@@ -22,6 +23,11 @@ const ingredientSchema = new mongoose.Schema(
       enum: ["bun", "aproape expirat", "expirat"],
       default: "bun",
     },
+    locatie: { type: String, default: "studio", trim: true },
+    observatii: { type: String, default: "" },
+    alertaStocLa: { type: Date, default: null },
+    alertaExpiraLa: { type: Date, default: null },
+    alertaExpiratLa: { type: Date, default: null },
     creatLa: { type: Date, default: Date.now },
   },
   { timestamps: true }

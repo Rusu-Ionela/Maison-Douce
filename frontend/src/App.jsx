@@ -25,6 +25,7 @@ const About = lazyPage("./pages/About.jsx");
 const FAQ = lazyPage("./pages/FAQ.jsx");
 const Termeni = lazyPage("./pages/Termeni.jsx");
 const Confidentialitate = lazyPage("./pages/Confidentialitate.jsx");
+const HartaSite = lazyPage("./pages/HartaSite.jsx");
 const AbonamentCutie = lazyPage("./pages/AbonamentCutie.jsx");
 const AbonamentCutieForm = lazyPage("./pages/AbonamentCutieForm.jsx");
 const Abonament = lazyPage("./pages/Abonament.jsx");
@@ -90,6 +91,8 @@ const AdminEditTort = lazyPage("./pages/AdminEditTort.jsx");
 const AdminCatalog = lazyPage("./pages/AdminCatalog.jsx");
 const NotificariFoto = lazyPage("./pages/NotificariFoto.jsx");
 const RaportRezervariPrestator = lazyPage("./pages/RaportRezervariPrestator.jsx");
+const PatiserContabilitate = lazyPage("./pages/PatiserContabilitate.jsx");
+const PatiserUmpluturi = lazyPage("./pages/PatiserUmpluturi.jsx");
 
 const NotFoundPage = lazyPage("./pages/NotFound.jsx");
 
@@ -133,7 +136,7 @@ function RequireAdmin({ children }) {
 }
 
 function RequireStaff({ children }) {
-  return <RequireRole roles={["admin", "patiser"]}>{children}</RequireRole>;
+  return <RequireRole roles={["admin", "patiser", "prestator"]}>{children}</RequireRole>;
 }
 
 export default function App() {
@@ -165,6 +168,7 @@ export default function App() {
           <Route path="/faq" element={<FAQ />} />
           <Route path="/termeni" element={<Termeni />} />
           <Route path="/confidentialitate" element={<Confidentialitate />} />
+          <Route path="/harta-site" element={<HartaSite />} />
           <Route path="/abonament" element={<AbonamentCutie />} />
           <Route path="/abonament/form" element={<AbonamentCutieForm />} />
           <Route path="/abonament/planuri" element={<Abonament />} />
@@ -430,6 +434,22 @@ export default function App() {
             element={
               <RequireStaff>
                 <AdminProduction />
+              </RequireStaff>
+            }
+          />
+          <Route
+            path="/admin/contabilitate"
+            element={
+              <RequireStaff>
+                <PatiserContabilitate />
+              </RequireStaff>
+            }
+          />
+          <Route
+            path="/admin/umpluturi"
+            element={
+              <RequireStaff>
+                <PatiserUmpluturi />
               </RequireStaff>
             }
           />
