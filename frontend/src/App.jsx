@@ -13,17 +13,13 @@ const Catalog = lazyPage("./pages/Catalog.jsx");
 const TortDetails = lazyPage("./pages/TortDetails.jsx");
 const Cart = lazyPage("./pages/Cart.jsx");
 const Personalizeaza = lazyPage("./pages/Personalizeaza.jsx");
-const Personalizare = lazyPage("./pages/Personalizare.jsx");
 const Constructor = lazyPage("./pages/Constructor.jsx");
 const DesenTort = lazyPage("./pages/DesenTort.jsx");
 const DesignerAI = lazyPage("./pages/DesignerAI.jsx");
 const TortDesigner = lazyPage("./pages/TortDesigner.jsx");
 const PatiserDrawing = lazyPage("./pages/PatiserDrawing.jsx");
 const Contact = lazyPage("./pages/Contact.jsx");
-const ContactOld = lazyPage("./pages/ContactOld.jsx");
 const Despre = lazyPage("./pages/Despre.jsx");
-const DespreNoi = lazyPage("./pages/DespreNoi.jsx");
-const About = lazyPage("./pages/About.jsx");
 const FAQ = lazyPage("./pages/FAQ.jsx");
 const Termeni = lazyPage("./pages/Termeni.jsx");
 const Confidentialitate = lazyPage("./pages/Confidentialitate.jsx");
@@ -37,11 +33,9 @@ const PartajareFisiere = lazyPage("./pages/PartajareFisiere.jsx");
 const VizualizarePartajare = lazyPage("./pages/VizualizarePartajare.jsx");
 const VizualizarePersonalizari = lazyPage("./pages/VizualizarePersonalizari.jsx");
 const ComandaClient = lazyPage("./pages/ComandaClient.jsx");
-const Comanda = lazyPage("./pages/Comanda.jsx");
 const RecenziiPrestator = lazyPage("./pages/RecenziiPrestator.jsx");
 const RecenzieComanda = lazyPage("./pages/RecenzieComanda.jsx");
 const CalendarClient = lazyPage("./pages/CalendarClient.jsx");
-const CalendarLegacy = lazyPage("./pages/Calendar.jsx");
 const RezervareClient = lazyPage("./pages/RezervareClient.jsx");
 const CalendarPrestator = lazyPage("./pages/CalendarPrestator.jsx");
 const Plata = lazyPage("./pages/Plata.jsx");
@@ -65,7 +59,6 @@ const ChatUtilizatori = lazyPage("./pages/ChatUtilizatori.jsx");
 const MesajChat = lazyPage("./pages/MesajChat.jsx");
 const ProfilClient = lazyPage("./pages/ProfilClient.jsx");
 const Fidelizare = lazyPage("./pages/Fidelizare.jsx");
-const PaginaFidelizare = lazyPage("./pages/PaginaFidelizare.jsx");
 
 // Admin
 const AdminLogin = lazyPage("./pages/AdminLogin.jsx");
@@ -74,10 +67,7 @@ const AdminProduse = lazyPage("./pages/AdminProduse.jsx");
 const AdminTorturi = lazyPage("./pages/AdminTorturi.jsx");
 const AdminComenzi = lazyPage("./pages/AdminComenzi.jsx");
 const AdminComenziPersonalizate = lazyPage("./pages/AdminComenziPersonalizate.jsx");
-const AdminComenziComplete = lazyPage("./pages/AdminComenziComplete.jsx");
 const AdminCalendar = lazyPage("./pages/AdminCalendar.jsx");
-const AdminCalendarLivrare = lazyPage("./pages/AdminCalendarLivrare.jsx");
-const AdminCalendarView = lazyPage("./pages/AdminCalendarView.jsx");
 const AdminRapoarte = lazyPage("./pages/AdminRapoarte.jsx");
 const AdminStats = lazyPage("./pages/AdminStats.jsx");
 const AdminNotificari = lazyPage("./pages/AdminNotificari.jsx");
@@ -87,7 +77,6 @@ const AdminProduction = lazyPage("./pages/AdminProduction.jsx");
 const AdminContactMesaje = lazyPage("./pages/AdminContactMesaje.jsx");
 const AdminPanel = lazyPage("./pages/AdminPanel.jsx");
 const AdminAdaugaProdus = lazyPage("./pages/AdminAdaugaProdus.jsx");
-const AdminAddProdus = lazyPage("./pages/AdminAddProdus.jsx");
 const AdminAddTort = lazyPage("./pages/AdminAddTort.jsx");
 const AdminEditProdus = lazyPage("./pages/AdminEditProdus.jsx");
 const AdminEditTort = lazyPage("./pages/AdminEditTort.jsx");
@@ -158,7 +147,7 @@ export default function App() {
           <Route path="/tort/:id" element={<TortDetails />} />
           <Route path="/cart" element={<Cart />} />
           <Route path="/personalizeaza" element={<Personalizeaza />} />
-          <Route path="/personalizare" element={<Personalizare />} />
+          <Route path="/personalizare" element={<Navigate to="/personalizeaza" replace />} />
           <Route path="/constructor" element={<Constructor />} />
           <Route path="/desen-tort" element={<DesenTort />} />
           <Route path="/designer-ai" element={<DesignerAI />} />
@@ -166,10 +155,10 @@ export default function App() {
           <Route path="/patiser-drawing" element={<PatiserDrawing />} />
           <Route path="/retete" element={<Retete />} />
           <Route path="/contact" element={<Contact />} />
-          <Route path="/contact-old" element={<ContactOld />} />
+          <Route path="/contact-old" element={<Navigate to="/contact" replace />} />
           <Route path="/despre" element={<Despre />} />
-          <Route path="/despre-noi" element={<DespreNoi />} />
-          <Route path="/about" element={<About />} />
+          <Route path="/despre-noi" element={<Navigate to="/despre" replace />} />
+          <Route path="/about" element={<Navigate to="/despre" replace />} />
           <Route path="/faq" element={<FAQ />} />
           <Route path="/termeni" element={<Termeni />} />
           <Route path="/confidentialitate" element={<Confidentialitate />} />
@@ -178,12 +167,12 @@ export default function App() {
           <Route path="/abonament/form" element={<AbonamentCutieForm />} />
           <Route path="/abonament/planuri" element={<Abonament />} />
           <Route path="/comanda" element={<ComandaClient />} />
-          <Route path="/comanda-demo" element={<Comanda />} />
+          <Route path="/comanda-demo" element={<Navigate to="/comanda" replace />} />
           <Route path="/recenzii/prestator/:prestatorId" element={<RecenziiPrestator />} />
           <Route path="/recenzii/comanda/:comandaId" element={<RecenzieComanda />} />
           <Route path="/calendar" element={<CalendarClient />} />
-          <Route path="/calendar-legacy" element={<CalendarLegacy />} />
-          <Route path="/rezervare" element={<CalendarClient />} />
+          <Route path="/calendar-legacy" element={<Navigate to="/calendar" replace />} />
+          <Route path="/rezervare" element={<Navigate to="/calendar" replace />} />
           <Route path="/rezervare/client" element={<RezervareClient />} />
           <Route path="/plata" element={<Plata />} />
           <Route path="/plata/succes" element={<PlataSucces />} />
@@ -300,7 +289,7 @@ export default function App() {
             path="/fidelizare/pagina"
             element={
               <RequireAuth>
-                <PaginaFidelizare />
+                <Navigate to="/fidelizare" replace />
               </RequireAuth>
             }
           />
@@ -358,7 +347,7 @@ export default function App() {
             path="/admin/comenzi-complete"
             element={
               <RequireStaff>
-                <AdminComenziComplete />
+                <Navigate to="/admin/comenzi" replace />
               </RequireStaff>
             }
           />
@@ -374,7 +363,7 @@ export default function App() {
             path="/admin/calendar-livrare"
             element={
               <RequireStaff>
-                <AdminCalendarLivrare />
+                <Navigate to="/admin/calendar" replace />
               </RequireStaff>
             }
           />
@@ -382,7 +371,7 @@ export default function App() {
             path="/admin/calendar-view"
             element={
               <RequireStaff>
-                <AdminCalendarView />
+                <Navigate to="/admin/calendar" replace />
               </RequireStaff>
             }
           />
@@ -486,7 +475,7 @@ export default function App() {
             path="/admin/add-produs"
             element={
               <RequireStaff>
-                <AdminAddProdus />
+                <Navigate to="/admin/adauga-produs" replace />
               </RequireStaff>
             }
           />
