@@ -37,7 +37,8 @@
     "quality": "npm run standards && npm run lint && npm run test && npm run build",
     "preview": "vite preview",
     "cypress:open": "cypress open",
-    "cypress:run": "cypress run"
+    "cypress:run": "cypress run",
+    "cypress:run:ci": "cypress run --spec \"cypress/e2e/ci/**/*.spec.js\""
   },
   "devDependencies": {
     "@eslint/js": "^9.39.4",

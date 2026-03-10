@@ -7,6 +7,10 @@ module.exports = defineConfig({
     supportFile: "cypress/support/e2e.js",
     setupNodeEvents(on, config) {
       on("before:browser:launch", (browser, launchOptions) => {
+        if (browser.name === "electron") {
+          return launchOptions;
+        }
+
         launchOptions.args.push("--disable-gpu");
         launchOptions.args.push("--disable-features=RendererCodeIntegrity");
         launchOptions.args.push("--disable-dev-shm-usage");

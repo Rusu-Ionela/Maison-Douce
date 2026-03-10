@@ -47,3 +47,30 @@ jobs:
 
       - name: Run frontend quality
         run: npm --prefix frontend run quality
+
+  frontend-e2e:
+    needs: frontend
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install frontend dependencies
+        run: npm ci --prefix frontend
+
+      - name: Run Cypress E2E
+        uses: cypress-io/github-action@v6
+        with:
+          install: false
+          working-directory: frontend
+          start: npm run dev -- --host 127.0.0.1 --port 5173
+          wait-on: "http://127.0.0.1:5173"
+          wait-on-timeout: 120
+          command: npm run cypress:run:ci
