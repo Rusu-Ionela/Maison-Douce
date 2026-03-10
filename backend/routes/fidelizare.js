@@ -15,6 +15,19 @@ async function ensureConfig() {
   return config;
 }
 
+function getAuthUserId(req) {
+  return String(req.user?._id || req.user?.id || "");
+}
+
+function isFidelizareAdmin(req) {
+  const role = req.user?.rol || req.user?.role;
+  return role === "admin";
+}
+
+function canAccessWallet(req, utilizatorId) {
+  return isFidelizareAdmin(req) || getAuthUserId(req) === String(utilizatorId);
+}
+
 /**
  * GET /api/fidelizare/client/:userId
  * Portofel de puncte pentru un utilizator (folosit în profil client)
@@ -22,6 +35,9 @@ async function ensureConfig() {
 router.get("/client/:userId", authRequired, async (req, res) => {
   try {
     const userId = req.params.userId;
+    if (!canAccessWallet(req, userId)) {
+      return res.status(403).json({ error: "Acces interzis" });
+    }
 
     let fidelizare = await Fidelizare.findOne({ utilizatorId: userId });
 
@@ -268,6 +284,9 @@ router.post("/add-points", authRequired, roleCheck("admin"), async (req, res) =>
 router.post("/redeem", authRequired, async (req, res) => {
   try {
     const { utilizatorId, puncteDeUtilizat } = req.body;
+    if (!canAccessWallet(req, utilizatorId)) {
+      return res.status(403).json({ ok: false, message: "Acces interzis" });
+    }
 
     if (!utilizatorId || !puncteDeUtilizat || puncteDeUtilizat <= 0) {
       return res
@@ -333,11 +352,10 @@ router.post("/redeem", authRequired, async (req, res) => {
 router.post("/apply-voucher", authRequired, async (req, res) => {
   try {
     const { utilizatorId, cod, comandaId } = req.body;
-    const role = req.user?.rol || req.user?.role;
     if (!utilizatorId || !cod || !comandaId) {
       return res.status(400).json({ ok: false, message: "utilizatorId, cod si comandaId sunt necesare" });
     }
-    if (role !== "admin" && role !== "patiser" && String(req.user?._id) !== String(utilizatorId)) {
+    if (!canAccessWallet(req, utilizatorId)) {
       return res.status(403).json({ ok: false, message: "Acces interzis" });
     }
 
@@ -412,11 +430,10 @@ router.post("/apply-voucher", authRequired, async (req, res) => {
 router.post("/apply-points", authRequired, async (req, res) => {
   try {
     const { utilizatorId, puncte, comandaId } = req.body;
-    const role = req.user?.rol || req.user?.role;
     if (!utilizatorId || !puncte || puncte <= 0 || !comandaId) {
       return res.status(400).json({ ok: false, message: "utilizatorId, puncte (>0) si comandaId sunt necesare" });
     }
-    if (role !== "admin" && role !== "patiser" && String(req.user?._id) !== String(utilizatorId)) {
+    if (!canAccessWallet(req, utilizatorId)) {
       return res.status(403).json({ ok: false, message: "Acces interzis" });
     }
 
@@ -474,8 +491,7 @@ router.post("/apply-points", authRequired, async (req, res) => {
 router.get("/:utilizatorId", authRequired, async (req, res) => {
   try {
     const { utilizatorId } = req.params;
-    const role = req.user?.rol || req.user?.role;
-    if (role !== "admin" && String(req.user?._id) !== String(utilizatorId)) {
+    if (!canAccessWallet(req, utilizatorId)) {
       return res.status(403).json({ ok: false, message: "Acces interzis" });
     }
     let fidelizare = await Fidelizare.findOne({ utilizatorId });

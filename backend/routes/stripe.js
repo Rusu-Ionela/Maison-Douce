@@ -5,12 +5,15 @@ const { authRequired } = require("../middleware/auth");
 const { activateCutieFromComanda } = require("../utils/subscriptions");
 
 const STRIPE_KEY =
-  process.env.STRIPE_SECRET_KEY || process.env.STRIPE_SECRET || process.env.STRIPE_SK;
+  process.env.STRIPE_SECRET_KEY ||
+  process.env.STRIPE_SECRET ||
+  process.env.STRIPE_SK;
 const STRIPE_MODE = STRIPE_KEY?.startsWith("sk_live") ? "live" : "test";
 const stripe = STRIPE_KEY
   ? new Stripe(STRIPE_KEY, { apiVersion: "2023-10-16" })
   : null;
 const stripeEnabled = Boolean(stripe);
+const fallbackAllowed = process.env.NODE_ENV !== "production" && !stripeEnabled;
 
 const BASE_CLIENT_URL = process.env.BASE_CLIENT_URL || "http://localhost:5173";
 const ALLOWED_CURRENCIES = ["mdl", "usd", "eur"];
@@ -35,10 +38,37 @@ function getAuthUserId(req) {
   return String(req.user?.id || req.user?._id || "");
 }
 
+function canAccessOrder(req, comanda) {
+  const role = req.user?.rol || req.user?.role;
+  if (isStaffRole(role)) return true;
+  return String(comanda?.clientId || "") === getAuthUserId(req);
+}
+
+async function findAuthorizedOrder(req, res, orderId) {
+  const normalizedId = String(orderId || "").trim();
+  if (!normalizedId) {
+    res.status(400).json({ message: "comandaId missing" });
+    return null;
+  }
+
+  const comanda = await Comanda.findById(normalizedId);
+  if (!comanda) {
+    res.status(404).json({ message: "Comanda inexistenta" });
+    return null;
+  }
+
+  if (!canAccessOrder(req, comanda)) {
+    res.status(403).json({ message: "Acces interzis la aceasta comanda." });
+    return null;
+  }
+
+  return comanda;
+}
+
 function ensureStripeConfigured(res) {
   if (stripeEnabled) return true;
   res.status(503).json({
-    message: "Stripe not configured. Use fallback payment confirmation.",
+    message: "Stripe not configured.",
     code: "stripe_not_configured",
   });
   return false;
@@ -46,6 +76,10 @@ function ensureStripeConfigured(res) {
 
 async function markOrderPaid(comanda, note) {
   if (!comanda) return null;
+  const alreadyPaid =
+    comanda.paymentStatus === "paid" || comanda.statusPlata === "paid";
+  if (alreadyPaid) return comanda;
+
   comanda.paymentStatus = "paid";
   comanda.statusPlata = "paid";
   if (["plasata", "in_asteptare", "inregistrata"].includes(comanda.status)) {
@@ -59,21 +93,46 @@ async function markOrderPaid(comanda, note) {
   return comanda;
 }
 
-// POST /api/stripe/payment-intent  { amount, currency, orderId }
-router.post("/payment-intent", async (req, res) => {
+function buildCheckoutSessionFromOrder(comanda, currency, successUrl, cancelUrl) {
+  const total = getOrderTotal(comanda);
+  return stripe.checkout.sessions.create({
+    mode: "payment",
+    line_items: [
+      {
+        quantity: 1,
+        price_data: {
+          currency,
+          unit_amount: Math.round(total * 100),
+          product_data: {
+            name: `Comanda ${comanda.numeroComanda || comanda._id}`,
+          },
+        },
+      },
+    ],
+    client_reference_id: String(comanda._id),
+    metadata: { orderId: String(comanda._id) },
+    success_url:
+      successUrl ||
+      `${BASE_CLIENT_URL}/plata/succes?comandaId=${encodeURIComponent(
+        comanda._id
+      )}&session_id={CHECKOUT_SESSION_ID}`,
+    cancel_url:
+      cancelUrl ||
+      `${BASE_CLIENT_URL}/plata/eroare?c=${encodeURIComponent(comanda._id)}`,
+  });
+}
+
+router.post("/payment-intent", authRequired, async (req, res) => {
   try {
     if (!ensureStripeConfigured(res)) return;
 
-    const { amount, currency = "mdl", orderId } = req.body;
-    let numAmount = Number(amount);
-    if (!Number.isFinite(numAmount) || numAmount <= 0) {
-      if (orderId) {
-        const comanda = await Comanda.findById(orderId).lean();
-        numAmount = getOrderTotal(comanda);
-      }
-    }
-    if (!Number.isFinite(numAmount) || numAmount <= 0) {
-      return res.status(400).json({ message: "amount must be > 0" });
+    const { currency = "mdl", orderId, comandaId } = req.body || {};
+    const comanda = await findAuthorizedOrder(req, res, orderId || comandaId);
+    if (!comanda) return;
+
+    const amount = getOrderTotal(comanda);
+    if (!Number.isFinite(amount) || amount <= 0) {
+      return res.status(400).json({ message: "Total invalid pentru comanda" });
     }
 
     const cur = normalizeCurrency(currency);
@@ -84,9 +143,9 @@ router.post("/payment-intent", async (req, res) => {
     }
 
     const pi = await stripe.paymentIntents.create({
-      amount: Math.round(numAmount * 100),
+      amount: Math.round(amount * 100),
       currency: cur,
-      metadata: { orderId: orderId || "" },
+      metadata: { orderId: String(comanda._id) },
       automatic_payment_methods: { enabled: true },
     });
 
@@ -97,12 +156,14 @@ router.post("/payment-intent", async (req, res) => {
   }
 });
 
-// POST /api/stripe/create-payment-intent  { amount (cents), currency, comandaId }
-router.post("/create-payment-intent", async (req, res) => {
+router.post("/create-payment-intent", authRequired, async (req, res) => {
   try {
     if (!ensureStripeConfigured(res)) return;
 
-    const { amount, amountCents, currency = "mdl", comandaId, orderId } = req.body || {};
+    const { currency = "mdl", comandaId, orderId } = req.body || {};
+    const comanda = await findAuthorizedOrder(req, res, comandaId || orderId);
+    if (!comanda) return;
+
     const cur = normalizeCurrency(currency);
     if (!cur) {
       return res
@@ -110,23 +171,16 @@ router.post("/create-payment-intent", async (req, res) => {
         .json({ message: `currency not allowed (${ALLOWED_CURRENCIES.join(",")})` });
     }
 
-    let cents = Number(amountCents ?? amount);
+    const total = getOrderTotal(comanda);
+    const cents = Math.round(total * 100);
     if (!Number.isFinite(cents) || cents <= 0) {
-      const id = comandaId || orderId;
-      if (id) {
-        const comanda = await Comanda.findById(id).lean();
-        const total = getOrderTotal(comanda);
-        cents = Math.round(total * 100);
-      }
-    }
-    if (!Number.isFinite(cents) || cents <= 0) {
-      return res.status(400).json({ message: "amount must be > 0" });
+      return res.status(400).json({ message: "Total invalid pentru comanda" });
     }
 
     const pi = await stripe.paymentIntents.create({
-      amount: Math.max(50, Math.round(cents)),
+      amount: Math.max(50, cents),
       currency: cur,
-      metadata: { orderId: comandaId || orderId || "" },
+      metadata: { orderId: String(comanda._id) },
       automatic_payment_methods: { enabled: true },
     });
 
@@ -137,48 +191,15 @@ router.post("/create-payment-intent", async (req, res) => {
   }
 });
 
-// POST /api/stripe/checkout-session
-router.post("/checkout-session", async (req, res) => {
-  if (!ensureStripeConfigured(res)) return;
-
-  const { orderId, items = [], successUrl, cancelUrl, currency = "mdl" } = req.body;
-  const cur = normalizeCurrency(currency);
-  if (!cur) {
-    return res
-      .status(400)
-      .json({ message: `currency not allowed (${ALLOWED_CURRENCIES.join(",")})` });
-  }
-
-  const lineItems = (items || []).map((it) => ({
-    quantity: it.qty || 1,
-    price_data: {
-      currency: cur,
-      unit_amount: Math.round(Number(it.price || 0) * 100),
-      product_data: { name: it.name || "Produs" },
-    },
-  }));
-
-  const session = await stripe.checkout.sessions.create({
-    mode: "payment",
-    line_items: lineItems,
-    client_reference_id: orderId || undefined,
-    metadata: { orderId: orderId || "" },
-    success_url:
-      successUrl ||
-      `${BASE_CLIENT_URL}/plata/succes?session_id={CHECKOUT_SESSION_ID}`,
-    cancel_url: cancelUrl || `${BASE_CLIENT_URL}/plata/eroare`,
-  });
-
-  res.json({ id: session.id, url: session.url, mode: STRIPE_MODE });
-});
-
-// POST /api/stripe/create-checkout-session/:comandaId
-router.post("/create-checkout-session/:comandaId", async (req, res) => {
+router.post("/checkout-session", authRequired, async (req, res) => {
   try {
     if (!ensureStripeConfigured(res)) return;
 
-    const { comandaId } = req.params;
-    const { currency = "mdl", successUrl, cancelUrl } = req.body || {};
+    const { orderId, comandaId, successUrl, cancelUrl, currency = "mdl" } =
+      req.body || {};
+    const comanda = await findAuthorizedOrder(req, res, orderId || comandaId);
+    if (!comanda) return;
+
     const cur = normalizeCurrency(currency);
     if (!cur) {
       return res
@@ -186,37 +207,52 @@ router.post("/create-checkout-session/:comandaId", async (req, res) => {
         .json({ message: `currency not allowed (${ALLOWED_CURRENCIES.join(",")})` });
     }
 
-    const comanda = await Comanda.findById(comandaId).lean();
-    if (!comanda) return res.status(404).json({ message: "Comanda inexistenta" });
+    const total = getOrderTotal(comanda);
+    if (total <= 0) {
+      return res.status(400).json({ message: "Total invalid pentru comanda" });
+    }
+
+    const session = await buildCheckoutSessionFromOrder(
+      comanda,
+      cur,
+      successUrl,
+      cancelUrl
+    );
+
+    res.json({ id: session.id, url: session.url, mode: STRIPE_MODE });
+  } catch (e) {
+    console.error("checkout-session error:", e.message);
+    res.status(500).json({ message: e.message || "Stripe error" });
+  }
+});
+
+router.post("/create-checkout-session/:comandaId", authRequired, async (req, res) => {
+  try {
+    if (!ensureStripeConfigured(res)) return;
+
+    const { comandaId } = req.params;
+    const { currency = "mdl", successUrl, cancelUrl } = req.body || {};
+    const comanda = await findAuthorizedOrder(req, res, comandaId);
+    if (!comanda) return;
+
+    const cur = normalizeCurrency(currency);
+    if (!cur) {
+      return res
+        .status(400)
+        .json({ message: `currency not allowed (${ALLOWED_CURRENCIES.join(",")})` });
+    }
 
     const total = getOrderTotal(comanda);
     if (total <= 0) {
       return res.status(400).json({ message: "Total invalid pentru comanda" });
     }
 
-    const session = await stripe.checkout.sessions.create({
-      mode: "payment",
-      line_items: [
-        {
-          quantity: 1,
-          price_data: {
-            currency: cur,
-            unit_amount: Math.round(total * 100),
-            product_data: {
-              name: `Comanda ${comanda.numeroComanda || comanda._id}`,
-            },
-          },
-        },
-      ],
-      client_reference_id: comandaId,
-      metadata: { orderId: comandaId },
-      success_url:
-        successUrl ||
-        `${BASE_CLIENT_URL}/plata/succes?comandaId=${encodeURIComponent(comandaId)}&session_id={CHECKOUT_SESSION_ID}`,
-      cancel_url:
-        cancelUrl ||
-        `${BASE_CLIENT_URL}/plata/eroare?c=${encodeURIComponent(comandaId)}`,
-    });
+    const session = await buildCheckoutSessionFromOrder(
+      comanda,
+      cur,
+      successUrl,
+      cancelUrl
+    );
 
     res.json({ id: session.id, url: session.url, mode: STRIPE_MODE });
   } catch (e) {
@@ -225,9 +261,7 @@ router.post("/create-checkout-session/:comandaId", async (req, res) => {
   }
 });
 
-// POST /api/stripe/confirm-payment
-// Body: { paymentIntentId, comandaId? }
-router.post("/confirm-payment", async (req, res) => {
+router.post("/confirm-payment", authRequired, async (req, res) => {
   try {
     if (!ensureStripeConfigured(res)) return;
 
@@ -241,26 +275,26 @@ router.post("/confirm-payment", async (req, res) => {
       return res.status(409).json({ message: "Payment not confirmed" });
     }
 
-    const orderId =
-      comandaId || pi.metadata?.orderId || pi.metadata?.order_id || null;
+    const orderId = pi.metadata?.orderId || pi.metadata?.order_id || null;
     if (!orderId) {
-      return res.status(400).json({ message: "orderId missing" });
+      return res.status(400).json({ message: "orderId missing in payment metadata" });
+    }
+    if (comandaId && String(comandaId) !== String(orderId)) {
+      return res.status(409).json({ message: "Payment confirmation does not match the requested order." });
     }
 
-    const comanda = await Comanda.findById(orderId);
-    if (!comanda) return res.status(404).json({ message: "Comanda inexistenta" });
+    const comanda = await findAuthorizedOrder(req, res, orderId);
+    if (!comanda) return;
 
     await markOrderPaid(comanda, "Stripe payment confirmed (manual)");
-    res.json({ ok: true, orderId, status: comanda.status });
+    res.json({ ok: true, orderId: comanda._id, status: comanda.status });
   } catch (e) {
     console.error("confirm-payment error:", e.message);
     res.status(500).json({ message: e.message || "Stripe error" });
   }
 });
 
-// POST /api/stripe/confirm-session
-// Body: { sessionId, comandaId? }
-router.post("/confirm-session", async (req, res) => {
+router.post("/confirm-session", authRequired, async (req, res) => {
   try {
     if (!ensureStripeConfigured(res)) return;
 
@@ -275,40 +309,35 @@ router.post("/confirm-session", async (req, res) => {
     }
 
     const orderId =
-      comandaId || session.metadata?.orderId || session.client_reference_id || null;
+      session.metadata?.orderId || session.client_reference_id || null;
     if (!orderId) {
-      return res.status(400).json({ message: "orderId missing" });
+      return res.status(400).json({ message: "orderId missing in session metadata" });
+    }
+    if (comandaId && String(comandaId) !== String(orderId)) {
+      return res.status(409).json({ message: "Session confirmation does not match the requested order." });
     }
 
-    const comanda = await Comanda.findById(orderId);
-    if (!comanda) return res.status(404).json({ message: "Comanda inexistenta" });
+    const comanda = await findAuthorizedOrder(req, res, orderId);
+    if (!comanda) return;
 
     await markOrderPaid(comanda, "Stripe session confirmed (manual)");
-    res.json({ ok: true, orderId, status: comanda.status });
+    res.json({ ok: true, orderId: comanda._id, status: comanda.status });
   } catch (e) {
     console.error("confirm-session error:", e.message);
     res.status(500).json({ message: e.message || "Stripe error" });
   }
 });
 
-// POST /api/stripe/fallback-confirm
-// Body: { comandaId }
 router.post("/fallback-confirm", authRequired, async (req, res) => {
   try {
-    const comandaId = String(req.body?.comandaId || "").trim();
-    if (!comandaId) {
-      return res.status(400).json({ message: "comandaId missing" });
+    if (!fallbackAllowed) {
+      return res.status(403).json({
+        message: "Fallback payment confirmation is disabled.",
+      });
     }
 
-    const comanda = await Comanda.findById(comandaId);
-    if (!comanda) return res.status(404).json({ message: "Comanda inexistenta" });
-
-    const role = req.user?.rol || req.user?.role;
-    const staff = isStaffRole(role);
-    const authUserId = getAuthUserId(req);
-    if (!staff && String(comanda.clientId || "") !== authUserId) {
-      return res.status(403).json({ message: "Acces interzis la aceasta comanda." });
-    }
+    const comanda = await findAuthorizedOrder(req, res, req.body?.comandaId);
+    if (!comanda) return;
 
     await markOrderPaid(comanda, "Fallback payment confirmed");
     res.json({
@@ -324,7 +353,6 @@ router.post("/fallback-confirm", authRequired, async (req, res) => {
   }
 });
 
-// DEBUG ROUTE: GET /api/stripe/webhook-test
 router.get("/webhook-test", (_req, res) => {
   const hasSecret = !!process.env.STRIPE_WEBHOOK_SECRET;
   res.json({
@@ -332,7 +360,7 @@ router.get("/webhook-test", (_req, res) => {
     webhook_secret: hasSecret ? "set" : "missing",
     stripe_key: stripeEnabled ? "set" : "missing",
     mode: STRIPE_MODE || "unknown",
-    fallbackAvailable: true,
+    fallbackAvailable: fallbackAllowed,
     instructions: [
       "1. Ensure .env has STRIPE_SECRET_KEY and STRIPE_WEBHOOK_SECRET",
       "2. Run: stripe listen --forward-to localhost:5000/api/stripe/webhook",
@@ -342,12 +370,11 @@ router.get("/webhook-test", (_req, res) => {
   });
 });
 
-// GET /api/stripe/config
 router.get("/config", (_req, res) => {
   res.json({
     mode: STRIPE_MODE || "unknown",
     enabled: stripeEnabled,
-    fallbackAvailable: true,
+    fallbackAvailable: fallbackAllowed,
     webhookConfigured: !!process.env.STRIPE_WEBHOOK_SECRET,
     publishable: process.env.STRIPE_PUBLISHABLE_KEY ? "present" : "missing",
     rotateHint:
@@ -355,12 +382,11 @@ router.get("/config", (_req, res) => {
   });
 });
 
-// GET /api/stripe/status
 router.get("/status", (_req, res) => {
   res.json({
     mode: STRIPE_MODE || "unknown",
     enabled: stripeEnabled,
-    fallbackAvailable: true,
+    fallbackAvailable: fallbackAllowed,
     webhookConfigured: !!process.env.STRIPE_WEBHOOK_SECRET,
     publishable: process.env.STRIPE_PUBLISHABLE_KEY ? "present" : "missing",
   });

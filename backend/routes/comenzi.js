@@ -480,19 +480,23 @@ router.patch("/:id/status", authRequired, roleCheck("admin", "patiser"), async (
         const update = {};
         switch (nou) {
             case "predat_curierului":
-                update.handoffStatus = "to_courier";
+                update.handoffStatus = "out_for_delivery";
                 update.status = "confirmed";
                 break;
             case "ridicat_client":
                 update.handoffStatus = "picked_up";
-                update.status = "confirmed";
+                update.status = "completed";
                 break;
             case "livrata":
                 update.handoffStatus = "delivered";
-                update.status = "confirmed";
+                update.status = "completed";
                 break;
             case "anulata":
-                update.status = "cancelled";
+                update.handoffStatus = "canceled";
+                update.status = "canceled";
+                break;
+            case "confirmata":
+                update.status = "confirmed";
                 break;
             default:
                 // pentru orice alt text setăm doar status (compatibil cu Rezervare)

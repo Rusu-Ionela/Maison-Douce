@@ -10,6 +10,35 @@ const helmet = require("helmet");
 const rateLimit = require("express-rate-limit");
 const morgan = require("morgan");
 
+function validateCriticalEnv() {
+  const missing = [];
+  const hasStripeKey = Boolean(
+    process.env.STRIPE_SECRET_KEY ||
+      process.env.STRIPE_SECRET ||
+      process.env.STRIPE_SK
+  );
+
+  if (!process.env.JWT_SECRET) {
+    missing.push("JWT_SECRET");
+  }
+
+  if (process.env.NODE_ENV === "production") {
+    if (!process.env.BASE_CLIENT_URL) {
+      missing.push("BASE_CLIENT_URL");
+    }
+    if (hasStripeKey && !process.env.STRIPE_WEBHOOK_SECRET) {
+      missing.push("STRIPE_WEBHOOK_SECRET");
+    }
+  }
+
+  if (missing.length > 0) {
+    console.error(`Missing required environment variables: ${missing.join(", ")}`);
+    process.exit(1);
+  }
+}
+
+validateCriticalEnv();
+
 const app = express();
 mongoose.set("strictQuery", true);
 const server = http.createServer(app);

@@ -86,7 +86,7 @@ function PaymentForm({ clientSecret, displayTotal, comandaId }) {
 
 export default function Plata() {
   const location = useLocation();
-  const { user } = useAuth() || {};
+  const { user, loading: authLoading } = useAuth() || {};
   const userId = user?._id || user?.id;
   const comandaId = new URLSearchParams(location.search).get("comandaId");
 
@@ -147,7 +147,7 @@ export default function Plata() {
 
   useEffect(() => {
     (async () => {
-      if (!comandaId) return;
+      if (authLoading || !userId || !comandaId) return;
       setLoadingComanda(true);
       try {
         const { data } = await api.get(`/comenzi/${comandaId}`);
@@ -158,7 +158,7 @@ export default function Plata() {
         setLoadingComanda(false);
       }
     })();
-  }, [comandaId]);
+  }, [authLoading, userId, comandaId]);
 
   const totalDeBaza = useMemo(() => {
     if (!comanda) return 0;
@@ -186,7 +186,7 @@ export default function Plata() {
   const fidelizareDisabled = busyFidelizare || reducerePct > 0 || hasFidelizare;
 
   useEffect(() => {
-    if (!userId) return;
+    if (authLoading || !userId) return;
     setLoadingWallet(true);
     (async () => {
       try {
@@ -201,7 +201,7 @@ export default function Plata() {
         setLoadingWallet(false);
       }
     })();
-  }, [userId]);
+  }, [authLoading, userId]);
 
   const createPIWithAmount = async () => {
     if (!canUseEmbeddedStripe) return;

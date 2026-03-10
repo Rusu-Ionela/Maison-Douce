@@ -1,15 +1,20 @@
-const express = require('express');
+const express = require("express");
 const router = express.Router();
 const Utilizator = require("../models/Utilizator");
-const crypto = require("crypto");
 const { sendEmail } = require("../utils/notifications");
+const { generateResetToken } = require("../utils/resetTokens");
 
 const BASE_CLIENT_URL = process.env.BASE_CLIENT_URL || "http://localhost:5173";
 const RESET_TOKEN_TTL_MIN = Number(process.env.RESET_TOKEN_TTL_MIN || 60);
+const GENERIC_RESET_MESSAGE =
+  "Daca exista un cont pentru acest email, vei primi instructiuni de resetare.";
 
-// Endpoint pentru trimitere email reset
+function normalizeEmail(email) {
+  return String(email || "").trim().toLowerCase();
+}
+
 router.post("/send-reset-email", async (req, res) => {
-  const { email } = req.body || {};
+  const email = normalizeEmail(req.body?.email);
   if (!email) {
     return res.status(400).json({ message: "Email este obligatoriu." });
   }
@@ -17,34 +22,30 @@ router.post("/send-reset-email", async (req, res) => {
   try {
     const utilizator = await Utilizator.findOne({ email });
     if (!utilizator) {
-      return res.status(404).json({ message: "Utilizatorul nu a fost gasit." });
+      return res.json({ message: GENERIC_RESET_MESSAGE });
     }
 
-    const token = crypto.randomBytes(32).toString("hex");
-    utilizator.resetToken = token;
-    utilizator.resetTokenExp = new Date(Date.now() + RESET_TOKEN_TTL_MIN * 60 * 1000);
+    const { rawToken, hashedToken } = generateResetToken();
+    utilizator.resetToken = hashedToken;
+    utilizator.resetTokenExp = new Date(
+      Date.now() + RESET_TOKEN_TTL_MIN * 60 * 1000
+    );
     await utilizator.save();
 
     const resetLink = `${BASE_CLIENT_URL.replace(/\/$/, "")}/reset-parola?token=${encodeURIComponent(
-      token
-    )}&email=${encodeURIComponent(email)}`;
+      rawToken
+    )}`;
 
-    const sent = await sendEmail(
+    await sendEmail(
       email,
       "Resetare parola TortApp",
       `<p>Click aici pentru a reseta parola:</p><a href="${resetLink}">${resetLink}</a>`
     );
-    if (!sent) {
-      return res.json({
-        message: "Link de resetare generat. Foloseste linkul pentru a continua.",
-        link: resetLink,
-      });
-    }
 
-    res.json({ message: "Email de resetare trimis.", link: resetLink });
+    return res.json({ message: GENERIC_RESET_MESSAGE });
   } catch (err) {
     console.error("Eroare reset parola:", err);
-    res.status(500).json({ message: "Eroare la trimitere email." });
+    return res.status(500).json({ message: "Eroare la trimitere email." });
   }
 });
 

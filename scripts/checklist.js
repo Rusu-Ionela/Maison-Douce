@@ -1,4 +1,9 @@
-const axios = require("axios");
+const path = require("path");
+const axios = require(
+  require.resolve("axios", {
+    paths: [__dirname, path.join(__dirname, "..", "backend")],
+  })
+);
 
 const BASE_URL = process.env.API_BASE || "http://localhost:5000/api";
 const EMAIL = process.env.TEST_EMAIL || "test@example.com";

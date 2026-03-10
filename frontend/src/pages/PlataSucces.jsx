@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import api from "/src/lib/api.js";
+import { useAuth } from "../context/AuthContext";
 
 export default function PlataSucces() {
   const [sp] = useSearchParams();
@@ -9,9 +10,11 @@ export default function PlataSucces() {
   const sessionId = sp.get("session_id");
   const [comanda, setComanda] = useState(null);
   const [abonamentMsg, setAbonamentMsg] = useState("");
+  const { user, loading: authLoading } = useAuth() || {};
+  const userId = user?._id || user?.id;
 
   useEffect(() => {
-    if (!comandaId) return undefined;
+    if (authLoading || !comandaId || !userId) return undefined;
 
     let cancelled = false;
 
@@ -54,12 +57,17 @@ export default function PlataSucces() {
     return () => {
       cancelled = true;
     };
-  }, [comandaId, paymentIntentId, sessionId]);
+  }, [authLoading, userId, comandaId, paymentIntentId, sessionId]);
 
   return (
     <div className="max-w-3xl mx-auto p-6">
       <h1 className="text-3xl font-bold mb-2">Plata reusita</h1>
       <p className="text-gray-700 mb-4">Multumim! Comanda ta a fost confirmata.</p>
+      {!authLoading && !userId && (
+        <p className="text-amber-700 mb-4">
+          Autentifica-te pentru a vedea detaliile comenzii.
+        </p>
+      )}
       {abonamentMsg && <p className="text-sm text-emerald-700 mb-4">{abonamentMsg}</p>}
 
       {comanda && (

@@ -1,38 +1,30 @@
-import { useEffect, useState } from "react";
-import { useSearchParams } from "react-router-dom";
+import { useState } from "react";
+import { Link, useSearchParams } from "react-router-dom";
 import api from "/src/lib/api.js";
 
 export default function ResetParola() {
   const [sp] = useSearchParams();
-  const emailFromQuery = sp.get("email") || "";
   const tokenFromQuery = sp.get("token") || "";
-  const [email, setEmail] = useState(emailFromQuery);
   const [newPassword, setNewPassword] = useState("");
   const [msg, setMsg] = useState("");
   const [loading, setLoading] = useState(false);
 
-  useEffect(() => {
-    if (emailFromQuery && emailFromQuery !== email) {
-      setEmail(emailFromQuery);
-    }
-  }, [emailFromQuery, email]);
-
   async function onSubmit(e) {
     e.preventDefault();
+    if (!tokenFromQuery) return;
+
     setMsg("");
     setLoading(true);
     try {
-      const payload = tokenFromQuery
-        ? { token: tokenFromQuery, newPassword }
-        : { email, newPassword };
       const { data } = await api.post("/utilizatori/reset-password", {
-        ...payload,
+        token: tokenFromQuery,
+        newPassword,
       });
       setMsg(data.message || "Parola a fost resetata.");
     } catch (e) {
       setMsg(
         e?.response?.data?.message ||
-          "Eroare la resetarea parolei. Verifica emailul."
+          "Eroare la resetarea parolei. Cere un link nou de resetare."
       );
     } finally {
       setLoading(false);
@@ -62,34 +54,32 @@ export default function ResetParola() {
               </div>
             )}
 
-            <form className="form" onSubmit={onSubmit}>
-              <div>
-                <label className="label">Email utilizator</label>
-                <input
-                  className="input"
-                  type="email"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  required
-                  disabled={!!tokenFromQuery}
-                />
+            {!tokenFromQuery ? (
+              <div className="space-y-4">
+                <p>Linkul de resetare lipseste sau este invalid.</p>
+                <Link to="/resetare-parola" className="btn btn-primary">
+                  Cere un link nou
+                </Link>
               </div>
+            ) : (
+              <form className="form" onSubmit={onSubmit}>
+                <div>
+                  <label className="label">Parola noua</label>
+                  <input
+                    className="input"
+                    type="password"
+                    value={newPassword}
+                    onChange={(e) => setNewPassword(e.target.value)}
+                    required
+                    minLength={8}
+                  />
+                </div>
 
-              <div>
-                <label className="label">Parola noua</label>
-                <input
-                  className="input"
-                  type="password"
-                  value={newPassword}
-                  onChange={(e) => setNewPassword(e.target.value)}
-                  required
-                />
-              </div>
-
-              <button className="btn btn-primary" type="submit" disabled={loading}>
-                {loading ? "Se proceseaza..." : "Reseteaza parola"}
-              </button>
-            </form>
+                <button className="btn btn-primary" type="submit" disabled={loading}>
+                  {loading ? "Se proceseaza..." : "Reseteaza parola"}
+                </button>
+              </form>
+            )}
           </div>
         </div>
       </div>

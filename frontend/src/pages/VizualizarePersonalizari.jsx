@@ -1,17 +1,20 @@
 import React, { useEffect, useState } from 'react';
 import api from '/src/lib/api.js';
 import { useNavigate } from 'react-router-dom';
+import { useAuth } from "../context/AuthContext";
 
 export default function VizualizarePersonalizari() {
     const [list, setList] = useState([]);
     const [loading, setLoading] = useState(false);
     const nav = useNavigate();
+    const { user, loading: authLoading } = useAuth() || {};
+    const clientId = user?._id || user?.id;
 
     useEffect(() => {
+        if (authLoading) return;
         (async () => {
             setLoading(true);
             try {
-                const clientId = localStorage.getItem('userId');
                 if (!clientId) return setList([]);
                 const { data } = await api.get(`/personalizare/client/${clientId}`);
                 setList(data || []);
@@ -19,7 +22,7 @@ export default function VizualizarePersonalizari() {
                 console.error(e);
             } finally { setLoading(false); }
         })();
-    }, []);
+    }, [authLoading, clientId]);
 
     return (
         <div className="container p-6">
