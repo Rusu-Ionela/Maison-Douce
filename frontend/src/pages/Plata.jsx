@@ -1,11 +1,24 @@
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { loadStripe } from "@stripe/stripe-js";
-import { Elements, PaymentElement, useElements, useStripe } from "@stripe/react-stripe-js";
+import {
+  Elements,
+  PaymentElement,
+  useElements,
+  useStripe,
+} from "@stripe/react-stripe-js";
 import { useLocation } from "react-router-dom";
 import StatusBanner from "../components/StatusBanner";
 import { useAuth } from "../context/AuthContext";
 import api from "/src/lib/api.js";
 import { buttons, cards, containers, inputs } from "/src/lib/tailwindComponents.js";
+import {
+  fetchOrderDetails,
+  fetchStripeStatus,
+  fetchWalletDetails,
+  getApiErrorMessage,
+  queryKeys,
+} from "../lib/serverState";
 
 const publicKey = import.meta.env.VITE_STRIPE_PK || "";
 const stripePromise = publicKey ? loadStripe(publicKey) : null;
@@ -20,19 +33,6 @@ function money(value) {
 
 function isPaidOrder(order) {
   return order?.paymentStatus === "paid" || order?.statusPlata === "paid";
-}
-
-async function getOrderDetails(comandaId) {
-  const { data } = await api.get(`/comenzi/${comandaId}`);
-  return data;
-}
-
-async function getWalletDetails(userId) {
-  const { data } = await api.get(`/fidelizare/client/${userId}`);
-  return {
-    puncteCurent: data.puncteCurent || 0,
-    reduceriDisponibile: data.reduceriDisponibile || [],
-  };
 }
 
 function PaymentForm({ clientSecret, displayTotal, comandaId, onStatusChange }) {
@@ -55,7 +55,9 @@ function PaymentForm({ clientSecret, displayTotal, comandaId, onStatusChange }) 
     });
 
     const returnUrl = comandaId
-      ? `${window.location.origin}/plata/succes?comandaId=${encodeURIComponent(comandaId)}`
+      ? `${window.location.origin}/plata/succes?comandaId=${encodeURIComponent(
+          comandaId
+        )}`
       : `${window.location.origin}/plata/succes`;
 
     const { error, paymentIntent } = await stripe.confirmPayment({
@@ -120,46 +122,44 @@ function PaymentForm({ clientSecret, displayTotal, comandaId, onStatusChange }) 
 }
 
 export default function Plata() {
+  const queryClient = useQueryClient();
   const location = useLocation();
   const { user, loading: authLoading } = useAuth() || {};
   const userId = user?._id || user?.id;
   const comandaId = new URLSearchParams(location.search).get("comandaId");
 
-  const [comanda, setComanda] = useState(null);
-  const [loadingComanda, setLoadingComanda] = useState(false);
-  const [comandaError, setComandaError] = useState("");
-
   const [codCupon, setCodCupon] = useState("");
   const [codVoucher, setCodVoucher] = useState("");
   const [puncte, setPuncte] = useState("");
+  const [pageStatus, setPageStatus] = useState({ type: "", message: "" });
 
-  const [wallet, setWallet] = useState(EMPTY_WALLET);
-  const [loadingWallet, setLoadingWallet] = useState(false);
-  const [walletError, setWalletError] = useState("");
+  const stripeStatusQuery = useQuery({
+    queryKey: queryKeys.stripeStatus(),
+    queryFn: fetchStripeStatus,
+  });
+  const orderQuery = useQuery({
+    queryKey: queryKeys.orderDetail(comandaId),
+    queryFn: () => fetchOrderDetails(comandaId),
+    enabled: !authLoading && Boolean(userId && comandaId),
+  });
+  const walletQuery = useQuery({
+    queryKey: queryKeys.wallet(userId),
+    queryFn: () => fetchWalletDetails(userId),
+    enabled: !authLoading && Boolean(userId),
+  });
 
-  const [stripeStatus, setStripeStatus] = useState({
-    loading: true,
+  const comanda = orderQuery.data || null;
+  const wallet = walletQuery.data || EMPTY_WALLET;
+  const stripeStatus = stripeStatusQuery.data || {
     enabled: false,
     fallbackAvailable: false,
     mode: "unknown",
-  });
-
-  const [clientSecret, setClientSecret] = useState("");
-  const [loadingPI, setLoadingPI] = useState(false);
-  const [creatingCheckout, setCreatingCheckout] = useState(false);
-  const [busyDiscount, setBusyDiscount] = useState({
-    coupon: false,
-    voucher: false,
-    points: false,
-  });
-  const [pageStatus, setPageStatus] = useState({ type: "", message: "" });
-
-  const canUseStripeCheckout = stripeStatus.enabled;
-  const canUseEmbeddedStripe = canUseStripeCheckout && !!publicKey;
-  const canUseFallbackPayment = !canUseStripeCheckout && stripeStatus.fallbackAvailable;
+  };
 
   const orderPaid = isPaidOrder(comanda);
-  const orderDiscount = Number(comanda?.discountTotal || comanda?.discountFidelizare || 0);
+  const orderDiscount = Number(
+    comanda?.discountTotal || comanda?.discountFidelizare || 0
+  );
   const orderBaseTotal = Number(comanda?.total || 0);
   const orderTotalFinal = Number(comanda?.totalFinal ?? comanda?.total ?? 0);
   const orderHasDiscount =
@@ -178,258 +178,196 @@ export default function Plata() {
     return "";
   }, [comanda]);
 
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      try {
-        const { data } = await api.get("/stripe/status");
-        if (cancelled) return;
-        setStripeStatus({
-          loading: false,
-          enabled: !!data?.enabled,
-          fallbackAvailable: data?.fallbackAvailable !== false,
-          mode: data?.mode || "unknown",
-        });
-      } catch {
-        if (cancelled) return;
-        setStripeStatus({
-          loading: false,
-          enabled: false,
-          fallbackAvailable: true,
-          mode: "unknown",
-        });
-      }
-    })();
+  const canUseStripeCheckout = stripeStatus.enabled;
+  const canUseEmbeddedStripe = canUseStripeCheckout && Boolean(publicKey);
+  const canUseFallbackPayment =
+    !canUseStripeCheckout && stripeStatus.fallbackAvailable;
 
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
-  useEffect(() => {
-    if (authLoading || !userId || !comandaId) return;
-
-    let cancelled = false;
-    setLoadingComanda(true);
-    setComandaError("");
-
-    (async () => {
-      try {
-        const data = await getOrderDetails(comandaId);
-        if (!cancelled) {
-          setComanda(data);
-        }
-      } catch (error) {
-        if (!cancelled) {
-          setComanda(null);
-          setComandaError(
-            error?.response?.data?.message || "Nu am putut incarca aceasta comanda."
-          );
-        }
-      } finally {
-        if (!cancelled) {
-          setLoadingComanda(false);
-        }
-      }
-    })();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [authLoading, userId, comandaId]);
-
-  useEffect(() => {
-    if (authLoading || !userId) return;
-
-    let cancelled = false;
-    setLoadingWallet(true);
-    setWalletError("");
-
-    (async () => {
-      try {
-        const data = await getWalletDetails(userId);
-        if (!cancelled) {
-          setWallet(data);
-        }
-      } catch (error) {
-        if (!cancelled) {
-          setWallet(EMPTY_WALLET);
-          setWalletError(
-            error?.response?.data?.message || "Nu am putut incarca portofelul de fidelizare."
-          );
-        }
-      } finally {
-        if (!cancelled) {
-          setLoadingWallet(false);
-        }
-      }
-    })();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [authLoading, userId]);
-
-  useEffect(() => {
-    if (!canUseEmbeddedStripe || !comandaId || !comanda || orderPaid) {
-      setClientSecret("");
-      return;
-    }
-    if (orderTotalFinal <= 0) {
-      setClientSecret("");
-      return;
-    }
-
-    let cancelled = false;
-    (async () => {
-      setLoadingPI(true);
-      setClientSecret("");
-      try {
-        const { data } = await api.post("/stripe/create-payment-intent", {
-          currency: "mdl",
-          comandaId,
-        });
-        if (!cancelled) {
-          setClientSecret(data?.clientSecret || "");
-        }
-      } catch (error) {
-        if (!cancelled) {
-          setPageStatus({
-            type: "error",
-            message:
-              error?.response?.data?.message ||
-              "Nu am putut initializa plata cu cardul.",
-          });
-        }
-      } finally {
-        if (!cancelled) {
-          setLoadingPI(false);
-        }
-      }
-    })();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [canUseEmbeddedStripe, comanda, comandaId, orderPaid, orderTotalFinal]);
+  const paymentIntentQuery = useQuery({
+    queryKey: queryKeys.paymentIntent(comandaId, orderTotalFinal),
+    queryFn: async () => {
+      const { data } = await api.post("/stripe/create-payment-intent", {
+        currency: "mdl",
+        comandaId,
+      });
+      return data?.clientSecret || "";
+    },
+    enabled:
+      canUseEmbeddedStripe &&
+      Boolean(comandaId && comanda) &&
+      !orderPaid &&
+      orderTotalFinal > 0,
+    retry: false,
+    refetchOnMount: false,
+  });
 
   const paymentDisabled =
     authLoading ||
     !userId ||
     !comandaId ||
     !comanda ||
-    loadingComanda ||
-    creatingCheckout ||
+    orderQuery.isLoading ||
     orderPaid;
 
-  const discountDisabled =
-    paymentDisabled ||
-    busyDiscount.coupon ||
-    busyDiscount.voucher ||
-    busyDiscount.points ||
-    orderHasDiscount;
+  const refreshAfterDiscount = async () => {
+    await Promise.all([
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.orderDetail(comandaId),
+      }),
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.wallet(userId),
+      }),
+    ]);
 
-  const setBusy = (key, value) => {
-    setBusyDiscount((prev) => ({ ...prev, [key]: value }));
-  };
-
-  const clearDiscountInputs = () => {
     setCodCupon("");
     setCodVoucher("");
     setPuncte("");
   };
 
-  const refreshAfterDiscount = async () => {
-    if (comandaId) {
-      try {
-        const nextOrder = await getOrderDetails(comandaId);
-        setComanda(nextOrder);
-        setComandaError("");
-      } catch (error) {
-        setComanda(null);
-        setComandaError(
-          error?.response?.data?.message || "Nu am putut reincarca aceasta comanda."
-        );
+  const couponMutation = useMutation({
+    mutationFn: () =>
+      api.post("/coupon/apply", {
+        cod: codCupon.trim(),
+        comandaId,
+      }),
+    onSuccess: async (response) => {
+      await refreshAfterDiscount();
+      setPageStatus({
+        type: "success",
+        message: `Cupon aplicat cu succes: -${money(
+          response?.data?.discount || 0
+        )}.`,
+      });
+    },
+    onError: (error) => {
+      setPageStatus({
+        type: "error",
+        message: getApiErrorMessage(
+          error,
+          "Nu am putut aplica acest cupon."
+        ),
+      });
+    },
+  });
+
+  const voucherMutation = useMutation({
+    mutationFn: () =>
+      api.post("/fidelizare/apply-voucher", {
+        utilizatorId: userId,
+        cod: codVoucher.trim(),
+        comandaId,
+      }),
+    onSuccess: async (response) => {
+      await refreshAfterDiscount();
+      setPageStatus({
+        type: "success",
+        message: `Voucher aplicat: -${money(
+          response?.data?.discount || 0
+        )}.`,
+      });
+    },
+    onError: (error) => {
+      setPageStatus({
+        type: "error",
+        message: getApiErrorMessage(error, "Voucher invalid sau expirat."),
+      });
+    },
+  });
+
+  const pointsMutation = useMutation({
+    mutationFn: (pointsValue) =>
+      api.post("/fidelizare/apply-points", {
+        utilizatorId: userId,
+        puncte: pointsValue,
+        comandaId,
+      }),
+    onSuccess: async (response) => {
+      await refreshAfterDiscount();
+      setPageStatus({
+        type: "success",
+        message: `Puncte aplicate: -${money(
+          response?.data?.discount || 0
+        )}.`,
+      });
+    },
+    onError: (error) => {
+      setPageStatus({
+        type: "error",
+        message: getApiErrorMessage(error, "Nu am putut aplica punctele."),
+      });
+    },
+  });
+
+  const checkoutMutation = useMutation({
+    mutationFn: () =>
+      api.post(`/stripe/create-checkout-session/${comandaId}`, {
+        currency: "mdl",
+      }),
+    onSuccess: (response) => {
+      if (response?.data?.url) {
+        window.location.assign(response.data.url);
+        return;
       }
-    }
 
-    if (userId) {
-      try {
-        const nextWallet = await getWalletDetails(userId);
-        setWallet(nextWallet);
-        setWalletError("");
-      } catch (error) {
-        setWallet(EMPTY_WALLET);
-        setWalletError(
-          error?.response?.data?.message ||
-            "Nu am putut reincarca portofelul de fidelizare."
-        );
-      }
-    }
+      setPageStatus({
+        type: "error",
+        message: "Nu s-a putut crea sesiunea de plata.",
+      });
+    },
+    onError: (error) => {
+      setPageStatus({
+        type: "error",
+        message: getApiErrorMessage(
+          error,
+          "Eroare la crearea sesiunii de plata."
+        ),
+      });
+    },
+  });
 
-    clearDiscountInputs();
-  };
+  const fallbackMutation = useMutation({
+    mutationFn: () => api.post("/stripe/fallback-confirm", { comandaId }),
+    onSuccess: () => {
+      window.location.assign(
+        `/plata/succes?comandaId=${encodeURIComponent(comandaId)}`
+      );
+    },
+    onError: (error) => {
+      setPageStatus({
+        type: "error",
+        message: getApiErrorMessage(error, "Nu am putut confirma plata."),
+      });
+    },
+  });
 
-  const applyCoupon = async () => {
+  const discountDisabled =
+    paymentDisabled ||
+    couponMutation.isPending ||
+    voucherMutation.isPending ||
+    pointsMutation.isPending ||
+    orderHasDiscount;
+
+  const applyCoupon = () => {
     if (!codCupon.trim()) {
       setPageStatus({ type: "warning", message: "Introdu un cod de cupon." });
       return;
     }
 
-    setBusy("coupon", true);
     setPageStatus({ type: "", message: "" });
-    try {
-      const { data } = await api.post("/coupon/apply", {
-        cod: codCupon.trim(),
-        comandaId,
-      });
-      await refreshAfterDiscount();
-      setPageStatus({
-        type: "success",
-        message: `Cupon aplicat cu succes: -${money(data?.discount || 0)}.`,
-      });
-    } catch (error) {
-      setPageStatus({
-        type: "error",
-        message:
-          error?.response?.data?.message || "Nu am putut aplica acest cupon.",
-      });
-    } finally {
-      setBusy("coupon", false);
-    }
+    couponMutation.mutate();
   };
 
-  const applyVoucher = async () => {
+  const applyVoucher = () => {
     if (!codVoucher.trim()) {
       setPageStatus({ type: "warning", message: "Introdu un cod de voucher." });
       return;
     }
 
-    setBusy("voucher", true);
     setPageStatus({ type: "", message: "" });
-    try {
-      const { data } = await api.post("/fidelizare/apply-voucher", {
-        utilizatorId: userId,
-        cod: codVoucher.trim(),
-        comandaId,
-      });
-      await refreshAfterDiscount();
-      setPageStatus({
-        type: "success",
-        message: `Voucher aplicat: -${money(data?.discount || 0)}.`,
-      });
-    } catch (error) {
-      setPageStatus({
-        type: "error",
-        message:
-          error?.response?.data?.message || "Voucher invalid sau expirat.",
-      });
-    } finally {
-      setBusy("voucher", false);
-    }
+    voucherMutation.mutate();
   };
 
-  const applyPoints = async () => {
+  const applyPoints = () => {
     const pointsValue = Number(puncte || 0);
     if (!pointsValue || pointsValue <= 0) {
       setPageStatus({
@@ -439,79 +377,32 @@ export default function Plata() {
       return;
     }
 
-    setBusy("points", true);
     setPageStatus({ type: "", message: "" });
-    try {
-      const { data } = await api.post("/fidelizare/apply-points", {
-        utilizatorId: userId,
-        puncte: pointsValue,
-        comandaId,
-      });
-      await refreshAfterDiscount();
-      setPageStatus({
-        type: "success",
-        message: `Puncte aplicate: -${money(data?.discount || 0)}.`,
-      });
-    } catch (error) {
-      setPageStatus({
-        type: "error",
-        message:
-          error?.response?.data?.message || "Nu am putut aplica punctele.",
-      });
-    } finally {
-      setBusy("points", false);
-    }
+    pointsMutation.mutate(pointsValue);
   };
 
-  const goCheckout = async () => {
+  const goCheckout = () => {
     if (paymentDisabled) return;
 
-    setCreatingCheckout(true);
-    setPageStatus({ type: "info", message: "Se creeaza sesiunea Stripe Checkout..." });
-    try {
-      const { data } = await api.post(`/stripe/create-checkout-session/${comandaId}`, {
-        currency: "mdl",
-      });
-      if (data?.url) {
-        window.location.assign(data.url);
-        return;
-      }
-      setPageStatus({
-        type: "error",
-        message: "Nu s-a putut crea sesiunea de plata.",
-      });
-    } catch (error) {
-      setPageStatus({
-        type: "error",
-        message:
-          error?.response?.data?.message ||
-          "Eroare la crearea sesiunii de plata.",
-      });
-    } finally {
-      setCreatingCheckout(false);
-    }
+    setPageStatus({
+      type: "info",
+      message: "Se creeaza sesiunea Stripe Checkout...",
+    });
+    checkoutMutation.mutate();
   };
 
-  const fallbackPayment = async () => {
+  const fallbackPayment = () => {
     if (paymentDisabled) return;
 
-    setCreatingCheckout(true);
     setPageStatus({
       type: "warning",
       message: "Confirmam plata prin fallback pentru mediul curent.",
     });
-    try {
-      await api.post("/stripe/fallback-confirm", { comandaId });
-      window.location.assign(`/plata/succes?comandaId=${encodeURIComponent(comandaId)}`);
-    } catch (error) {
-      setPageStatus({
-        type: "error",
-        message:
-          error?.response?.data?.message || "Nu am putut confirma plata.",
-      });
-      setCreatingCheckout(false);
-    }
+    fallbackMutation.mutate();
   };
+
+  const paymentActionBusy =
+    checkoutMutation.isPending || fallbackMutation.isPending;
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-rose-50 via-pink-50 to-white">
@@ -522,8 +413,8 @@ export default function Plata() {
           </p>
           <h1 className="text-3xl font-bold text-gray-900">Plata comenzii</h1>
           <p className="max-w-2xl text-sm text-gray-600">
-            Reducerile se aplica direct pe comanda, iar plata foloseste intotdeauna
-            totalul real salvat in backend.
+            Reducerile se aplica direct pe comanda, iar plata foloseste
+            intotdeauna totalul real salvat in backend.
           </p>
         </header>
 
@@ -543,9 +434,21 @@ export default function Plata() {
         <StatusBanner
           type="error"
           title="Comanda lipsa"
-          message={!comandaId ? "Adauga ?comandaId=... in URL pentru a continua." : ""}
+          message={
+            !comandaId ? "Adauga ?comandaId=... in URL pentru a continua." : ""
+          }
         />
-        <StatusBanner type="error" message={comandaError} />
+        <StatusBanner
+          type="error"
+          message={
+            orderQuery.error
+              ? getApiErrorMessage(
+                  orderQuery.error,
+                  "Nu am putut incarca aceasta comanda."
+                )
+              : ""
+          }
+        />
 
         <div className="grid grid-cols-1 gap-6 lg:grid-cols-[1.3fr,0.9fr]">
           <section className={`${cards.default} space-y-4`}>
@@ -569,13 +472,13 @@ export default function Plata() {
               )}
             </div>
 
-            {loadingComanda && (
+            {orderQuery.isLoading && (
               <div className="rounded-2xl bg-gray-50 px-4 py-6 text-sm text-gray-600">
                 Se incarca datele comenzii...
               </div>
             )}
 
-            {!loadingComanda && comanda && (
+            {!orderQuery.isLoading && comanda && (
               <div className="space-y-4">
                 <div className="grid gap-3 rounded-2xl border border-rose-100 bg-rose-50/60 p-4 text-sm text-gray-700 md:grid-cols-2">
                   <div>
@@ -632,8 +535,13 @@ export default function Plata() {
                   </div>
                   {orderDiscount > 0 && (
                     <div className="flex justify-between text-emerald-700">
-                      <span>Discount aplicat {discountLabel ? `(${discountLabel})` : ""}</span>
-                      <span className="font-semibold">-{money(orderDiscount)}</span>
+                      <span>
+                        Discount aplicat{" "}
+                        {discountLabel ? `(${discountLabel})` : ""}
+                      </span>
+                      <span className="font-semibold">
+                        -{money(orderDiscount)}
+                      </span>
                     </div>
                   )}
                   <div className="flex justify-between border-t border-gray-100 pt-2 text-base text-gray-900">
@@ -658,7 +566,17 @@ export default function Plata() {
                 Discounturi si fidelizare
               </h2>
 
-              <StatusBanner type="error" message={walletError} />
+              <StatusBanner
+                type="error"
+                message={
+                  walletQuery.error
+                    ? getApiErrorMessage(
+                        walletQuery.error,
+                        "Nu am putut incarca portofelul de fidelizare."
+                      )
+                    : ""
+                }
+              />
               {orderHasDiscount && !orderPaid && (
                 <StatusBanner
                   type="info"
@@ -685,7 +603,7 @@ export default function Plata() {
                       disabled={discountDisabled}
                       className={buttons.outline}
                     >
-                      {busyDiscount.coupon ? "Se aplica..." : "Aplica"}
+                      {couponMutation.isPending ? "Se aplica..." : "Aplica"}
                     </button>
                   </div>
                 </div>
@@ -708,7 +626,7 @@ export default function Plata() {
                       disabled={discountDisabled}
                       className={buttons.outline}
                     >
-                      {busyDiscount.voucher ? "Se aplica..." : "Aplica"}
+                      {voucherMutation.isPending ? "Se aplica..." : "Aplica"}
                     </button>
                   </div>
                 </div>
@@ -733,13 +651,13 @@ export default function Plata() {
                       disabled={discountDisabled}
                       className={buttons.outline}
                     >
-                      {busyDiscount.points ? "Se aplica..." : "Aplica"}
+                      {pointsMutation.isPending ? "Se aplica..." : "Aplica"}
                     </button>
                   </div>
                 </div>
 
                 <div className="rounded-2xl bg-gray-50 px-4 py-3 text-sm text-gray-600">
-                  {loadingWallet ? (
+                  {walletQuery.isLoading ? (
                     "Se incarca portofelul..."
                   ) : (
                     <>
@@ -780,8 +698,21 @@ export default function Plata() {
               <StatusBanner
                 type="info"
                 message={
-                  !stripeStatus.loading
-                    ? `Stripe este ${stripeStatus.enabled ? "activ" : "indisponibil"} (${stripeStatus.mode}).`
+                  !stripeStatusQuery.isLoading
+                    ? `Stripe este ${
+                        stripeStatus.enabled ? "activ" : "indisponibil"
+                      } (${stripeStatus.mode}).`
+                    : ""
+                }
+              />
+              <StatusBanner
+                type="error"
+                message={
+                  paymentIntentQuery.error
+                    ? getApiErrorMessage(
+                        paymentIntentQuery.error,
+                        "Nu am putut initializa plata cu cardul."
+                      )
                     : ""
                 }
               />
@@ -794,33 +725,33 @@ export default function Plata() {
               )}
 
               <div className="space-y-3">
-                {!stripeStatus.loading && canUseStripeCheckout && (
+                {!stripeStatusQuery.isLoading && canUseStripeCheckout && (
                   <button
                     type="button"
                     onClick={goCheckout}
-                    disabled={paymentDisabled}
+                    disabled={paymentDisabled || paymentActionBusy}
                     className={buttons.secondary}
                   >
-                    {creatingCheckout
+                    {checkoutMutation.isPending
                       ? "Se creeaza sesiunea..."
                       : `Stripe Checkout (${stripeStatus.mode})`}
                   </button>
                 )}
 
-                {!stripeStatus.loading && canUseFallbackPayment && (
+                {!stripeStatusQuery.isLoading && canUseFallbackPayment && (
                   <button
                     type="button"
                     onClick={fallbackPayment}
-                    disabled={paymentDisabled}
+                    disabled={paymentDisabled || paymentActionBusy}
                     className={buttons.success}
                   >
-                    {creatingCheckout
+                    {fallbackMutation.isPending
                       ? "Se confirma plata..."
                       : "Confirma plata (fallback)"}
                   </button>
                 )}
 
-                {!stripeStatus.loading &&
+                {!stripeStatusQuery.isLoading &&
                   !canUseStripeCheckout &&
                   !canUseFallbackPayment && (
                     <StatusBanner
@@ -837,24 +768,30 @@ export default function Plata() {
                 )}
               </div>
 
-              {loadingPI && canUseEmbeddedStripe && !orderPaid && (
+              {paymentIntentQuery.isFetching && canUseEmbeddedStripe && !orderPaid && (
                 <div className="mt-4 text-sm text-gray-600">
                   Se initializeaza plata cu cardul...
                 </div>
               )}
 
-              {clientSecret && canUseEmbeddedStripe && stripePromise && !orderPaid && (
-                <div className="mt-4 border-t border-gray-100 pt-4">
-                  <Elements stripe={stripePromise} options={{ clientSecret }}>
-                    <PaymentForm
-                      clientSecret={clientSecret}
-                      displayTotal={orderTotalFinal}
-                      comandaId={comandaId}
-                      onStatusChange={setPageStatus}
-                    />
-                  </Elements>
-                </div>
-              )}
+              {paymentIntentQuery.data &&
+                canUseEmbeddedStripe &&
+                stripePromise &&
+                !orderPaid && (
+                  <div className="mt-4 border-t border-gray-100 pt-4">
+                    <Elements
+                      stripe={stripePromise}
+                      options={{ clientSecret: paymentIntentQuery.data }}
+                    >
+                      <PaymentForm
+                        clientSecret={paymentIntentQuery.data}
+                        displayTotal={orderTotalFinal}
+                        comandaId={comandaId}
+                        onStatusChange={setPageStatus}
+                      />
+                    </Elements>
+                  </div>
+                )}
             </div>
           </section>
         </div>

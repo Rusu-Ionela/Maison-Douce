@@ -18,6 +18,11 @@ describe("Auth flows (CI)", () => {
     ],
   };
 
+  beforeEach(() => {
+    cy.clearCookies();
+    cy.clearLocalStorage();
+  });
+
   it("logs in a client user and redirects to the calendar flow", () => {
     cy.intercept("POST", "**/utilizatori/login", {
       statusCode: 200,

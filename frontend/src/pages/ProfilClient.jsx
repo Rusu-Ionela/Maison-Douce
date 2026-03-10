@@ -1,8 +1,17 @@
 import { useEffect, useState } from "react";
-import api from "/src/lib/api.js";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import StatusBanner from "../components/StatusBanner";
 import { useAuth } from "../context/AuthContext";
-import RecenzieComanda from "./RecenzieComanda";
+import api from "/src/lib/api.js";
+import {
+  fetchClientOrders,
+  fetchMyNotifications,
+  fetchPhotoNotifications,
+  getApiErrorMessage,
+  queryKeys,
+} from "../lib/serverState";
 import { getPushSubscription, subscribePush, unsubscribePush } from "/src/lib/push.js";
+import RecenzieComanda from "./RecenzieComanda";
 
 const emptyProfile = {
   nume: "",
@@ -15,181 +24,253 @@ const emptyProfile = {
   setariNotificari: { email: true, inApp: true, push: true },
 };
 
+function buildProfileState(user) {
+  if (!user) return emptyProfile;
+
+  return {
+    ...emptyProfile,
+    ...user,
+    preferinte: user.preferinte || emptyProfile.preferinte,
+    adreseSalvate: user.adreseSalvate || [],
+    setariNotificari: user.setariNotificari || emptyProfile.setariNotificari,
+  };
+}
+
 export default function ProfilClient() {
-  const { user } = useAuth() || {};
+  const queryClient = useQueryClient();
+  const { user, syncUser } = useAuth() || {};
+  const userId = user?._id;
+
   const [profile, setProfile] = useState(emptyProfile);
-  const [orders, setOrders] = useState([]);
-  const [notifs, setNotifs] = useState([]);
-  const [photoNotifs, setPhotoNotifs] = useState([]);
-  const [loadingPhotoNotifs, setLoadingPhotoNotifs] = useState(false);
-  const [saving, setSaving] = useState(false);
-  const [msg, setMsg] = useState("");
+  const [status, setStatus] = useState({ type: "", message: "" });
   const [newAddress, setNewAddress] = useState({ label: "", address: "" });
-  const [pushState, setPushState] = useState({ supported: false, subscribed: false, busy: false, message: "" });
+  const [pushState, setPushState] = useState({
+    supported: false,
+    subscribed: false,
+    busy: false,
+    message: "",
+  });
+
+  const ordersQuery = useQuery({
+    queryKey: queryKeys.clientOrders(userId),
+    queryFn: () => fetchClientOrders(userId),
+    enabled: Boolean(userId),
+  });
+  const notificationsQuery = useQuery({
+    queryKey: queryKeys.myNotifications(),
+    queryFn: fetchMyNotifications,
+    enabled: Boolean(userId),
+  });
+  const photoNotificationsQuery = useQuery({
+    queryKey: queryKeys.photoNotifications(userId),
+    queryFn: () => fetchPhotoNotifications(userId),
+    enabled: Boolean(userId),
+  });
 
   useEffect(() => {
-    if (!user?._id) return;
-    setProfile((p) => ({
-      ...p,
-      ...user,
-      preferinte: user.preferinte || emptyProfile.preferinte,
-      adreseSalvate: user.adreseSalvate || [],
-      setariNotificari: user.setariNotificari || emptyProfile.setariNotificari,
-    }));
-  }, [user]);
+    if (!userId) return;
+    setProfile(buildProfileState(user));
+  }, [user, userId]);
 
   useEffect(() => {
-    if (!user?._id) return;
+    if (!userId) return;
+
     const supported = "Notification" in window && "serviceWorker" in navigator;
     if (!supported) {
-      setPushState((s) => ({ ...s, supported: false }));
+      setPushState((current) => ({ ...current, supported: false }));
       return;
     }
-    setPushState((s) => ({ ...s, supported: true }));
+
+    setPushState((current) => ({ ...current, supported: true }));
+
     (async () => {
       try {
-        const sub = await getPushSubscription();
-        setPushState((s) => ({ ...s, subscribed: !!sub }));
+        const subscription = await getPushSubscription();
+        setPushState((current) => ({
+          ...current,
+          subscribed: Boolean(subscription),
+        }));
       } catch {
-        setPushState((s) => ({ ...s, subscribed: false }));
+        setPushState((current) => ({ ...current, subscribed: false }));
       }
     })();
-  }, [user?._id]);
+  }, [userId]);
 
-  useEffect(() => {
-    if (!user?._id) return;
-    api.get(`/comenzi/client/${user._id}`).then((r) => setOrders(r.data || []));
-    api.get("/notificari/me").then((r) => setNotifs(Array.isArray(r.data) ? r.data : []));
-    setLoadingPhotoNotifs(true);
-    api
-      .get(`/notificari-foto/${user._id}`)
-      .then((r) => setPhotoNotifs(Array.isArray(r.data) ? r.data : []))
-      .catch(() => setPhotoNotifs([]))
-      .finally(() => setLoadingPhotoNotifs(false));
-  }, [user?._id]);
+  const saveProfileMutation = useMutation({
+    mutationFn: (nextProfile) => api.put("/utilizatori/me", nextProfile),
+    onSuccess: (response) => {
+      const nextUser = response?.data?.user || null;
+      const syncedUser = nextUser && syncUser ? syncUser(nextUser) : nextUser;
+      setProfile(buildProfileState(syncedUser || nextUser || profile));
+      setStatus({ type: "success", message: "Profil actualizat cu succes." });
+    },
+    onError: (error) => {
+      setStatus({
+        type: "error",
+        message: getApiErrorMessage(error, "Eroare la actualizare profil."),
+      });
+    },
+  });
 
-  const markPhotoRead = async (id) => {
-    try {
-      await api.put(`/notificari-foto/citeste/${id}`);
-      setPhotoNotifs((list) =>
-        list.map((n) => (n._id === id ? { ...n, citit: true } : n))
+  const markPhotoReadMutation = useMutation({
+    mutationFn: (notificationId) => api.put(`/notificari-foto/citeste/${notificationId}`),
+    onSuccess: (_, notificationId) => {
+      queryClient.setQueryData(
+        queryKeys.photoNotifications(userId),
+        (current = []) =>
+          current.map((item) =>
+            item._id === notificationId ? { ...item, citit: true } : item
+          )
       );
-    } catch {
-      setMsg("Nu am putut marca notificarea ca citita.");
-    }
-  };
-
-  const updateProfile = async (e) => {
-    e.preventDefault();
-    setSaving(true);
-    setMsg("");
-    try {
-      const { data } = await api.put("/utilizatori/me", profile);
-      if (data?.user) {
-        setProfile((p) => ({ ...p, ...data.user }));
-      }
-      setMsg("Profil actualizat cu succes.");
-    } catch (e) {
-      setMsg(e?.response?.data?.message || "Eroare la actualizare profil.");
-    } finally {
-      setSaving(false);
-    }
-  };
+    },
+    onError: () => {
+      setStatus({
+        type: "error",
+        message: "Nu am putut marca notificarea ca citita.",
+      });
+    },
+  });
 
   const togglePush = async (enable) => {
     if (!pushState.supported) {
-      setPushState((s) => ({ ...s, message: "Push nu este suportat pe acest browser." }));
+      setPushState((current) => ({
+        ...current,
+        message: "Push nu este suportat pe acest browser.",
+      }));
       return;
     }
-    setPushState((s) => ({ ...s, busy: true, message: "" }));
+
+    setPushState((current) => ({ ...current, busy: true, message: "" }));
+
     try {
       if (enable) {
-        const res = await subscribePush();
-        if (!res.ok) {
+        const result = await subscribePush();
+        if (!result.ok) {
           const reason =
-            res.reason === "no-vapid"
+            result.reason === "no-vapid"
               ? "Push nu este configurat pe server."
               : "Nu s-a putut activa push.";
-          setPushState((s) => ({ ...s, message: reason }));
+          setPushState((current) => ({ ...current, message: reason }));
         } else {
-          setPushState((s) => ({ ...s, subscribed: true }));
-          setProfile((p) => ({
-            ...p,
-            setariNotificari: { ...p.setariNotificari, push: true },
+          setPushState((current) => ({ ...current, subscribed: true }));
+          setProfile((current) => ({
+            ...current,
+            setariNotificari: { ...current.setariNotificari, push: true },
           }));
         }
       } else {
         await unsubscribePush();
-        setPushState((s) => ({ ...s, subscribed: false }));
-        setProfile((p) => ({
-          ...p,
-          setariNotificari: { ...p.setariNotificari, push: false },
+        setPushState((current) => ({ ...current, subscribed: false }));
+        setProfile((current) => ({
+          ...current,
+          setariNotificari: { ...current.setariNotificari, push: false },
         }));
       }
     } catch {
-      setPushState((s) => ({ ...s, message: "Eroare la actualizare push." }));
+      setPushState((current) => ({
+        ...current,
+        message: "Eroare la actualizare push.",
+      }));
     } finally {
-      setPushState((s) => ({ ...s, busy: false }));
+      setPushState((current) => ({ ...current, busy: false }));
     }
   };
 
   const addAddress = () => {
     if (!newAddress.address.trim()) return;
-    setProfile((p) => ({
-      ...p,
+
+    setProfile((current) => ({
+      ...current,
       adreseSalvate: [
-        ...p.adreseSalvate,
+        ...current.adreseSalvate,
         {
           label: newAddress.label || "Adresa",
           address: newAddress.address,
-          isDefault: p.adreseSalvate.length === 0,
+          isDefault: current.adreseSalvate.length === 0,
         },
       ],
     }));
     setNewAddress({ label: "", address: "" });
   };
 
-  const setDefault = (idx) => {
-    setProfile((p) => ({
-      ...p,
-      adreseSalvate: p.adreseSalvate.map((a, i) => ({ ...a, isDefault: i === idx })),
+  const setDefault = (index) => {
+    setProfile((current) => ({
+      ...current,
+      adreseSalvate: current.adreseSalvate.map((address, addressIndex) => ({
+        ...address,
+        isDefault: addressIndex === index,
+      })),
     }));
   };
 
-  const removeAddress = (idx) => {
-    setProfile((p) => ({
-      ...p,
-      adreseSalvate: p.adreseSalvate.filter((_, i) => i !== idx),
+  const removeAddress = (index) => {
+    setProfile((current) => ({
+      ...current,
+      adreseSalvate: current.adreseSalvate.filter(
+        (_, addressIndex) => addressIndex !== index
+      ),
     }));
   };
+
+  const updateProfile = async (event) => {
+    event.preventDefault();
+    setStatus({ type: "", message: "" });
+    saveProfileMutation.mutate(profile);
+  };
+
+  const orders = ordersQuery.data || [];
+  const notifs = notificationsQuery.data || [];
+  const photoNotifs = photoNotificationsQuery.data || [];
+  const profileDataError =
+    ordersQuery.error || notificationsQuery.error || photoNotificationsQuery.error;
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-rose-50 via-pink-50 to-white py-10">
       <div className="max-w-5xl mx-auto px-4 space-y-6">
         <header>
           <h1 className="text-3xl font-bold text-gray-900">Profil client</h1>
-          <p className="text-gray-600">Gestioneaza datele personale, preferintele si istoricul.</p>
+          <p className="text-gray-600">
+            Gestioneaza datele personale, preferintele si istoricul.
+          </p>
           <div className="mt-2">
-            <a className="text-pink-600 underline" href="/recenzii/prestator/default">
+            <a
+              className="text-pink-600 underline"
+              href="/recenzii/prestator/default"
+            >
               Lasa recenzie pentru patiser
             </a>
           </div>
         </header>
 
-        {msg && (
-          <div className="bg-rose-100 border border-rose-200 text-rose-700 px-4 py-2 rounded-lg">
-            {msg}
-          </div>
-        )}
+        <StatusBanner type={status.type || "info"} message={status.message} />
+        <StatusBanner
+          type="error"
+          message={
+            profileDataError
+              ? getApiErrorMessage(
+                  profileDataError,
+                  "Nu am putut incarca toate datele profilului."
+                )
+              : ""
+          }
+        />
 
-        <form onSubmit={updateProfile} className="bg-white rounded-2xl border border-rose-100 p-6 shadow-sm space-y-4">
+        <form
+          onSubmit={updateProfile}
+          className="bg-white rounded-2xl border border-rose-100 p-6 shadow-sm space-y-4"
+        >
           <h2 className="text-xl font-semibold">Date personale</h2>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <label className="text-sm font-semibold text-gray-700">
               Nume
               <input
                 value={profile.nume}
-                onChange={(e) => setProfile((p) => ({ ...p, nume: e.target.value }))}
+                onChange={(event) =>
+                  setProfile((current) => ({
+                    ...current,
+                    nume: event.target.value,
+                  }))
+                }
                 className="mt-1 w-full border rounded-lg p-2"
               />
             </label>
@@ -197,19 +278,33 @@ export default function ProfilClient() {
               Prenume
               <input
                 value={profile.prenume || ""}
-                onChange={(e) => setProfile((p) => ({ ...p, prenume: e.target.value }))}
+                onChange={(event) =>
+                  setProfile((current) => ({
+                    ...current,
+                    prenume: event.target.value,
+                  }))
+                }
                 className="mt-1 w-full border rounded-lg p-2"
               />
             </label>
             <label className="text-sm font-semibold text-gray-700">
               Email
-              <input value={profile.email} disabled className="mt-1 w-full border rounded-lg p-2 bg-gray-50" />
+              <input
+                value={profile.email}
+                disabled
+                className="mt-1 w-full border rounded-lg p-2 bg-gray-50"
+              />
             </label>
             <label className="text-sm font-semibold text-gray-700">
               Telefon
               <input
                 value={profile.telefon || ""}
-                onChange={(e) => setProfile((p) => ({ ...p, telefon: e.target.value }))}
+                onChange={(event) =>
+                  setProfile((current) => ({
+                    ...current,
+                    telefon: event.target.value,
+                  }))
+                }
                 className="mt-1 w-full border rounded-lg p-2"
               />
             </label>
@@ -217,7 +312,12 @@ export default function ProfilClient() {
               Adresa principala
               <input
                 value={profile.adresa || ""}
-                onChange={(e) => setProfile((p) => ({ ...p, adresa: e.target.value }))}
+                onChange={(event) =>
+                  setProfile((current) => ({
+                    ...current,
+                    adresa: event.target.value,
+                  }))
+                }
                 className="mt-1 w-full border rounded-lg p-2"
               />
             </label>
@@ -229,12 +329,15 @@ export default function ProfilClient() {
               Alergii (separate prin virgula)
               <input
                 value={profile.preferinte.alergii?.join(", ") || ""}
-                onChange={(e) =>
-                  setProfile((p) => ({
-                    ...p,
+                onChange={(event) =>
+                  setProfile((current) => ({
+                    ...current,
                     preferinte: {
-                      ...p.preferinte,
-                      alergii: e.target.value.split(",").map((v) => v.trim()).filter(Boolean),
+                      ...current.preferinte,
+                      alergii: event.target.value
+                        .split(",")
+                        .map((value) => value.trim())
+                        .filter(Boolean),
                     },
                   }))
                 }
@@ -245,12 +348,15 @@ export default function ProfilClient() {
               Nu doresc (ingrediente)
               <input
                 value={profile.preferinte.evit?.join(", ") || ""}
-                onChange={(e) =>
-                  setProfile((p) => ({
-                    ...p,
+                onChange={(event) =>
+                  setProfile((current) => ({
+                    ...current,
                     preferinte: {
-                      ...p.preferinte,
-                      evit: e.target.value.split(",").map((v) => v.trim()).filter(Boolean),
+                      ...current.preferinte,
+                      evit: event.target.value
+                        .split(",")
+                        .map((value) => value.trim())
+                        .filter(Boolean),
                     },
                   }))
                 }
@@ -261,10 +367,13 @@ export default function ProfilClient() {
               Note
               <textarea
                 value={profile.preferinte.note || ""}
-                onChange={(e) =>
-                  setProfile((p) => ({
-                    ...p,
-                    preferinte: { ...p.preferinte, note: e.target.value },
+                onChange={(event) =>
+                  setProfile((current) => ({
+                    ...current,
+                    preferinte: {
+                      ...current.preferinte,
+                      note: event.target.value,
+                    },
                   }))
                 }
                 className="mt-1 w-full border rounded-lg p-2 min-h-[80px]"
@@ -275,25 +384,30 @@ export default function ProfilClient() {
           <div className="pt-4 border-t border-rose-100 space-y-3">
             <h3 className="text-lg font-semibold">Adrese salvate</h3>
             <div className="space-y-2">
-              {profile.adreseSalvate.map((addr, idx) => (
-                <div key={`${addr.label}_${idx}`} className="flex items-center gap-2">
+              {profile.adreseSalvate.map((address, index) => (
+                <div
+                  key={`${address.label}_${index}`}
+                  className="flex items-center gap-2"
+                >
                   <div className="flex-1">
-                    <div className="font-semibold">{addr.label}</div>
-                    <div className="text-sm text-gray-600">{addr.address}</div>
+                    <div className="font-semibold">{address.label}</div>
+                    <div className="text-sm text-gray-600">{address.address}</div>
                   </div>
                   <button
                     type="button"
                     className={`px-3 py-1 rounded-lg text-sm ${
-                      addr.isDefault ? "bg-pink-500 text-white" : "border border-rose-200 text-pink-600"
+                      address.isDefault
+                        ? "bg-pink-500 text-white"
+                        : "border border-rose-200 text-pink-600"
                     }`}
-                    onClick={() => setDefault(idx)}
+                    onClick={() => setDefault(index)}
                   >
-                    {addr.isDefault ? "Default" : "Seteaza default"}
+                    {address.isDefault ? "Default" : "Seteaza default"}
                   </button>
                   <button
                     type="button"
                     className="px-3 py-1 rounded-lg text-sm border border-rose-200 text-gray-600"
-                    onClick={() => removeAddress(idx)}
+                    onClick={() => removeAddress(index)}
                   >
                     Sterge
                   </button>
@@ -303,17 +417,31 @@ export default function ProfilClient() {
             <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
               <input
                 value={newAddress.label}
-                onChange={(e) => setNewAddress((s) => ({ ...s, label: e.target.value }))}
+                onChange={(event) =>
+                  setNewAddress((current) => ({
+                    ...current,
+                    label: event.target.value,
+                  }))
+                }
                 placeholder="Eticheta (ex: Acasa)"
                 className="border rounded-lg p-2"
               />
               <input
                 value={newAddress.address}
-                onChange={(e) => setNewAddress((s) => ({ ...s, address: e.target.value }))}
+                onChange={(event) =>
+                  setNewAddress((current) => ({
+                    ...current,
+                    address: event.target.value,
+                  }))
+                }
                 placeholder="Adresa completa"
                 className="border rounded-lg p-2 md:col-span-2"
               />
-              <button type="button" className="px-3 py-2 rounded-lg bg-rose-500 text-white" onClick={addAddress}>
+              <button
+                type="button"
+                className="px-3 py-2 rounded-lg bg-rose-500 text-white"
+                onClick={addAddress}
+              >
                 Adauga adresa
               </button>
             </div>
@@ -325,10 +453,13 @@ export default function ProfilClient() {
               <input
                 type="checkbox"
                 checked={profile.setariNotificari.email}
-                onChange={(e) =>
-                  setProfile((p) => ({
-                    ...p,
-                    setariNotificari: { ...p.setariNotificari, email: e.target.checked },
+                onChange={(event) =>
+                  setProfile((current) => ({
+                    ...current,
+                    setariNotificari: {
+                      ...current.setariNotificari,
+                      email: event.target.checked,
+                    },
                   }))
                 }
               />
@@ -338,10 +469,13 @@ export default function ProfilClient() {
               <input
                 type="checkbox"
                 checked={profile.setariNotificari.inApp}
-                onChange={(e) =>
-                  setProfile((p) => ({
-                    ...p,
-                    setariNotificari: { ...p.setariNotificari, inApp: e.target.checked },
+                onChange={(event) =>
+                  setProfile((current) => ({
+                    ...current,
+                    setariNotificari: {
+                      ...current.setariNotificari,
+                      inApp: event.target.checked,
+                    },
                   }))
                 }
               />
@@ -357,7 +491,9 @@ export default function ProfilClient() {
                 className="px-3 py-1 rounded border border-rose-200 text-pink-600 disabled:opacity-60"
                 onClick={() => togglePush(!pushState.subscribed)}
               >
-                {pushState.subscribed ? "Dezactiveaza push" : "Activeaza push"}
+                {pushState.subscribed
+                  ? "Dezactiveaza push"
+                  : "Activeaza push"}
               </button>
               {pushState.message && (
                 <span className="text-xs text-rose-600">{pushState.message}</span>
@@ -367,33 +503,48 @@ export default function ProfilClient() {
 
           <button
             type="submit"
-            disabled={saving}
+            disabled={saveProfileMutation.isPending}
             className="px-4 py-2 rounded-lg bg-pink-500 text-white hover:bg-pink-600 disabled:opacity-60"
           >
-            {saving ? "Se salveaza..." : "Salveaza profilul"}
+            {saveProfileMutation.isPending ? "Se salveaza..." : "Salveaza profilul"}
           </button>
         </form>
 
         <section className="bg-white rounded-2xl border border-rose-100 p-6 shadow-sm space-y-4">
           <h2 className="text-xl font-semibold">Istoric comenzi</h2>
-          {orders.length === 0 ? (
+          {ordersQuery.isLoading ? (
+            <div className="text-gray-600">Se incarca comenzile...</div>
+          ) : orders.length === 0 ? (
             <div className="text-gray-600">Nu ai comenzi inca.</div>
           ) : (
             <div className="space-y-3">
-              {orders.map((o) => (
-                <div key={o._id} className="border border-rose-100 rounded-lg p-3">
+              {orders.map((order) => (
+                <div key={order._id} className="border border-rose-100 rounded-lg p-3">
                   <div className="flex items-center justify-between">
-                    <div className="font-semibold">Comanda #{o._id.slice(-6)}</div>
-                    <div className="text-sm text-gray-600">{o.status || "inregistrata"}</div>
+                    <div className="font-semibold">
+                      Comanda #{order._id.slice(-6)}
+                    </div>
+                    <div className="text-sm text-gray-600">
+                      {order.status || "inregistrata"}
+                    </div>
                   </div>
                   <div className="text-sm text-gray-600">
-                    {o.dataLivrare || "-"} {o.oraLivrare || ""}
+                    {order.dataLivrare || "-"} {order.oraLivrare || ""}
                   </div>
                   <div className="text-sm text-gray-700">
-                    {(o.items || []).map((it) => `${it.name || it.nume} x${it.qty || it.cantitate || 1}`).join(" | ")}
+                    {(order.items || [])
+                      .map(
+                        (item) =>
+                          `${item.name || item.nume} x${
+                            item.qty || item.cantitate || 1
+                          }`
+                      )
+                      .join(" | ")}
                   </div>
-                  <div className="text-sm text-gray-700 mt-1">Total: {o.total} MDL</div>
-                  <RecenzieComanda comandaId={o._id} />
+                  <div className="text-sm text-gray-700 mt-1">
+                    Total: {order.total} MDL
+                  </div>
+                  <RecenzieComanda comandaId={order._id} />
                 </div>
               ))}
             </div>
@@ -402,15 +553,24 @@ export default function ProfilClient() {
 
         <section className="bg-white rounded-2xl border border-rose-100 p-6 shadow-sm space-y-4">
           <h2 className="text-xl font-semibold">Notificari</h2>
-          {notifs.length === 0 ? (
+          {notificationsQuery.isLoading ? (
+            <div className="text-gray-600">Se incarca notificari...</div>
+          ) : notifs.length === 0 ? (
             <div className="text-gray-600">Nu ai notificari recente.</div>
           ) : (
             <div className="space-y-2">
-              {notifs.map((n) => (
-                <div key={n._id} className="border border-rose-100 rounded-lg p-3">
-                  <div className="font-semibold text-gray-900">{n.titlu || "Notificare"}</div>
-                  <div className="text-sm text-gray-700">{n.mesaj}</div>
-                  <div className="text-xs text-gray-500">{new Date(n.data).toLocaleString()}</div>
+              {notifs.map((notification) => (
+                <div
+                  key={notification._id}
+                  className="border border-rose-100 rounded-lg p-3"
+                >
+                  <div className="font-semibold text-gray-900">
+                    {notification.titlu || "Notificare"}
+                  </div>
+                  <div className="text-sm text-gray-700">{notification.mesaj}</div>
+                  <div className="text-xs text-gray-500">
+                    {new Date(notification.data).toLocaleString()}
+                  </div>
                 </div>
               ))}
             </div>
@@ -419,20 +579,28 @@ export default function ProfilClient() {
 
         <section className="bg-white rounded-2xl border border-rose-100 p-6 shadow-sm space-y-4">
           <h2 className="text-xl font-semibold">Notificari foto</h2>
-          {loadingPhotoNotifs && <div className="text-gray-600">Se incarca...</div>}
-          {!loadingPhotoNotifs && photoNotifs.length === 0 && (
+          {photoNotificationsQuery.isLoading && (
+            <div className="text-gray-600">Se incarca...</div>
+          )}
+          {!photoNotificationsQuery.isLoading && photoNotifs.length === 0 && (
             <div className="text-gray-600">Nu ai notificari foto.</div>
           )}
           <div className="space-y-2">
-            {photoNotifs.map((n) => (
-              <div key={n._id} className="border border-rose-100 rounded-lg p-3">
-                <div className="text-sm text-gray-700">{n.mesaj}</div>
-                <div className="text-xs text-gray-500">{new Date(n.data).toLocaleString()}</div>
-                {!n.citit && (
+            {photoNotifs.map((notification) => (
+              <div
+                key={notification._id}
+                className="border border-rose-100 rounded-lg p-3"
+              >
+                <div className="text-sm text-gray-700">{notification.mesaj}</div>
+                <div className="text-xs text-gray-500">
+                  {new Date(notification.data).toLocaleString()}
+                </div>
+                {!notification.citit && (
                   <button
                     type="button"
                     className="mt-2 px-3 py-1 rounded text-xs border border-rose-200 text-pink-600"
-                    onClick={() => markPhotoRead(n._id)}
+                    disabled={markPhotoReadMutation.isPending}
+                    onClick={() => markPhotoReadMutation.mutate(notification._id)}
                   >
                     Marcheaza ca citita
                   </button>

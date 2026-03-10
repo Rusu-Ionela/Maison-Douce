@@ -73,6 +73,15 @@ export function AuthProvider({ children }) {
     return loggedUser;
   };
 
+  const syncUser = (nextUser) => {
+    const token = localStorage.getItem("token");
+    if (!token) return null;
+
+    const syncedUser = persistSession(token, nextUser || null);
+    setUser(syncedUser);
+    return syncedUser;
+  };
+
   const register = async ({
     name,
     prenume,
@@ -108,7 +117,15 @@ export function AuthProvider({ children }) {
 
   return (
     <AuthContext.Provider
-      value={{ user, isAuthenticated: !!user, loading, login, register, logout }}
+      value={{
+        user,
+        isAuthenticated: !!user,
+        loading,
+        login,
+        register,
+        logout,
+        syncUser,
+      }}
     >
       {children}
     </AuthContext.Provider>

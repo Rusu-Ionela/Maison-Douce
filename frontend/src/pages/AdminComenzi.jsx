@@ -1,107 +1,201 @@
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import StatusBanner from "../components/StatusBanner";
 import api from "/src/lib/api.js";
+import {
+  fetchAdminOrders,
+  getApiErrorMessage,
+  queryKeys,
+} from "../lib/serverState";
 
-const STATUSES = ["plasata", "in_asteptare", "acceptata", "in_lucru", "gata", "livrata", "ridicata", "anulata", "refuzata"];
+const STATUSES = [
+  "plasata",
+  "in_asteptare",
+  "acceptata",
+  "in_lucru",
+  "gata",
+  "livrata",
+  "ridicata",
+  "anulata",
+  "refuzata",
+];
+const EMPTY_LIST = [];
 
 export default function AdminComenzi() {
-  const [list, setList] = useState([]);
+  const queryClient = useQueryClient();
   const [status, setStatus] = useState("");
   const [date, setDate] = useState("");
-  const [loading, setLoading] = useState(false);
   const [msg, setMsg] = useState("");
   const [schedule, setSchedule] = useState({ id: null, data: "", ora: "" });
   const [refuz, setRefuz] = useState({ id: null, motiv: "" });
   const [priceEdit, setPriceEdit] = useState({ id: null, total: "", note: "" });
 
-  const load = async () => {
-    setLoading(true);
-    try {
-      const res = await api.get("/comenzi");
-      const all = Array.isArray(res.data) ? res.data : [];
-      const onlyOrders = all.filter((c) => c._source !== "rezervare");
-      setList(onlyOrders);
-    } catch {
-      setList([]);
-    } finally {
-      setLoading(false);
-    }
+  const ordersQuery = useQuery({
+    queryKey: queryKeys.adminOrders(),
+    queryFn: fetchAdminOrders,
+  });
+
+  const refreshOrders = async () => {
+    await queryClient.invalidateQueries({ queryKey: queryKeys.adminOrders() });
   };
 
-  useEffect(() => {
-    load();
-  }, []);
+  const statusMutation = useMutation({
+    mutationFn: ({ id, nextStatus }) =>
+      api.patch(`/comenzi/${id}/status`, { status: nextStatus }),
+    onSuccess: async () => {
+      setMsg("Status actualizat.");
+      await refreshOrders();
+    },
+    onError: (error) => {
+      setMsg(getApiErrorMessage(error, "Eroare la actualizare status."));
+    },
+  });
 
+  const scheduleMutation = useMutation({
+    mutationFn: ({ id, dataLivrare, oraLivrare }) =>
+      api.patch(`/comenzi/${id}/schedule`, { dataLivrare, oraLivrare }),
+    onSuccess: async () => {
+      setSchedule({ id: null, data: "", ora: "" });
+      setMsg("Programarea a fost actualizata.");
+      await refreshOrders();
+    },
+    onError: (error) => {
+      setMsg(getApiErrorMessage(error, "Nu am putut salva reprogramarea."));
+    },
+  });
+
+  const refuzMutation = useMutation({
+    mutationFn: ({ id, motiv }) => api.patch(`/comenzi/${id}/refuza`, { motiv }),
+    onSuccess: async () => {
+      setRefuz({ id: null, motiv: "" });
+      setMsg("Comanda a fost refuzata.");
+      await refreshOrders();
+    },
+    onError: (error) => {
+      setMsg(getApiErrorMessage(error, "Nu am putut refuza comanda."));
+    },
+  });
+
+  const priceMutation = useMutation({
+    mutationFn: ({ id, total, note }) =>
+      api.patch(`/comenzi/${id}/price`, {
+        total,
+        notesAdmin: note || "",
+        note: note || "",
+      }),
+    onSuccess: async () => {
+      setPriceEdit({ id: null, total: "", note: "" });
+      setMsg("Pretul a fost actualizat.");
+      await refreshOrders();
+    },
+    onError: (error) => {
+      setMsg(getApiErrorMessage(error, "Eroare la actualizare pret."));
+    },
+  });
+
+  const list = ordersQuery.data || EMPTY_LIST;
+  const loading = ordersQuery.isLoading;
   const filtered = useMemo(() => {
-    return list.filter((c) => {
-      const okStatus = status ? (c.status || "") === status : true;
-      const okDate = date ? c.dataLivrare === date || c.dataRezervare === date : true;
+    return list.filter((item) => {
+      const okStatus = status ? (item.status || "") === status : true;
+      const okDate = date
+        ? item.dataLivrare === date || item.dataRezervare === date
+        : true;
       return okStatus && okDate;
     });
-  }, [list, status, date]);
+  }, [date, list, status]);
 
-  const updateStatus = async (id, next) => {
+  const pendingAction =
+    statusMutation.isPending ||
+    scheduleMutation.isPending ||
+    refuzMutation.isPending ||
+    priceMutation.isPending;
+
+  const updateStatus = (id, nextStatus) => {
     setMsg("");
-    try {
-      await api.patch(`/comenzi/${id}/status`, { status: next });
-      load();
-    } catch (e) {
-      setMsg(e?.response?.data?.message || "Eroare la actualizare status.");
-    }
+    statusMutation.mutate({ id, nextStatus });
   };
 
-  const submitSchedule = async () => {
+  const submitSchedule = () => {
     if (!schedule.id || !schedule.data || !schedule.ora) return;
-    await api.patch(`/comenzi/${schedule.id}/schedule`, {
+
+    setMsg("");
+    scheduleMutation.mutate({
+      id: schedule.id,
       dataLivrare: schedule.data,
       oraLivrare: schedule.ora,
     });
-    setSchedule({ id: null, data: "", ora: "" });
-    load();
   };
 
-  const submitRefuz = async () => {
+  const submitRefuz = () => {
     if (!refuz.id) return;
-    await api.patch(`/comenzi/${refuz.id}/refuza`, { motiv: refuz.motiv });
-    setRefuz({ id: null, motiv: "" });
-    load();
+
+    setMsg("");
+    refuzMutation.mutate({ id: refuz.id, motiv: refuz.motiv });
   };
 
-  const submitPrice = async (id) => {
+  const submitPrice = (id) => {
     if (!id || priceEdit.id !== id) return;
+
     const totalVal = Number(priceEdit.total || 0);
     if (!Number.isFinite(totalVal) || totalVal <= 0) {
       setMsg("Introdu un pret valid.");
       return;
     }
-    try {
-      await api.patch(`/comenzi/${id}/price`, {
-        total: totalVal,
-        notesAdmin: priceEdit.note || "",
-        note: priceEdit.note || "",
-      });
-      setPriceEdit({ id: null, total: "", note: "" });
-      load();
-    } catch (e) {
-      setMsg(e?.response?.data?.message || "Eroare la actualizare pret.");
-    }
+
+    setMsg("");
+    priceMutation.mutate({
+      id,
+      total: totalVal,
+      note: priceEdit.note || "",
+    });
   };
 
   return (
     <div className="max-w-6xl mx-auto p-6 space-y-4">
       <h1 className="text-2xl font-bold">Comenzi</h1>
-      {msg && <div className="text-rose-700">{msg}</div>}
+
+      <StatusBanner type="info" message={pendingAction ? "Se salveaza..." : ""} />
+      <StatusBanner
+        type="error"
+        message={
+          ordersQuery.error
+            ? getApiErrorMessage(
+                ordersQuery.error,
+                "Nu am putut incarca lista de comenzi."
+              )
+            : ""
+        }
+      />
+      <StatusBanner
+        type={msg.includes("actualizat") || msg.includes("refuzata") ? "success" : "warning"}
+        message={msg}
+      />
 
       <div className="flex flex-wrap gap-3 items-center">
-        <select value={status} onChange={(e) => setStatus(e.target.value)} className="border rounded p-2">
+        <select
+          value={status}
+          onChange={(event) => setStatus(event.target.value)}
+          className="border rounded p-2"
+        >
           <option value="">Toate statusurile</option>
-          {STATUSES.map((s) => (
-            <option key={s} value={s}>
-              {s}
+          {STATUSES.map((item) => (
+            <option key={item} value={item}>
+              {item}
             </option>
           ))}
         </select>
-        <input type="date" value={date} onChange={(e) => setDate(e.target.value)} className="border rounded p-2" />
-        <button className="border px-3 py-2 rounded" onClick={load}>
+        <input
+          type="date"
+          value={date}
+          onChange={(event) => setDate(event.target.value)}
+          className="border rounded p-2"
+        />
+        <button
+          type="button"
+          className="border px-3 py-2 rounded"
+          onClick={() => ordersQuery.refetch()}
+        >
           Reincarca
         </button>
       </div>
@@ -109,65 +203,112 @@ export default function AdminComenzi() {
       {loading && <div>Se incarca...</div>}
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        {filtered.map((c) => (
-          <div key={c._id} className="border rounded-lg p-4 bg-white space-y-2">
+        {filtered.map((item) => (
+          <div key={item._id} className="border rounded-lg p-4 bg-white space-y-2">
             <div className="flex justify-between">
-              <div className="font-semibold">#{c.numeroComanda || c._id.slice(-6)}</div>
-              <div className="text-sm text-gray-600">{c.status || "plasata"}</div>
+              <div className="font-semibold">
+                #{item.numeroComanda || item._id.slice(-6)}
+              </div>
+              <div className="text-sm text-gray-600">
+                {item.status || "plasata"}
+              </div>
             </div>
             <div className="text-sm text-gray-600">
-              {c.dataLivrare || c.dataRezervare || "-"} {c.oraLivrare || c.oraRezervare || ""}
+              {item.dataLivrare || item.dataRezervare || "-"}{" "}
+              {item.oraLivrare || item.oraRezervare || ""}
             </div>
             <div className="text-sm text-gray-700">
-              Client: {c.clientName || c.clientId || "-"}
-              {c.clientEmail ? ` · ${c.clientEmail}` : ""}
-              {c.clientTelefon ? ` · ${c.clientTelefon}` : ""}
+              Client: {item.clientName || item.clientId || "-"}
+              {item.clientEmail ? ` - ${item.clientEmail}` : ""}
+              {item.clientTelefon ? ` - ${item.clientTelefon}` : ""}
             </div>
             <div className="text-sm text-gray-600">
-              {c.metodaLivrare === "livrare" ? "Livrare" : "Ridicare"}
-              {c.adresaLivrare ? ` · ${c.adresaLivrare}` : ""}
+              {item.metodaLivrare === "livrare" ? "Livrare" : "Ridicare"}
+              {item.adresaLivrare ? ` - ${item.adresaLivrare}` : ""}
             </div>
-            {c.deliveryWindow && <div className="text-xs text-gray-500">Fereastra: {c.deliveryWindow}</div>}
-            {c.deliveryInstructions && <div className="text-xs text-gray-500">Instructiuni: {c.deliveryInstructions}</div>}
-            {c.notesClient && <div className="text-xs text-gray-500">Note client: {c.notesClient}</div>}
-            {c.notesAdmin && <div className="text-xs text-gray-500">Note admin: {c.notesAdmin}</div>}
+            {item.deliveryWindow && (
+              <div className="text-xs text-gray-500">
+                Fereastra: {item.deliveryWindow}
+              </div>
+            )}
+            {item.deliveryInstructions && (
+              <div className="text-xs text-gray-500">
+                Instructiuni: {item.deliveryInstructions}
+              </div>
+            )}
+            {item.notesClient && (
+              <div className="text-xs text-gray-500">
+                Note client: {item.notesClient}
+              </div>
+            )}
+            {item.notesAdmin && (
+              <div className="text-xs text-gray-500">
+                Note admin: {item.notesAdmin}
+              </div>
+            )}
             <div className="text-sm">
-              {(c.items || []).map((it) => `${it.name || it.nume} x${it.qty || it.cantitate || 1}`).join(" | ")}
+              {(item.items || [])
+                .map(
+                  (entry) =>
+                    `${entry.name || entry.nume} x${
+                      entry.qty || entry.cantitate || 1
+                    }`
+                )
+                .join(" | ")}
             </div>
-            {Array.isArray(c.attachments) && c.attachments.length > 0 && (
+            {Array.isArray(item.attachments) && item.attachments.length > 0 && (
               <div className="text-xs text-gray-600 space-y-1">
-                {c.attachments.map((a, idx) => (
+                {item.attachments.map((attachment, index) => (
                   <a
-                    key={`${a.url || idx}`}
-                    href={a.url}
+                    key={`${attachment.url || index}`}
+                    href={attachment.url}
                     className="text-pink-600 underline block"
                     target="_blank"
                     rel="noreferrer"
                   >
-                    {a.name || `Fisier ${idx + 1}`}
+                    {attachment.name || `Fisier ${index + 1}`}
                   </a>
                 ))}
               </div>
             )}
-            <div className="text-sm font-semibold">Total: {c.totalFinal || c.total || 0} MDL</div>
-            <div className="text-xs text-gray-500">Plata: {c.paymentStatus || c.statusPlata || "unpaid"}</div>
+            <div className="text-sm font-semibold">
+              Total: {item.totalFinal || item.total || 0} MDL
+            </div>
+            <div className="text-xs text-gray-500">
+              Plata: {item.paymentStatus || item.statusPlata || "unpaid"}
+            </div>
 
             <div className="flex flex-wrap gap-2">
-              {STATUSES.map((s) => {
-                const paid = c.paymentStatus === "paid" || c.statusPlata === "paid";
-                const requiresPaid = ["acceptata", "in_lucru", "gata", "livrata", "ridicata", "confirmata"];
-                const disabled = !paid && requiresPaid.includes(s);
+              {STATUSES.map((nextStatus) => {
+                const paid =
+                  item.paymentStatus === "paid" || item.statusPlata === "paid";
+                const requiresPaid = [
+                  "acceptata",
+                  "in_lucru",
+                  "gata",
+                  "livrata",
+                  "ridicata",
+                  "confirmata",
+                ];
+                const disabled = !paid && requiresPaid.includes(nextStatus);
+
                 return (
-                <button
-                  key={s}
-                  className="border px-2 py-1 rounded text-xs disabled:opacity-50"
-                  disabled={disabled}
-                  onClick={() => updateStatus(c._id, s)}
-                  title={disabled ? "Confirmarea necesita plata" : "Actualizeaza status"}
-                >
-                  {s}
-                </button>
-              )})}
+                  <button
+                    key={nextStatus}
+                    type="button"
+                    className="border px-2 py-1 rounded text-xs disabled:opacity-50"
+                    disabled={disabled || pendingAction}
+                    onClick={() => updateStatus(item._id, nextStatus)}
+                    title={
+                      disabled
+                        ? "Confirmarea necesita plata"
+                        : "Actualizeaza status"
+                    }
+                  >
+                    {nextStatus}
+                  </button>
+                );
+              })}
             </div>
 
             <div className="flex flex-col gap-2 pt-2 border-t">
@@ -176,34 +317,46 @@ export default function AdminComenzi() {
                 <div className="flex gap-2">
                   <input
                     type="number"
-                    value={priceEdit.id === c._id ? priceEdit.total : String(c.totalFinal || c.total || "")}
+                    value={
+                      priceEdit.id === item._id
+                        ? priceEdit.total
+                        : String(item.totalFinal || item.total || "")
+                    }
                     onFocus={() =>
                       setPriceEdit({
-                        id: c._id,
-                        total: String(c.totalFinal || c.total || 0),
-                        note: priceEdit.id === c._id ? priceEdit.note : "",
+                        id: item._id,
+                        total: String(item.totalFinal || item.total || 0),
+                        note: priceEdit.id === item._id ? priceEdit.note : "",
                       })
                     }
-                    onChange={(e) =>
+                    onChange={(event) =>
                       setPriceEdit((prev) => ({
-                        id: c._id,
-                        total: e.target.value,
-                        note: prev.id === c._id ? prev.note : "",
+                        id: item._id,
+                        total: event.target.value,
+                        note: prev.id === item._id ? prev.note : "",
                       }))
                     }
                     className="border rounded p-1 flex-1"
                   />
-                  <button className="border px-2 py-1 rounded text-xs" onClick={() => submitPrice(c._id)}>
+                  <button
+                    type="button"
+                    className="border px-2 py-1 rounded text-xs"
+                    disabled={pendingAction}
+                    onClick={() => submitPrice(item._id)}
+                  >
                     Salveaza
                   </button>
                 </div>
                 <input
-                  value={priceEdit.id === c._id ? priceEdit.note : ""}
-                  onChange={(e) =>
+                  value={priceEdit.id === item._id ? priceEdit.note : ""}
+                  onChange={(event) =>
                     setPriceEdit((prev) => ({
-                      id: c._id,
-                      total: prev.id === c._id ? prev.total : String(c.totalFinal || c.total || 0),
-                      note: e.target.value,
+                      id: item._id,
+                      total:
+                        prev.id === item._id
+                          ? prev.total
+                          : String(item.totalFinal || item.total || 0),
+                      note: event.target.value,
                     }))
                   }
                   placeholder="Nota (optional)"
@@ -215,17 +368,34 @@ export default function AdminComenzi() {
               <div className="flex gap-2">
                 <input
                   type="date"
-                  value={schedule.id === c._id ? schedule.data : ""}
-                  onChange={(e) => setSchedule({ id: c._id, data: e.target.value, ora: schedule.ora })}
+                  value={schedule.id === item._id ? schedule.data : ""}
+                  onChange={(event) =>
+                    setSchedule({
+                      id: item._id,
+                      data: event.target.value,
+                      ora: schedule.ora,
+                    })
+                  }
                   className="border rounded p-1"
                 />
                 <input
                   type="time"
-                  value={schedule.id === c._id ? schedule.ora : ""}
-                  onChange={(e) => setSchedule({ id: c._id, data: schedule.data, ora: e.target.value })}
+                  value={schedule.id === item._id ? schedule.ora : ""}
+                  onChange={(event) =>
+                    setSchedule({
+                      id: item._id,
+                      data: schedule.data,
+                      ora: event.target.value,
+                    })
+                  }
                   className="border rounded p-1"
                 />
-                <button className="border px-2 py-1 rounded text-xs" onClick={submitSchedule}>
+                <button
+                  type="button"
+                  className="border px-2 py-1 rounded text-xs"
+                  disabled={pendingAction}
+                  onClick={submitSchedule}
+                >
                   Salveaza
                 </button>
               </div>
@@ -233,12 +403,19 @@ export default function AdminComenzi() {
               <div className="text-sm font-semibold">Refuza comanda</div>
               <div className="flex gap-2">
                 <input
-                  value={refuz.id === c._id ? refuz.motiv : ""}
-                  onChange={(e) => setRefuz({ id: c._id, motiv: e.target.value })}
+                  value={refuz.id === item._id ? refuz.motiv : ""}
+                  onChange={(event) =>
+                    setRefuz({ id: item._id, motiv: event.target.value })
+                  }
                   placeholder="Motiv refuz"
                   className="border rounded p-1 flex-1"
                 />
-                <button className="border px-2 py-1 rounded text-xs" onClick={submitRefuz}>
+                <button
+                  type="button"
+                  className="border px-2 py-1 rounded text-xs"
+                  disabled={pendingAction}
+                  onClick={submitRefuz}
+                >
                   Refuza
                 </button>
               </div>
