@@ -14,8 +14,6 @@ export async function getAvailability(prestatorId, options = {}) {
         `/calendar/disponibilitate/${prestatorId}` +
         (params.toString() ? `?${params.toString()}` : "");
 
-    console.log("[getAvailability] URL:", url);
-
     const res = await api.get(url);
     return res.data; // { slots: [...] }
 }

@@ -1,80 +1,123 @@
-﻿import React, { useState, useEffect } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
-import api, { getJson, BASE_URL } from '/src/lib/api.js';
+import React, { useEffect, useState } from "react";
+import { useNavigate, useParams } from "react-router-dom";
+import StatusBanner from "../components/StatusBanner";
+import api from "/src/lib/api.js";
+import { buttons, cards, inputs } from "/src/lib/tailwindComponents.js";
 
 function AdminEditTort() {
   const { id } = useParams();
   const navigate = useNavigate();
 
-  const [nume, setNume] = useState('');
-  const [ingrediente, setIngrediente] = useState('');
-  const [imagine, setImagine] = useState('');
+  const [nume, setNume] = useState("");
+  const [ingrediente, setIngrediente] = useState("");
+  const [imagine, setImagine] = useState("");
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [status, setStatus] = useState({ type: "", text: "" });
 
-  // Preia tortul existent
   useEffect(() => {
-    api.get(`/torturi/${id}`)
-      .then((res) => {
+    let cancelled = false;
+
+    (async () => {
+      setLoading(true);
+      try {
+        const res = await api.get(`/torturi/${id}`);
+        if (cancelled) return;
         const tort = res.data;
-        setNume(tort.nume);
-        setIngrediente(tort.ingrediente.join(', '));
-        setImagine(tort.imagine);
-      })
-      .catch((err) => console.error('Eroare la preluare tort:', err));
+        setNume(tort.nume || "");
+        setIngrediente(Array.isArray(tort.ingrediente) ? tort.ingrediente.join(", ") : "");
+        setImagine(tort.imagine || "");
+      } catch (err) {
+        if (!cancelled) {
+          console.error("Eroare la preluare tort:", err);
+          setStatus({
+            type: "error",
+            text: err?.response?.data?.message || "Nu am putut incarca tortul.",
+          });
+        }
+      } finally {
+        if (!cancelled) {
+          setLoading(false);
+        }
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
   }, [id]);
 
-  // SalveazÄƒ modificÄƒrile
-  const handleSubmit = (e) => {
-    e.preventDefault();
+  const handleSubmit = async (event) => {
+    event.preventDefault();
+    setSaving(true);
+    setStatus({ type: "", text: "" });
 
     const tortActualizat = {
       nume,
-      ingrediente: ingrediente.split(',').map((i) => i.trim()),
+      ingrediente: ingrediente.split(",").map((item) => item.trim()).filter(Boolean),
       imagine,
     };
 
-    api.put(`/torturi/${id}`, tortActualizat)
-      .then(() => {
-        alert('Tortul a fost actualizat!');
-        navigate('/admin/panel');
-      })
-      .catch((err) => console.error('Eroare la actualizare:', err));
+    try {
+      await api.put(`/torturi/${id}`, tortActualizat);
+      setStatus({ type: "success", text: "Tortul a fost actualizat." });
+      setTimeout(() => navigate("/admin/panel"), 600);
+    } catch (err) {
+      console.error("Eroare la actualizare:", err);
+      setStatus({
+        type: "error",
+        text: err?.response?.data?.message || "Eroare la actualizare.",
+      });
+    } finally {
+      setSaving(false);
+    }
   };
 
   return (
-    <div className="max-w-xl mx-auto p-6 bg-white rounded shadow">
-      <h2 className="text-2xl font-bold mb-4">âœï¸ Editare Tort</h2>
-      <form onSubmit={handleSubmit} className="space-y-4">
-        <input
-          type="text"
-          placeholder="Nume tort"
-          value={nume}
-          onChange={(e) => setNume(e.target.value)}
-          className="w-full border p-2 rounded"
-          required
-        />
-        <input
-          type="text"
-          placeholder="Ingrediente (separate prin virgulÄƒ)"
-          value={ingrediente}
-          onChange={(e) => setIngrediente(e.target.value)}
-          className="w-full border p-2 rounded"
-          required
-        />
-        <input
-          type="text"
-          placeholder="URL imagine"
-          value={imagine}
-          onChange={(e) => setImagine(e.target.value)}
-          className="w-full border p-2 rounded"
-          required
-        />
-        <button type="submit" className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700">
-          SalveazÄƒ modificÄƒrile
-        </button>
-      </form>
+    <div className="mx-auto max-w-xl p-6">
+      <div className={`${cards.elevated} space-y-4`}>
+        <h2 className="text-2xl font-bold">Editare Tort</h2>
+        <StatusBanner type={status.type || "info"} message={status.text} />
+
+        {loading ? (
+          <div className="text-sm text-gray-600">Se incarca tortul...</div>
+        ) : (
+          <form onSubmit={handleSubmit} className="space-y-4">
+            <input
+              type="text"
+              placeholder="Nume tort"
+              value={nume}
+              onChange={(e) => setNume(e.target.value)}
+              className={inputs.default}
+              required
+              disabled={saving}
+            />
+            <input
+              type="text"
+              placeholder="Ingrediente (separate prin virgula)"
+              value={ingrediente}
+              onChange={(e) => setIngrediente(e.target.value)}
+              className={inputs.default}
+              required
+              disabled={saving}
+            />
+            <input
+              type="text"
+              placeholder="URL imagine"
+              value={imagine}
+              onChange={(e) => setImagine(e.target.value)}
+              className={inputs.default}
+              required
+              disabled={saving}
+            />
+            <button type="submit" className={buttons.primary} disabled={saving}>
+              {saving ? "Se salveaza..." : "Salveaza modificarile"}
+            </button>
+          </form>
+        )}
+      </div>
     </div>
   );
 }
 
 export default AdminEditTort;
-

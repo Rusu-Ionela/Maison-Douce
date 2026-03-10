@@ -30,6 +30,8 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
+    "standards": "node ../tools/quality/check-code-standards.mjs frontend",
+    "quality": "npm run standards && npm run build",
     "preview": "vite preview",
     "cypress:open": "cypress open",
     "cypress:run": "cypress run"

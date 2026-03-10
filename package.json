@@ -4,9 +4,13 @@
   "description": "Backend pentru platformă vânzare torturi",
   "main": "index.js",
   "scripts": {
+    "quality": "npm run quality:backend && npm run quality:frontend",
+    "quality:backend": "npm --prefix backend run quality",
+    "quality:frontend": "npm --prefix frontend run quality",
+    "quality:standards": "node tools/quality/check-code-standards.mjs",
     "start": "node index.js",
     "dev": "nodemon index.js",
-    "test": "echo \"Error: no test specified\" && exit 1",
+    "test": "npm run quality",
     "checklist": "node scripts/checklist.js"
   },
   "dependencies": {

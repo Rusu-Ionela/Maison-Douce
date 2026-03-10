@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
+import StatusBanner from "../components/StatusBanner";
 import api from "/src/lib/api.js";
 
 export default function RecenzieComanda({ comandaId }) {
@@ -9,6 +10,8 @@ export default function RecenzieComanda({ comandaId }) {
   const [nota, setNota] = useState(5);
   const [comentariu, setComentariu] = useState("");
   const [photoFile, setPhotoFile] = useState(null);
+  const [saving, setSaving] = useState(false);
+  const [status, setStatus] = useState({ type: "", text: "" });
 
   useEffect(() => {
     if (!resolvedId) return;
@@ -18,8 +21,11 @@ export default function RecenzieComanda({ comandaId }) {
       .catch(() => setRecenzie(null));
   }, [resolvedId]);
 
-  const handleSubmit = async (e) => {
-    e.preventDefault();
+  const handleSubmit = async (event) => {
+    event.preventDefault();
+    setSaving(true);
+    setStatus({ type: "", text: "" });
+
     try {
       let fotoUrl = "";
       if (photoFile) {
@@ -38,24 +44,39 @@ export default function RecenzieComanda({ comandaId }) {
       setRecenzie(res.data || null);
       setPhotoFile(null);
     } catch (err) {
-      alert("Eroare la trimiterea recenziei.");
+      setStatus({
+        type: "error",
+        text:
+          err?.response?.data?.message || "Eroare la trimiterea recenziei.",
+      });
+    } finally {
+      setSaving(false);
     }
   };
 
   if (recenzie) {
     return (
-      <div className="mt-2 p-2 border rounded bg-green-50">
+      <div className="mt-2 rounded border bg-green-50 p-2">
         <p>Nota: {recenzie.nota}</p>
         <p>Comentariu: {recenzie.comentariu}</p>
-        {recenzie.foto && <img src={recenzie.foto} alt="recenzie" className="h-24 mt-2 rounded" />}
+        {recenzie.foto && (
+          <img src={recenzie.foto} alt="recenzie" className="mt-2 h-24 rounded" />
+        )}
       </div>
     );
   }
 
   return (
-    <form onSubmit={handleSubmit} className="mt-2 p-2 border rounded bg-gray-50">
-      <label className="block mb-2">Nota:</label>
-      <select value={nota} onChange={(e) => setNota(Number(e.target.value))} className="border p-1 mb-2">
+    <form onSubmit={handleSubmit} className="mt-2 rounded border bg-gray-50 p-2">
+      <StatusBanner type={status.type || "info"} message={status.text} className="mb-2" />
+
+      <label className="mb-2 block">Nota:</label>
+      <select
+        value={nota}
+        onChange={(e) => setNota(Number(e.target.value))}
+        className="mb-2 border p-1"
+        disabled={saving}
+      >
         {[5, 4, 3, 2, 1].map((n) => (
           <option key={n} value={n}>
             {n}
@@ -63,25 +84,31 @@ export default function RecenzieComanda({ comandaId }) {
         ))}
       </select>
 
-      <label className="block mb-2">Comentariu:</label>
+      <label className="mb-2 block">Comentariu:</label>
       <textarea
         value={comentariu}
         onChange={(e) => setComentariu(e.target.value)}
         placeholder="Scrie un comentariu..."
-        className="border p-2 w-full mb-2"
+        className="mb-2 w-full border p-2"
         required
+        disabled={saving}
       />
 
-      <label className="block mb-2">Foto (optional):</label>
+      <label className="mb-2 block">Foto (optional):</label>
       <input
         type="file"
         accept="image/*"
         onChange={(e) => setPhotoFile(e.target.files?.[0] || null)}
-        className="border p-2 w-full mb-2"
+        className="mb-2 w-full border p-2"
+        disabled={saving}
       />
 
-      <button type="submit" className="bg-pink-500 text-white px-3 py-1 rounded">
-        Trimite recenzie
+      <button
+        type="submit"
+        className="rounded bg-pink-500 px-3 py-1 text-white disabled:opacity-60"
+        disabled={saving}
+      >
+        {saving ? "Se trimite..." : "Trimite recenzie"}
       </button>
     </form>
   );

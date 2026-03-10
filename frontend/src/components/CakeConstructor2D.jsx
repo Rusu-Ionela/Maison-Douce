@@ -1,6 +1,7 @@
 import React, { useMemo, useRef, useState, useEffect } from "react";
 import { Stage, Layer, Rect, Text } from "react-konva";
 import api from "/src/lib/api.js";
+import StatusBanner from "../components/StatusBanner";
 import { useCart } from "../context/CartContext";
 import { useAuth } from "../context/AuthContext";
 
@@ -52,6 +53,7 @@ export default function CakeConstructor2D({ designId: propDesignId }) {
   const { user } = useAuth() || {};
   const [loading, setLoading] = useState(false);
   const [designId, setDesignId] = useState(null);
+  const [status, setStatus] = useState({ type: "", text: "" });
 
   const [blat, setBlat] = useState(OPTIONS.blat[0].id);
   const [crema, setCrema] = useState(OPTIONS.crema[0].id);
@@ -137,7 +139,7 @@ export default function CakeConstructor2D({ designId: propDesignId }) {
       link.click();
     } catch (e) {
       console.error("Export image failed", e);
-      alert("Nu am putut exporta imaginea.");
+      setStatus({ type: "error", text: "Nu am putut exporta imaginea." });
     }
   };
 
@@ -159,15 +161,17 @@ export default function CakeConstructor2D({ designId: propDesignId }) {
     try {
       if (designId) {
         await api.put(`/personalizare/${designId}`, payload);
+        setStatus({ type: "success", text: "Design actualizat." });
         return designId;
       }
       const res = await api.post("/personalizare", payload);
       const id = res.data?.id;
       if (id) setDesignId(id);
+      setStatus({ type: "success", text: "Design salvat." });
       return id || null;
     } catch (e) {
       console.error("Save design failed", e);
-      alert("Eroare la salvare design");
+      setStatus({ type: "error", text: "Eroare la salvare design." });
       return null;
     }
   };
@@ -186,12 +190,12 @@ export default function CakeConstructor2D({ designId: propDesignId }) {
       variantKey: JSON.stringify(options),
       prepHours: timpOre,
     });
-    alert("Design salvat si adaugat in cos.");
+    setStatus({ type: "success", text: "Design salvat si adaugat in cos." });
   };
 
   const sendToPatiser = async () => {
     if (!user?._id) {
-      alert("Autentifica-te pentru a trimite designul.");
+      setStatus({ type: "warning", text: "Autentifica-te pentru a trimite designul." });
       return;
     }
     const id = await saveDesign("trimis");
@@ -207,10 +211,10 @@ export default function CakeConstructor2D({ designId: propDesignId }) {
         pretEstimat: total,
         timpPreparareOre: timpOre,
       });
-      alert("Design trimis catre patiser.");
+      setStatus({ type: "success", text: "Design trimis catre patiser." });
     } catch (e) {
       console.error("Submit personalizat failed", e);
-      alert("Eroare la trimiterea designului.");
+      setStatus({ type: "error", text: "Eroare la trimiterea designului." });
     }
   };
 
@@ -218,6 +222,7 @@ export default function CakeConstructor2D({ designId: propDesignId }) {
     <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
       <div className="lg:col-span-2 space-y-4">
         <div className="bg-white p-4 rounded-2xl shadow-sm border border-rose-100">
+          <StatusBanner type={status.type || "info"} message={status.text} className="mb-4" />
           <Stage width={520} height={380} ref={stageRef} style={{ background: "#f8fafc" }}>
             <Layer>
               <Rect x={80} y={40} width={360} height={280} fill={"#fff7f0"} cornerRadius={20} />
