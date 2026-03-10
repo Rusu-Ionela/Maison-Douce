@@ -1,34 +1,68 @@
 import React, { useEffect, useState } from "react";
-import api, { BASE_URL } from "/src/lib/api.js";
+import api from "/src/lib/api.js";
+import { useAuth } from "../context/AuthContext";
+
+function extractFilename(contentDisposition, fallback) {
+  const value = String(contentDisposition || "");
+  const utf8 = value.match(/filename\*=UTF-8''([^;]+)/i);
+  if (utf8?.[1]) return decodeURIComponent(utf8[1]);
+  const plain = value.match(/filename=\"?([^\";]+)\"?/i);
+  if (plain?.[1]) return plain[1];
+  return fallback;
+}
 
 export default function RaportRezervariPrestator() {
+  const { user } = useAuth() || {};
   const [rezervari, setRezervari] = useState([]);
   const [from, setFrom] = useState("");
   const [to, setTo] = useState("");
-  const userId =
-    localStorage.getItem("userId") ||
-    localStorage.getItem("utilizatorId");
+  const [msg, setMsg] = useState("");
+  const userId = user?._id || user?.id || null;
+  const role = user?.rol || user?.role;
+  const isStaff = ["admin", "patiser", "prestator"].includes(String(role || ""));
 
   useEffect(() => {
     const fetchRezervari = async () => {
-      const params = userId ? { clientId: userId } : undefined;
+      const params = !isStaff && userId ? { clientId: userId } : undefined;
       const res = await api.get("/rezervari", { params });
       setRezervari(Array.isArray(res.data) ? res.data : []);
     };
     fetchRezervari();
-  }, [userId]);
+  }, [userId, isStaff]);
 
-  const handleExportCSV = () => {
-    const params = new URLSearchParams();
-    if (from) params.set("from", from);
-    if (to) params.set("to", to);
-    const suffix = params.toString() ? `?${params.toString()}` : "";
-    window.open(`${BASE_URL}/rapoarte-rezervari/csv${suffix}`, "_blank");
+  const handleExportCSV = async () => {
+    const params = {};
+    if (from) params.from = from;
+    if (to) params.to = to;
+    setMsg("");
+    try {
+      const res = await api.get("/rapoarte-rezervari/csv", {
+        params,
+        responseType: "blob",
+      });
+      const blob = new Blob([res.data], {
+        type: res.headers?.["content-type"] || "text/csv;charset=utf-8",
+      });
+      const href = window.URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = href;
+      link.download = extractFilename(
+        res.headers?.["content-disposition"],
+        "raport-rezervari.csv"
+      );
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(href);
+    } catch (e) {
+      setMsg(e?.response?.data?.message || "Nu s-a putut exporta CSV.");
+    }
   };
 
   return (
     <div className="p-6">
       <h2 className="text-2xl font-bold mb-4">Raport rezervari</h2>
+      {msg && <div className="text-rose-700 mb-3">{msg}</div>}
       <div className="flex flex-wrap items-end gap-3 mb-4">
         <label className="text-sm">
           De la

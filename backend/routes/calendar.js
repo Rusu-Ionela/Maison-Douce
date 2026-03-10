@@ -17,6 +17,10 @@ try {
 
 const MIN_LEAD_HOURS = Number(process.env.MIN_LEAD_HOURS || 24);
 
+function isStaffRole(role) {
+  return ["admin", "patiser", "prestator"].includes(String(role || ""));
+}
+
 function isBeforeMinLead(dateStr, timeStr) {
   if (!dateStr || !timeStr) return false;
   const [h, m] = String(timeStr).split(":").map(Number);
@@ -222,7 +226,7 @@ router.post(
 router.post("/reserve", authRequired, async (req, res) => {
   try {
     const {
-      clientId,
+      clientId: requestedClientId,
       prestatorId = "default",
       date,
       time,
@@ -238,8 +242,17 @@ router.post("/reserve", authRequired, async (req, res) => {
       customDetails,
     } = req.body;
 
-    if (!clientId) {
-      return res.status(400).json({ message: "clientId este obligatoriu" });
+    const role = req.user?.rol || req.user?.role;
+    const isStaff = isStaffRole(role);
+    const authUserId = String(req.user?.id || req.user?._id || "");
+    const effectiveClientId =
+      isStaff && requestedClientId ? String(requestedClientId) : authUserId;
+
+    if (!effectiveClientId) {
+      return res.status(401).json({ message: "Utilizator neautentificat" });
+    }
+    if (!isStaff && requestedClientId && String(requestedClientId) !== authUserId) {
+      return res.status(403).json({ message: "Nu poti face rezervari pentru alt client" });
     }
     if (!date || !time) {
       return res
@@ -293,7 +306,7 @@ router.post("/reserve", authRequired, async (req, res) => {
 
     // 2️⃣ Creăm COMANDA
     const comandaPayload = {
-      clientId,
+      clientId: effectiveClientId,
       items: Array.isArray(items) ? items : [],
       subtotal: sb,
       deliveryFee,
@@ -320,7 +333,7 @@ router.post("/reserve", authRequired, async (req, res) => {
 
       // 3️⃣ Creăm REZERVAREA
       doc = await Rezervare.create({
-        clientId,
+        clientId: effectiveClientId,
         prestatorId,
         comandaId: comanda._id,
         tortId: tortId || undefined,
@@ -361,7 +374,7 @@ router.post("/reserve", authRequired, async (req, res) => {
       console.warn('Could not read slot info for response', e.message || e);
     }
 
-    await notifyUser(clientId, {
+    await notifyUser(effectiveClientId, {
       titlu: "Rezervare creata",
       mesaj: `Rezervarea ta pentru ${date} ${time} a fost inregistrata.`,
       tip: "rezervare",
@@ -469,7 +482,17 @@ router.get(
       };
     });
 
-    const mappedComenzi = comenzi.map((c) => {
+    // evita dublurile: rezervarile cu comandaId asociata au deja datele comenzii incluse
+    const linkedComandaIds = new Set(
+      rezervari
+        .map((r) => r?.comandaId?._id || r?.comandaId)
+        .filter(Boolean)
+        .map((id) => String(id))
+    );
+
+    const mappedComenzi = comenzi
+      .filter((c) => !linkedComandaIds.has(String(c._id)))
+      .map((c) => {
       const start = c.oraLivrare || c.oraRezervare || c.calendarSlot?.time || "";
       let desc = "";
       if (Array.isArray(c.items) && c.items.length > 0) {

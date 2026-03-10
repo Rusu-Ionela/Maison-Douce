@@ -1,12 +1,12 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
+import { getTopNavLinks } from "../lib/siteMap";
 
 export default function Navbar() {
   const [isOpen, setIsOpen] = useState(false);
   const { user, logout } = useAuth() || {};
-  const role = user?.rol || user?.role;
-  const isAdmin = role === "admin" || role === "patiser" || role === "prestator";
+  const navLinks = useMemo(() => getTopNavLinks(user), [user]);
 
   return (
     <header className="w-full bg-white shadow-md sticky top-0 z-50">
@@ -15,45 +15,11 @@ export default function Navbar() {
           <Link to="/">Maison-Douce</Link>
         </div>
         <nav className="hidden md:flex items-center gap-5 text-gray-700 font-medium">
-          <Link to="/catalog" className="hover:text-pink-600">
-            Catalog
-          </Link>
-          <Link to="/constructor" className="hover:text-pink-600">
-            Constructor
-          </Link>
-          <Link to="/cart" className="hover:text-pink-600">
-            Cos
-          </Link>
-          <Link to="/despre" className="hover:text-pink-600">
-            Despre
-          </Link>
-          <Link to="/contact" className="hover:text-pink-600">
-            Contact
-          </Link>
-          <Link to="/harta-site" className="hover:text-pink-600">
-            Harta site
-          </Link>
-          <Link to="/fidelizare" className="hover:text-pink-600">
-            Fidelizare
-          </Link>
-          <Link to="/calendar" className="hover:text-pink-600">
-            Calendar
-          </Link>
-          {isAdmin && (
-            <Link to="/admin/calendar" className="hover:text-pink-600">
-              Admin
+          {navLinks.map((link) => (
+            <Link key={link.to} to={link.to} className="hover:text-pink-600">
+              {link.label}
             </Link>
-          )}
-          {isAdmin && (
-            <Link to="/admin/contabilitate" className="hover:text-pink-600">
-              Stoc studio
-            </Link>
-          )}
-          {isAdmin && (
-            <Link to="/admin/contact" className="hover:text-pink-600">
-              Mesaje contact
-            </Link>
-          )}
+          ))}
         </nav>
         <div className="flex items-center gap-3">
           {user ? (
@@ -101,45 +67,11 @@ export default function Navbar() {
       {isOpen && (
         <div className="md:hidden bg-white shadow-inner">
           <nav className="flex flex-col px-4 py-3 gap-3 text-gray-700 font-medium">
-            <Link to="/catalog" onClick={() => setIsOpen(false)}>
-              Catalog
-            </Link>
-            <Link to="/constructor" onClick={() => setIsOpen(false)}>
-              Constructor
-            </Link>
-            <Link to="/cart" onClick={() => setIsOpen(false)}>
-              Cos
-            </Link>
-            <Link to="/despre" onClick={() => setIsOpen(false)}>
-              Despre
-            </Link>
-            <Link to="/contact" onClick={() => setIsOpen(false)}>
-              Contact
-            </Link>
-            <Link to="/harta-site" onClick={() => setIsOpen(false)}>
-              Harta site
-            </Link>
-            <Link to="/fidelizare" onClick={() => setIsOpen(false)}>
-              Fidelizare
-            </Link>
-            <Link to="/calendar" onClick={() => setIsOpen(false)}>
-              Calendar
-            </Link>
-            {isAdmin && (
-              <Link to="/admin/calendar" onClick={() => setIsOpen(false)}>
-                Admin
+            {navLinks.map((link) => (
+              <Link key={link.to} to={link.to} onClick={() => setIsOpen(false)}>
+                {link.label}
               </Link>
-            )}
-            {isAdmin && (
-              <Link to="/admin/contabilitate" onClick={() => setIsOpen(false)}>
-                Stoc studio
-              </Link>
-            )}
-            {isAdmin && (
-              <Link to="/admin/contact" onClick={() => setIsOpen(false)}>
-                Mesaje contact
-              </Link>
-            )}
+            ))}
             {user ? (
               <>
                 <Link to="/profil" onClick={() => setIsOpen(false)}>

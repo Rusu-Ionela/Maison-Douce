@@ -137,7 +137,7 @@ export default function Home() {
 
       {/* RECOMANDATE AI */}
       <section className="max-w-6xl mx-auto px-4 py-12 md:py-16">
-        <div className="mb-8 reveal flex items-center justify-between gap-3">
+        <div className="mb-8 reveal show flex items-center justify-between gap-3">
           <div>
             <p className="text-pink-500 font-semibold uppercase tracking-wide">AI picks</p>
             <h2 className="text-3xl font-bold text-gray-900">Recomandate pentru tine</h2>

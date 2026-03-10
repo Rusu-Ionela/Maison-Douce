@@ -16,6 +16,14 @@ const Utilizator = require("../models/Utilizator");
 const LIVRARE_FEE = 100;
 const MIN_LEAD_HOURS = Number(process.env.MIN_LEAD_HOURS || 24);
 
+function isStaffRole(role) {
+    return ["admin", "patiser", "prestator"].includes(String(role || ""));
+}
+
+function getAuthUserId(req) {
+    return String(req.user?.id || req.user?._id || "");
+}
+
 /* ---------------------- Helpers Comanda ---------------------- */
 function calcSubtotal(items = []) {
     return items.reduce((s, it) => s + Number(it.price || 0) * Number(it.qty || 0), 0);
@@ -125,7 +133,7 @@ function mapComandaToAdmin(c, userMap = new Map()) {
 router.post("/", authRequired, async (req, res) => {
     try {
         const {
-            clientId,
+            clientId: requestedClientId,
             items: rawItems,
             produse,
             metodaLivrare = "ridicare",
@@ -141,7 +149,18 @@ router.post("/", authRequired, async (req, res) => {
             attachments,
         } = req.body;
 
-        if (!clientId) return res.status(400).json({ message: "clientId este obligatoriu." });
+        const role = req.user?.rol || req.user?.role;
+        const isStaff = isStaffRole(role);
+        const authUserId = getAuthUserId(req);
+        const effectiveClientId =
+            isStaff && requestedClientId ? String(requestedClientId) : authUserId;
+
+        if (!effectiveClientId) {
+            return res.status(401).json({ message: "Utilizator neautentificat." });
+        }
+        if (!isStaff && requestedClientId && String(requestedClientId) !== authUserId) {
+            return res.status(403).json({ message: "Nu poti crea comenzi pentru alt client." });
+        }
         if (dataLivrare && oraLivrare && isBeforeMinLead(dataLivrare, oraLivrare)) {
             return res.status(400).json({
                 message: `Alege un interval cu minim ${MIN_LEAD_HOURS} ore inainte.`,
@@ -153,7 +172,7 @@ router.post("/", authRequired, async (req, res) => {
         const taxaLivrare = metodaLivrare === "livrare" ? LIVRARE_FEE : 0;
 
         const comanda = await Comanda.create({
-            clientId,
+            clientId: effectiveClientId,
             items,
             subtotal,
             taxaLivrare,
@@ -175,7 +194,7 @@ router.post("/", authRequired, async (req, res) => {
             statusHistory: [{ status: "plasata", note: "Comanda creata" }],
         });
 
-        await notifyUser(clientId, {
+        await notifyUser(effectiveClientId, {
             titlu: "Comanda primita",
             mesaj: `Comanda #${comanda.numeroComanda || comanda._id} a fost inregistrata.`,
             tip: "comanda",
@@ -205,7 +224,7 @@ router.post("/creeaza-cu-slot", authRequired, async (req, res) => {
     session.startTransaction();
     try {
         const {
-            clientId,
+            clientId: requestedClientId,
             items: rawItems,
             produse,
             metodaLivrare = "ridicare",
@@ -221,7 +240,16 @@ router.post("/creeaza-cu-slot", authRequired, async (req, res) => {
             attachments,
         } = req.body;
 
-        if (!clientId) throw new Error("clientId obligatoriu.");
+        const role = req.user?.rol || req.user?.role;
+        const isStaff = isStaffRole(role);
+        const authUserId = getAuthUserId(req);
+        const effectiveClientId =
+            isStaff && requestedClientId ? String(requestedClientId) : authUserId;
+
+        if (!effectiveClientId) throw new Error("Utilizator neautentificat.");
+        if (!isStaff && requestedClientId && String(requestedClientId) !== authUserId) {
+            return res.status(403).json({ message: "Nu poti crea comenzi pentru alt client." });
+        }
         if (!dataLivrare || !oraLivrare) throw new Error("dataLivrare și oraLivrare sunt obligatorii.");
         if (isBeforeMinLead(dataLivrare, oraLivrare)) {
             throw new Error(`Alege un interval cu minim ${MIN_LEAD_HOURS} ore inainte.`);
@@ -267,7 +295,7 @@ router.post("/creeaza-cu-slot", authRequired, async (req, res) => {
         // 3) Creează comanda
         const [comanda] = await Comanda.create(
             [{
-                clientId,
+                clientId: effectiveClientId,
                 items,
                 subtotal,
                 taxaLivrare,
@@ -292,7 +320,7 @@ router.post("/creeaza-cu-slot", authRequired, async (req, res) => {
         );
 
         await session.commitTransaction();
-        await notifyUser(clientId, {
+        await notifyUser(effectiveClientId, {
             titlu: "Comanda primita",
             mesaj: `Comanda #${comanda.numeroComanda || comanda._id} a fost inregistrata.`,
             tip: "comanda",
@@ -368,7 +396,17 @@ router.get("/", authRequired, roleCheck("admin", "patiser"), async (_req, res) =
  */
 router.get("/client/:clientId", authRequired, async (req, res) => {
     try {
-        const comenzi = await Comanda.find({ clientId: req.params.clientId }).sort({ createdAt: -1 });
+        const role = req.user?.rol || req.user?.role;
+        const isStaff = isStaffRole(role);
+        const authUserId = getAuthUserId(req);
+        const requestedClientId = String(req.params.clientId || "");
+
+        if (!isStaff && requestedClientId !== authUserId) {
+            return res.status(403).json({ message: "Acces interzis la comenzile altui client." });
+        }
+
+        const clientId = isStaff ? requestedClientId : authUserId;
+        const comenzi = await Comanda.find({ clientId }).sort({ createdAt: -1 });
         res.json(comenzi.map((c) => ({
             _id: c._id,
             dataLivrare: c.dataLivrare,
@@ -408,7 +446,7 @@ router.get("/admin", authRequired, roleCheck("admin", "patiser"), async (req, re
  * — pentru Comanda: setează direct `status`
  * — pentru Rezervare: mapează la `handoffStatus` + `status`
  */
-router.patch("/:id/status", authRequired, async (req, res) => {
+router.patch("/:id/status", authRequired, roleCheck("admin", "patiser"), async (req, res) => {
     try {
         const { id } = req.params;
         const nou = req.body?.status;
@@ -631,15 +669,26 @@ router.patch("/:id/refuza", authRequired, roleCheck("admin", "patiser"), async (
 });
 
 // alias compatibil vechiului format
-router.patch("/:comandaId/status", async (req, res, next) => {
+router.patch("/:comandaId/status", authRequired, roleCheck("admin", "patiser"), async (req, res, next) => {
     req.params.id = req.params.comandaId;
     return router.handle(req, res, next);
 });
 // în backend/routes/comenzi.js (unde ai celelalte rute)
-router.get("/:id", authRequired, async (req, res) => {
+router.get("/:id", authRequired, async (req, res, next) => {
     try {
+        if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
+            return next();
+        }
         const c = await Comanda.findById(req.params.id).lean();
         if (!c) return res.status(404).json({ message: "Comandă inexistentă" });
+
+        const role = req.user?.rol || req.user?.role;
+        const isStaff = isStaffRole(role);
+        const authUserId = getAuthUserId(req);
+        if (!isStaff && String(c.clientId || "") !== authUserId) {
+            return res.status(403).json({ message: "Acces interzis la aceasta comanda." });
+        }
+
         res.json(c);
     } catch (e) {
         res.status(500).json({ message: e.message });
@@ -665,6 +714,23 @@ router.get("/export/csv", authRequired, roleCheck("admin", "patiser"), async (re
             // .populate("clientId", "nume prenume email telefon") // activează dacă ai model
             .lean();
 
+        const fields = [
+            "ID Comandă",
+            "Data Livrare",
+            "Ora Livrare",
+            "Client",
+            "Email Client",
+            "Telefon Client",
+            "Metoda Livrare",
+            "Adresa Livrare",
+            "Status",
+            "Produse",
+            "Subtotal",
+            "Taxă Livrare",
+            "Total",
+            "Creat la",
+        ];
+
         const rows = comenzi.map((c) => ({
             "ID Comandă": c._id?.toString(),
             "Data Livrare": c.dataLivrare || "",
@@ -682,8 +748,9 @@ router.get("/export/csv", authRequired, roleCheck("admin", "patiser"), async (re
             "Creat la": c.createdAt ? new Date(c.createdAt).toISOString() : "",
         }));
 
-        const parser = new Parser({ withBOM: true });
-        const csv = parser.parse(rows);
+        const csv = rows.length
+            ? new Parser({ withBOM: true, fields }).parse(rows)
+            : `\uFEFF${fields.join(",")}\n`;
 
         const fileName = `comenzi_${from || "all"}_${to || "all"}${status ? "_" + status : ""}.csv`;
         res.setHeader("Content-Type", "text/csv; charset=utf-8");
@@ -700,6 +767,13 @@ router.patch("/:id/cancel", authRequired, async (req, res) => {
         const { id } = req.params;
         const doc = await Comanda.findById(id);
         if (!doc) return res.status(404).json({ message: "Comanda nu există" });
+
+        const role = req.user?.rol || req.user?.role;
+        const isStaff = isStaffRole(role);
+        const authUserId = getAuthUserId(req);
+        if (!isStaff && String(doc.clientId || "") !== authUserId) {
+            return res.status(403).json({ message: "Nu poti anula comanda altui client." });
+        }
 
         // dacă deja anulată, returnează
         if (doc.status === "anulata" || doc.status === "cancelled") {

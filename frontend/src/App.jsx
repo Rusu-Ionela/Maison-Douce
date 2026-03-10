@@ -1,6 +1,8 @@
 import React, { Suspense, useEffect } from "react";
 import { Navigate, Route, Routes, useLocation } from "react-router-dom";
 import Navbar from "./components/Navbar";
+import RouteContextBar from "./components/RouteContextBar";
+import QuickNavigator from "./components/QuickNavigator";
 import { useAuth } from "./context/AuthContext";
 
 const lazyPage = (path) => React.lazy(() => import(path));
@@ -145,6 +147,8 @@ export default function App() {
     <>
       <Navbar />
       <ScrollToTop />
+      <RouteContextBar />
+      <QuickNavigator />
 
       <Suspense fallback={<Loading />}>
         <Routes>

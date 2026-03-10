@@ -257,7 +257,20 @@ export default function CalendarClient() {
                 <label className="block text-sm font-semibold text-gray-700 mb-2">
                   Data selectata
                 </label>
-                <input type="text" value={selectedDate || "-"} disabled className={inputs.default} />
+                <input
+                  type="date"
+                  value={selectedDate}
+                  min={toDateStr(minDateTime)}
+                  onChange={(e) => {
+                    const value = e.target.value;
+                    if (!value) return;
+                    const next = new Date(`${value}T12:00:00`);
+                    if (Number.isNaN(next.getTime())) return;
+                    setCalendarDate(next);
+                    setTime("");
+                  }}
+                  className={inputs.default}
+                />
               </div>
 
               <div>

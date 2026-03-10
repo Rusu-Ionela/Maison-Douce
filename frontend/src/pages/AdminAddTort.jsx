@@ -1,7 +1,7 @@
-﻿import React, { useState } from 'react';
+import React, { useState } from 'react';
 
 import { useNavigate } from 'react-router-dom';
-import api, { getJson, BASE_URL } from '/src/lib/api.js';
+import api from '/src/lib/api.js';
 
 function AdminAddTort() {
     const [nume, setNume] = useState('');
@@ -21,15 +21,15 @@ function AdminAddTort() {
         try {
             await api.post('/torturi', tortNou);
 
-            navigate('/admin/dashboard');
+            navigate('/admin/torturi');
         } catch (err) {
-            console.error('Eroare la adÄƒugare:', err);
+            console.error('Eroare la adaugare:', err);
         }
     };
 
     return (
         <div className="max-w-xl mx-auto p-6 bg-white rounded shadow">
-            <h2 className="text-2xl font-bold mb-4">AdaugÄƒ Tort Nou</h2>
+            <h2 className="text-2xl font-bold mb-4">Adauga Tort Nou</h2>
             <form onSubmit={handleSubmit} className="space-y-4">
                 <input
                     type="text"
@@ -41,7 +41,7 @@ function AdminAddTort() {
                 />
                 <input
                     type="text"
-                    placeholder="Ingrediente (separate prin virgulÄƒ)"
+                    placeholder="Ingrediente (separate prin virgula)"
                     value={ingrediente}
                     onChange={(e) => setIngrediente(e.target.value)}
                     className="w-full border p-2 rounded"
@@ -56,7 +56,7 @@ function AdminAddTort() {
                     required
                 />
                 <button type="submit" className="bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700">
-                    AdaugÄƒ Tort
+                    Adauga Tort
                 </button>
             </form>
         </div>
@@ -64,4 +64,3 @@ function AdminAddTort() {
 }
 
 export default AdminAddTort;
-

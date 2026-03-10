@@ -1,7 +1,16 @@
 // frontend/src/pages/AdminCalendar.jsx
 import React, { useEffect, useState } from "react";
-import api, { BASE_URL } from "../lib/api.js";
+import api from "../lib/api.js";
 import { buttons, inputs, cards, badges } from "../lib/tailwindComponents";
+
+function extractFilename(contentDisposition, fallback) {
+  const value = String(contentDisposition || "");
+  const utf8 = value.match(/filename\*=UTF-8''([^;]+)/i);
+  if (utf8?.[1]) return decodeURIComponent(utf8[1]);
+  const plain = value.match(/filename=\"?([^\";]+)\"?/i);
+  if (plain?.[1]) return plain[1];
+  return fallback;
+}
 
 export default function AdminCalendar() {
   const [selectedDate, setSelectedDate] = useState(new Date());
@@ -114,8 +123,29 @@ export default function AdminCalendar() {
     }
   };
 
-  const onExport = () => {
-    window.open(`${BASE_URL}/calendar/admin/${dateStr}/export`, "_blank");
+  const onExport = async () => {
+    try {
+      const res = await api.get(`/calendar/admin/${dateStr}/export`, {
+        responseType: "blob",
+      });
+      const blob = new Blob([res.data], {
+        type: res.headers?.["content-type"] || "text/csv;charset=utf-8",
+      });
+      const href = window.URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = href;
+      link.download = extractFilename(
+        res.headers?.["content-disposition"],
+        `rezervari_${dateStr}.csv`
+      );
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(href);
+    } catch (err) {
+      console.error(err);
+      setError("Eroare la export CSV.");
+    }
   };
 
   return (
@@ -258,7 +288,7 @@ export default function AdminCalendar() {
                             {(res.clientPhone || res.clientEmail) && (
                               <div className="text-xs text-gray-600 mb-2">
                                 {res.clientPhone ? `Tel: ${res.clientPhone}` : ""}
-                                {res.clientPhone && res.clientEmail ? " · " : ""}
+                                {res.clientPhone && res.clientEmail ? " - " : ""}
                                 {res.clientEmail ? `Email: ${res.clientEmail}` : ""}
                               </div>
                             )}

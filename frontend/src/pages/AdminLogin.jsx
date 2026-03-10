@@ -15,7 +15,7 @@ function AdminLogin() {
     try {
       const u = await login({ email, parola });
       const role = u?.rol || u?.role;
-      if (role !== "admin" && role !== "patiser") {
+      if (role !== "admin" && role !== "patiser" && role !== "prestator") {
         setErr("Nu ai acces in zona admin.");
         return;
       }

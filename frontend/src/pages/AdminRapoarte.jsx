@@ -1,5 +1,14 @@
 import { useMemo, useState } from "react";
-import api, { BASE_URL } from "/src/lib/api.js";
+import api from "/src/lib/api.js";
+
+function extractFilename(contentDisposition, fallback) {
+  const value = String(contentDisposition || "");
+  const utf8 = value.match(/filename\*=UTF-8''([^;]+)/i);
+  if (utf8?.[1]) return decodeURIComponent(utf8[1]);
+  const plain = value.match(/filename=\"?([^\";]+)\"?/i);
+  if (plain?.[1]) return plain[1];
+  return fallback;
+}
 
 export default function AdminRapoarte() {
   const [from, setFrom] = useState("");
@@ -8,6 +17,25 @@ export default function AdminRapoarte() {
   const [comenzi, setComenzi] = useState([]);
   const [torturi, setTorturi] = useState([]);
   const [msg, setMsg] = useState("");
+
+  const downloadCsv = async (urlPath, fallbackName) => {
+    try {
+      const res = await api.get(urlPath, { responseType: "blob" });
+      const blob = new Blob([res.data], {
+        type: res.headers?.["content-type"] || "text/csv;charset=utf-8",
+      });
+      const href = window.URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = href;
+      link.download = extractFilename(res.headers?.["content-disposition"], fallbackName);
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(href);
+    } catch (e) {
+      setMsg("Nu s-a putut face exportul CSV.");
+    }
+  };
 
   const load = async () => {
     setMsg("");
@@ -64,7 +92,13 @@ export default function AdminRapoarte() {
         </button>
         <button
           className="border px-3 py-2 rounded"
-          onClick={() => window.open(`${BASE_URL}/comenzi/export/csv?from=${from}&to=${to}`, "_blank")}
+          onClick={() => {
+            const params = new URLSearchParams();
+            if (from) params.set("from", from);
+            if (to) params.set("to", to);
+            const suffix = params.toString() ? `?${params.toString()}` : "";
+            downloadCsv(`/comenzi/export/csv${suffix}`, "comenzi.csv");
+          }}
         >
           Export CSV comenzi
         </button>
@@ -91,7 +125,7 @@ export default function AdminRapoarte() {
           <input type="date" value={dateRez} onChange={(e) => setDateRez(e.target.value)} className="border rounded p-2" />
           <button
             className="border px-3 py-2 rounded"
-            onClick={() => dateRez && window.open(`${BASE_URL}/calendar/admin/${dateRez}/export`, "_blank")}
+            onClick={() => dateRez && downloadCsv(`/calendar/admin/${dateRez}/export`, `rezervari_${dateRez}.csv`)}
           >
             Export CSV rezervari
           </button>

@@ -11,7 +11,7 @@ router.get("/", authRequired, async (req, res) => {
     const q = {};
     if (req.query.status) q.status = req.query.status;
 
-    if (role === "admin" || role === "patiser") {
+    if (role === "admin" || role === "patiser" || role === "prestator") {
       if (req.query.clientId) q.clientId = req.query.clientId;
     } else {
       q.clientId = req.user._id;
@@ -29,7 +29,7 @@ router.get("/:id", authRequired, async (req, res) => {
   try {
     const role = req.user?.rol || req.user?.role;
     const q = { _id: req.params.id };
-    if (role !== "admin" && role !== "patiser") {
+    if (role !== "admin" && role !== "patiser" && role !== "prestator") {
       q.clientId = req.user._id;
     }
     const r = await Rezervare.findOne(q).lean();

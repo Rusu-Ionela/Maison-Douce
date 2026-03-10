@@ -2,11 +2,10 @@ import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import api from "/src/lib/api.js";
 import { useAuth } from "../context/AuthContext";
+import { SITE_SECTIONS, canAccessLink } from "../lib/siteMap";
 
 export default function AdminDashboard() {
   const { user } = useAuth() || {};
-  const role = user?.rol || user?.role;
-  const isAdmin = role === "admin";
   const [comenzi, setComenzi] = useState([]);
   const [rezervari, setRezervari] = useState([]);
   const [notificari, setNotificari] = useState([]);
@@ -34,6 +33,20 @@ export default function AdminDashboard() {
     };
   }, [comenzi]);
 
+  const adminLinks = useMemo(() => {
+    const section = SITE_SECTIONS.find((item) => item.id === "admin");
+    if (!section) return [];
+    const seen = new Set();
+    return section.items
+      .filter((item) => canAccessLink(item, user))
+      .filter((item) => !item.hidden)
+      .filter((item) => {
+        if (seen.has(item.to)) return false;
+        seen.add(item.to);
+        return true;
+      });
+  }, [user]);
+
   const today = new Date().toISOString().slice(0, 10);
   const tomorrow = new Date(Date.now() + 86400000).toISOString().slice(0, 10);
   const rezervariAzi = rezervari.filter((r) => r.date === today).length;
@@ -47,13 +60,14 @@ export default function AdminDashboard() {
           <p className="text-gray-600">Rezumat activitate si acces rapid</p>
         </div>
         <div className="flex flex-wrap gap-2">
-          <Link to="/admin/comenzi" className="px-3 py-2 rounded border">Comenzi</Link>
-          <Link to="/admin/calendar" className="px-3 py-2 rounded border">Calendar</Link>
-          <Link to="/admin/torturi" className="px-3 py-2 rounded border">Torturi</Link>
-          <Link to="/admin/comenzi-personalizate" className="px-3 py-2 rounded border">Personalizate</Link>
-          {isAdmin && <Link to="/admin/fidelizare" className="px-3 py-2 rounded border">Fidelizare</Link>}
-          <Link to="/admin/albume" className="px-3 py-2 rounded border">Albume</Link>
-          <Link to="/admin/production" className="px-3 py-2 rounded border">Productie</Link>
+          {adminLinks.map((item) => (
+            <Link key={item.to} to={item.to} className="px-3 py-2 rounded border">
+              {item.label}
+            </Link>
+          ))}
+          <Link to="/harta-site" className="px-3 py-2 rounded border">
+            Harta site
+          </Link>
         </div>
       </header>
 

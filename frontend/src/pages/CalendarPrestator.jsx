@@ -1,11 +1,13 @@
 import React, { useEffect, useMemo, useState } from "react";
 import api from "/src/lib/api.js";
+import { useAuth } from "../context/AuthContext";
 
 function toDateStr(d) {
   return d.toISOString().slice(0, 10);
 }
 
 export default function CalendarPrestator() {
+  const { user } = useAuth() || {};
   const [date, setDate] = useState(toDateStr(new Date()));
   const [time, setTime] = useState("");
   const [capacity, setCapacity] = useState(3);
@@ -14,8 +16,9 @@ export default function CalendarPrestator() {
   const [msg, setMsg] = useState("");
 
   const prestatorId =
-    localStorage.getItem("userId") ||
-    localStorage.getItem("utilizatorId") ||
+    user?._id ||
+    user?.id ||
+    import.meta.env.VITE_PRESTATOR_ID ||
     "default";
 
   const visibleSlots = useMemo(
@@ -39,7 +42,7 @@ export default function CalendarPrestator() {
 
   useEffect(() => {
     fetchSlots();
-  }, []);
+  }, [prestatorId]);
 
   const addSlot = async () => {
     setMsg("");

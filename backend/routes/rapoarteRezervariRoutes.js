@@ -6,7 +6,7 @@ const router = express.Router();
 
 
 // GET /api/rapoarte-rezervari/csv?from=YYYY-MM-DD&to=YYYY-MM-DD
-router.get('/csv', authRequired, roleCheck("admin"), async (req, res) => {
+router.get('/csv', authRequired, roleCheck("admin", "patiser"), async (req, res) => {
     const { from, to } = req.query;
     const match = {};
     if (from) match.createdAt = { $gte: new Date(from) };

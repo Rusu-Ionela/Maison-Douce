@@ -46,9 +46,10 @@ function roleCheck(...roles) {
       return res.status(401).json({ message: "Neautentificat" });
     }
 
-    // adaptează aici dacă în model ai alt nume pentru rol
-    const userRole =
+    // normalizeaza alias-uri de rol pentru compatibilitate
+    const rawRole =
       req.user.rol || req.user.role || req.user.tip || req.user.tipUtilizator;
+    const userRole = rawRole === "prestator" ? "patiser" : rawRole;
 
     if (!userRole) {
       return res.status(403).json({ message: "Rol utilizator neconfigurat" });

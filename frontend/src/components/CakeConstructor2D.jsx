@@ -128,6 +128,19 @@ export default function CakeConstructor2D({ designId: propDesignId }) {
     return uri;
   };
 
+  const downloadExportImage = () => {
+    try {
+      const uri = exportImage();
+      const link = document.createElement("a");
+      link.href = uri;
+      link.download = `design-tort-${Date.now()}.png`;
+      link.click();
+    } catch (e) {
+      console.error("Export image failed", e);
+      alert("Nu am putut exporta imaginea.");
+    }
+  };
+
   const saveDesign = async (nextStatus = "draft") => {
     const imageData = exportImage();
     const payload = {
@@ -337,6 +350,13 @@ export default function CakeConstructor2D({ designId: propDesignId }) {
               Adauga in cos
             </button>
           </div>
+          <button
+            type="button"
+            className="w-full px-3 py-2 border rounded-lg"
+            onClick={downloadExportImage}
+          >
+            Export imagine
+          </button>
           <button className="w-full px-3 py-2 bg-emerald-500 text-white rounded-lg" onClick={sendToPatiser}>
             Trimite catre patiser
           </button>
