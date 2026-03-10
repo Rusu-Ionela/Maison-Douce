@@ -1,18 +1,24 @@
-import React, { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { loadStripe } from "@stripe/stripe-js";
 import { Elements, PaymentElement, useElements, useStripe } from "@stripe/react-stripe-js";
 import { useLocation } from "react-router-dom";
-import api from "/src/lib/api.js";
+import StatusBanner from "../components/StatusBanner";
 import { useAuth } from "../context/AuthContext";
+import api from "/src/lib/api.js";
+import { buttons, cards, containers, inputs } from "/src/lib/tailwindComponents.js";
 
 const publicKey = import.meta.env.VITE_STRIPE_PK || "";
 const stripePromise = publicKey ? loadStripe(publicKey) : null;
 
-function money(n) {
-  return Number(n || 0).toFixed(2);
+function money(value) {
+  return `${Number(value || 0).toFixed(2)} MDL`;
 }
 
-function PaymentForm({ clientSecret, displayTotal, comandaId }) {
+function isPaidOrder(order) {
+  return order?.paymentStatus === "paid" || order?.statusPlata === "paid";
+}
+
+function PaymentForm({ clientSecret, displayTotal, comandaId, onStatusChange }) {
   const stripe = useStripe();
   const elements = useElements();
   const [submitting, setSubmitting] = useState(false);
@@ -20,13 +26,19 @@ function PaymentForm({ clientSecret, displayTotal, comandaId }) {
 
   if (!clientSecret) return null;
 
-  const onSubmit = async (e) => {
-    e.preventDefault();
+  const onSubmit = async (event) => {
+    event.preventDefault();
+    if (!stripe || !elements || submitting) return;
+
     setSubmitting(true);
     setErrorMsg("");
+    onStatusChange?.({
+      type: "info",
+      message: "Confirmam plata cu Stripe. Te rugam sa astepti.",
+    });
 
     const returnUrl = comandaId
-      ? `${window.location.origin}/plata/succes?comandaId=${comandaId}`
+      ? `${window.location.origin}/plata/succes?comandaId=${encodeURIComponent(comandaId)}`
       : `${window.location.origin}/plata/succes`;
 
     const { error, paymentIntent } = await stripe.confirmPayment({
@@ -36,7 +48,9 @@ function PaymentForm({ clientSecret, displayTotal, comandaId }) {
     });
 
     if (error) {
-      setErrorMsg(error.message || "Payment failed");
+      const message = error.message || "Plata a esuat.";
+      setErrorMsg(message);
+      onStatusChange?.({ type: "error", message });
       setSubmitting(false);
       return;
     }
@@ -49,36 +63,40 @@ function PaymentForm({ clientSecret, displayTotal, comandaId }) {
             comandaId,
           });
         }
-      } catch (e) {
-        console.warn("confirm-payment failed in UI:", e?.message || e);
+      } catch (err) {
+        console.warn("confirm-payment failed in UI:", err?.message || err);
       }
-      window.location.href = comandaId
-        ? `/plata/succes?comandaId=${encodeURIComponent(comandaId)}`
-        : "/plata/succes";
+
+      window.location.assign(
+        comandaId
+          ? `/plata/succes?comandaId=${encodeURIComponent(comandaId)}`
+          : "/plata/succes"
+      );
       return;
     }
 
-    if (paymentIntent?.status === "processing") {
-      setErrorMsg("Plata este in procesare. Verifica in cateva secunde.");
-    } else {
-      setErrorMsg("Plata a fost trimisa, dar confirmarea inca nu este disponibila.");
-    }
+    const message =
+      paymentIntent?.status === "processing"
+        ? "Plata este in procesare. Verifica din nou in cateva secunde."
+        : "Plata a fost trimisa, dar confirmarea nu este inca disponibila.";
+    setErrorMsg(message);
+    onStatusChange?.({ type: "warning", message });
     setSubmitting(false);
   };
 
   return (
-    <form onSubmit={onSubmit} style={{ maxWidth: 480, margin: "0 auto" }}>
+    <form onSubmit={onSubmit} className="space-y-4">
       <PaymentElement />
-      {displayTotal != null && (
-        <div style={{ marginTop: 10, fontWeight: 600 }}>Total de plata: {money(displayTotal)}</div>
-      )}
-      {errorMsg && <div style={{ color: "crimson", marginTop: 8 }}>{errorMsg}</div>}
+      <div className="rounded-xl bg-rose-50 px-4 py-3 text-sm font-semibold text-gray-800">
+        Total de plata: {money(displayTotal)}
+      </div>
+      <StatusBanner type="error" message={errorMsg} />
       <button
         type="submit"
         disabled={!stripe || !elements || submitting}
-        style={{ marginTop: 12, padding: "10px 16px", borderRadius: 8 }}
+        className={buttons.primary}
       >
-        {submitting ? "Se proceseaza..." : "Plateste"}
+        {submitting ? "Se proceseaza..." : "Plateste acum"}
       </button>
     </form>
   );
@@ -90,26 +108,20 @@ export default function Plata() {
   const userId = user?._id || user?.id;
   const comandaId = new URLSearchParams(location.search).get("comandaId");
 
-  const [loadingComanda, setLoadingComanda] = useState(false);
   const [comanda, setComanda] = useState(null);
+  const [loadingComanda, setLoadingComanda] = useState(false);
+  const [comandaError, setComandaError] = useState("");
 
   const [codCupon, setCodCupon] = useState("");
-  const [reducerePct, setReducerePct] = useState(0);
-  const [cuponStatus, setCuponStatus] = useState(null);
-
   const [codVoucher, setCodVoucher] = useState("");
-  const [puncte, setPuncte] = useState(0);
-  const [discountFidelizare, setDiscountFidelizare] = useState(0);
-  const [fidelizareMsg, setFidelizareMsg] = useState("");
-  const [busyFidelizare, setBusyFidelizare] = useState(false);
-  const [fidelizareSource, setFidelizareSource] = useState("");
+  const [puncte, setPuncte] = useState("");
 
-  const [creatingCheckout, setCreatingCheckout] = useState(false);
-  const [clientSecret, setClientSecret] = useState("");
-  const [loadingPI, setLoadingPI] = useState(false);
-
-  const [wallet, setWallet] = useState({ puncteCurent: 0, reduceriDisponibile: [] });
+  const [wallet, setWallet] = useState({
+    puncteCurent: 0,
+    reduceriDisponibile: [],
+  });
   const [loadingWallet, setLoadingWallet] = useState(false);
+  const [walletError, setWalletError] = useState("");
 
   const [stripeStatus, setStripeStatus] = useState({
     loading: true,
@@ -117,6 +129,82 @@ export default function Plata() {
     fallbackAvailable: false,
     mode: "unknown",
   });
+
+  const [clientSecret, setClientSecret] = useState("");
+  const [loadingPI, setLoadingPI] = useState(false);
+  const [creatingCheckout, setCreatingCheckout] = useState(false);
+  const [busyDiscount, setBusyDiscount] = useState({
+    coupon: false,
+    voucher: false,
+    points: false,
+  });
+  const [pageStatus, setPageStatus] = useState({ type: "", message: "" });
+
+  const canUseStripeCheckout = stripeStatus.enabled;
+  const canUseEmbeddedStripe = canUseStripeCheckout && !!publicKey;
+  const canUseFallbackPayment = !canUseStripeCheckout && stripeStatus.fallbackAvailable;
+
+  const orderPaid = isPaidOrder(comanda);
+  const orderDiscount = Number(comanda?.discountTotal || comanda?.discountFidelizare || 0);
+  const orderBaseTotal = Number(comanda?.total || 0);
+  const orderTotalFinal = Number(comanda?.totalFinal ?? comanda?.total ?? 0);
+  const orderHasDiscount =
+    orderDiscount > 0 ||
+    Number(comanda?.pointsUsed || 0) > 0 ||
+    Boolean(comanda?.voucherCode);
+
+  const discountLabel = useMemo(() => {
+    if (!comanda) return "";
+    if (Number(comanda.pointsUsed || 0) > 0) {
+      return `${comanda.pointsUsed} puncte`;
+    }
+    if (comanda.voucherCode) {
+      return `cod ${comanda.voucherCode}`;
+    }
+    return "";
+  }, [comanda]);
+
+  async function fetchComanda() {
+    if (authLoading || !userId || !comandaId) return;
+
+    setLoadingComanda(true);
+    setComandaError("");
+    try {
+      const { data } = await api.get(`/comenzi/${comandaId}`);
+      setComanda(data);
+    } catch (error) {
+      setComanda(null);
+      setComandaError(
+        error?.response?.data?.message || "Nu am putut incarca aceasta comanda."
+      );
+    } finally {
+      setLoadingComanda(false);
+    }
+  }
+
+  async function fetchWallet() {
+    if (authLoading || !userId) return;
+
+    setLoadingWallet(true);
+    setWalletError("");
+    try {
+      const { data } = await api.get(`/fidelizare/client/${userId}`);
+      setWallet({
+        puncteCurent: data.puncteCurent || 0,
+        reduceriDisponibile: data.reduceriDisponibile || [],
+      });
+    } catch (error) {
+      setWallet({
+        puncteCurent: 0,
+        reduceriDisponibile: [],
+      });
+      setWalletError(
+        error?.response?.data?.message || "Nu am putut incarca portofelul de fidelizare."
+      );
+    } finally {
+      setLoadingWallet(false);
+    }
+  }
 
   useEffect(() => {
     let cancelled = false;
@@ -132,7 +220,12 @@ export default function Plata() {
         });
       } catch {
         if (cancelled) return;
-        setStripeStatus({ loading: false, enabled: false, fallbackAvailable: true, mode: "unknown" });
+        setStripeStatus({
+          loading: false,
+          enabled: false,
+          fallbackAvailable: true,
+          mode: "unknown",
+        });
       }
     })();
 
@@ -141,390 +234,579 @@ export default function Plata() {
     };
   }, []);
 
-  const canUseStripeCheckout = stripeStatus.enabled;
-  const canUseEmbeddedStripe = canUseStripeCheckout && !!publicKey;
-  const canUseFallbackPayment = !canUseStripeCheckout && stripeStatus.fallbackAvailable;
-
   useEffect(() => {
-    (async () => {
-      if (authLoading || !userId || !comandaId) return;
-      setLoadingComanda(true);
-      try {
-        const { data } = await api.get(`/comenzi/${comandaId}`);
-        setComanda(data);
-      } catch (e) {
-        console.error("Nu pot incarca comanda:", e);
-      } finally {
-        setLoadingComanda(false);
-      }
-    })();
+    if (authLoading || !userId || !comandaId) return;
+    fetchComanda();
   }, [authLoading, userId, comandaId]);
-
-  const totalDeBaza = useMemo(() => {
-    if (!comanda) return 0;
-    const itemsTotal = (comanda.items || []).reduce(
-      (s, it) => s + Number(it.price || it.pret || 0) * Number(it.qty || it.cantitate || 1),
-      0
-    );
-    const livrare = Number(comanda.taxaLivrare || 0);
-    const fallback = itemsTotal + livrare;
-    return Number(comanda.total ?? fallback) || 0;
-  }, [comanda]);
-
-  const totalRedus = useMemo(() => {
-    if (!totalDeBaza) return 0;
-    const factor = Math.max(0, Math.min(100, Number(reducerePct || 0)));
-    return totalDeBaza * (1 - factor / 100);
-  }, [totalDeBaza, reducerePct]);
-
-  const totalFinal = useMemo(() => {
-    const t = totalRedus - Number(discountFidelizare || 0);
-    return t > 0 ? t : 0;
-  }, [totalRedus, discountFidelizare]);
-
-  const hasFidelizare = discountFidelizare > 0;
-  const fidelizareDisabled = busyFidelizare || reducerePct > 0 || hasFidelizare;
 
   useEffect(() => {
     if (authLoading || !userId) return;
-    setLoadingWallet(true);
-    (async () => {
-      try {
-        const { data } = await api.get(`/fidelizare/client/${userId}`);
-        setWallet({
-          puncteCurent: data.puncteCurent || 0,
-          reduceriDisponibile: data.reduceriDisponibile || [],
-        });
-      } catch (e) {
-        console.warn("Nu am putut incarca portofelul:", e?.message || e);
-      } finally {
-        setLoadingWallet(false);
-      }
-    })();
+    fetchWallet();
   }, [authLoading, userId]);
 
-  const createPIWithAmount = async () => {
-    if (!canUseEmbeddedStripe) return;
-    setLoadingPI(true);
-    setClientSecret("");
+  useEffect(() => {
+    if (!canUseEmbeddedStripe || !comandaId || !comanda || orderPaid) {
+      setClientSecret("");
+      return;
+    }
+    if (orderTotalFinal <= 0) {
+      setClientSecret("");
+      return;
+    }
+
+    let cancelled = false;
+    (async () => {
+      setLoadingPI(true);
+      setClientSecret("");
+      try {
+        const { data } = await api.post("/stripe/create-payment-intent", {
+          currency: "mdl",
+          comandaId,
+        });
+        if (!cancelled) {
+          setClientSecret(data?.clientSecret || "");
+        }
+      } catch (error) {
+        if (!cancelled) {
+          setPageStatus({
+            type: "error",
+            message:
+              error?.response?.data?.message ||
+              "Nu am putut initializa plata cu cardul.",
+          });
+        }
+      } finally {
+        if (!cancelled) {
+          setLoadingPI(false);
+        }
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [canUseEmbeddedStripe, comanda, comandaId, orderPaid, orderTotalFinal]);
+
+  const paymentDisabled =
+    authLoading ||
+    !userId ||
+    !comandaId ||
+    !comanda ||
+    loadingComanda ||
+    creatingCheckout ||
+    orderPaid;
+
+  const discountDisabled =
+    paymentDisabled ||
+    busyDiscount.coupon ||
+    busyDiscount.voucher ||
+    busyDiscount.points ||
+    orderHasDiscount;
+
+  const setBusy = (key, value) => {
+    setBusyDiscount((prev) => ({ ...prev, [key]: value }));
+  };
+
+  const clearDiscountInputs = () => {
+    setCodCupon("");
+    setCodVoucher("");
+    setPuncte("");
+  };
+
+  const refreshAfterDiscount = async () => {
+    await Promise.all([fetchComanda(), fetchWallet()]);
+    clearDiscountInputs();
+  };
+
+  const applyCoupon = async () => {
+    if (!codCupon.trim()) {
+      setPageStatus({ type: "warning", message: "Introdu un cod de cupon." });
+      return;
+    }
+
+    setBusy("coupon", true);
+    setPageStatus({ type: "", message: "" });
     try {
-      const amountCents = Math.max(50, Math.round(totalFinal * 100));
-      const { data } = await api.post("/stripe/create-payment-intent", {
-        amount: amountCents,
-        currency: "mdl",
+      const { data } = await api.post("/coupon/apply", {
+        cod: codCupon.trim(),
         comandaId,
       });
-      setClientSecret(data?.clientSecret || "");
-    } catch (e) {
-      console.error("create-payment-intent failed:", e);
+      await refreshAfterDiscount();
+      setPageStatus({
+        type: "success",
+        message: `Cupon aplicat cu succes: -${money(data?.discount || 0)}.`,
+      });
+    } catch (error) {
+      setPageStatus({
+        type: "error",
+        message:
+          error?.response?.data?.message || "Nu am putut aplica acest cupon.",
+      });
     } finally {
-      setLoadingPI(false);
+      setBusy("coupon", false);
     }
   };
 
-  const verificaCupon = async () => {
-    setCuponStatus(null);
-    setReducerePct(0);
-    if (hasFidelizare) {
-      setCuponStatus("invalid");
-      setFidelizareMsg("Nu poti combina cuponul cu voucher/puncte.");
+  const applyVoucher = async () => {
+    if (!codVoucher.trim()) {
+      setPageStatus({ type: "warning", message: "Introdu un cod de voucher." });
       return;
     }
-    if (!codCupon) return;
+
+    setBusy("voucher", true);
+    setPageStatus({ type: "", message: "" });
     try {
-      const { data } = await api.get(`/coupon/verify/${encodeURIComponent(codCupon)}`);
-      const pct = Number(data?.procentReducere || data?.discount || 0);
-      if (pct > 0) {
-        setReducerePct(pct);
-        setCuponStatus("ok");
-      } else {
-        setCuponStatus("invalid");
-      }
-    } catch {
-      setCuponStatus("invalid");
+      const { data } = await api.post("/fidelizare/apply-voucher", {
+        utilizatorId: userId,
+        cod: codVoucher.trim(),
+        comandaId,
+      });
+      await refreshAfterDiscount();
+      setPageStatus({
+        type: "success",
+        message: `Voucher aplicat: -${money(data?.discount || 0)}.`,
+      });
+    } catch (error) {
+      setPageStatus({
+        type: "error",
+        message:
+          error?.response?.data?.message || "Voucher invalid sau expirat.",
+      });
+    } finally {
+      setBusy("voucher", false);
+    }
+  };
+
+  const applyPoints = async () => {
+    const pointsValue = Number(puncte || 0);
+    if (!pointsValue || pointsValue <= 0) {
+      setPageStatus({
+        type: "warning",
+        message: "Introdu un numar valid de puncte.",
+      });
+      return;
+    }
+
+    setBusy("points", true);
+    setPageStatus({ type: "", message: "" });
+    try {
+      const { data } = await api.post("/fidelizare/apply-points", {
+        utilizatorId: userId,
+        puncte: pointsValue,
+        comandaId,
+      });
+      await refreshAfterDiscount();
+      setPageStatus({
+        type: "success",
+        message: `Puncte aplicate: -${money(data?.discount || 0)}.`,
+      });
+    } catch (error) {
+      setPageStatus({
+        type: "error",
+        message:
+          error?.response?.data?.message || "Nu am putut aplica punctele.",
+      });
+    } finally {
+      setBusy("points", false);
     }
   };
 
   const goCheckout = async () => {
-    if (!canUseStripeCheckout) return;
-    if (!comandaId) {
-      alert("Adauga comandaId in URL.");
-      return;
-    }
+    if (paymentDisabled) return;
+
     setCreatingCheckout(true);
+    setPageStatus({ type: "info", message: "Se creeaza sesiunea Stripe Checkout..." });
     try {
-      const { data } = await api.post(`/stripe/create-checkout-session/${comandaId}`);
+      const { data } = await api.post(`/stripe/create-checkout-session/${comandaId}`, {
+        currency: "mdl",
+      });
       if (data?.url) {
-        window.location.href = data.url;
-      } else {
-        alert("Nu s-a putut crea sesiunea de plata.");
+        window.location.assign(data.url);
+        return;
       }
-    } catch (e) {
-      console.error(e);
-      alert(e?.response?.data?.message || "Eroare la crearea sesiunii de plata.");
+      setPageStatus({
+        type: "error",
+        message: "Nu s-a putut crea sesiunea de plata.",
+      });
+    } catch (error) {
+      setPageStatus({
+        type: "error",
+        message:
+          error?.response?.data?.message ||
+          "Eroare la crearea sesiunii de plata.",
+      });
     } finally {
       setCreatingCheckout(false);
     }
   };
 
   const fallbackPayment = async () => {
-    if (!canUseFallbackPayment) return;
-    if (!comandaId) {
-      alert("Adauga comandaId in URL.");
-      return;
-    }
+    if (paymentDisabled) return;
+
     setCreatingCheckout(true);
+    setPageStatus({
+      type: "warning",
+      message: "Confirmam plata prin fallback pentru mediul curent.",
+    });
     try {
       await api.post("/stripe/fallback-confirm", { comandaId });
-      window.location.href = `/plata/succes?comandaId=${encodeURIComponent(comandaId)}`;
-    } catch (e) {
-      console.error(e);
-      alert(e?.response?.data?.message || "Nu am putut confirma plata.");
-    } finally {
+      window.location.assign(`/plata/succes?comandaId=${encodeURIComponent(comandaId)}`);
+    } catch (error) {
+      setPageStatus({
+        type: "error",
+        message:
+          error?.response?.data?.message || "Nu am putut confirma plata.",
+      });
       setCreatingCheckout(false);
     }
   };
 
-  const applyVoucher = async () => {
-    if (!userId) return setFidelizareMsg("Trebuie sa fii autentificat pentru a aplica voucherul.");
-    if (!comandaId) return setFidelizareMsg("Adauga comandaId pentru aplicarea voucherului.");
-    if (reducerePct > 0) return setFidelizareMsg("Nu poti combina cuponul cu voucher/puncte.");
-    if (hasFidelizare) return setFidelizareMsg("Discount fidelizare deja aplicat.");
-    if (!codVoucher) return setFidelizareMsg("Introdu un cod de voucher.");
-
-    setBusyFidelizare(true);
-    setFidelizareMsg("");
-    try {
-      const { data } = await api.post("/fidelizare/apply-voucher", {
-        utilizatorId: userId,
-        cod: codVoucher,
-        comandaId,
-      });
-      const d = Number(data.discount || 0);
-      setDiscountFidelizare(d);
-      setFidelizareSource(`voucher ${data.cod || codVoucher}`);
-      setFidelizareMsg(`Voucher aplicat: -${d} MDL`);
-    } catch (e) {
-      setFidelizareMsg(e?.response?.data?.message || "Voucher invalid sau expirat.");
-      setDiscountFidelizare(0);
-      setFidelizareSource("");
-    } finally {
-      setBusyFidelizare(false);
-    }
-  };
-
-  const applyPoints = async () => {
-    if (!userId) return setFidelizareMsg("Trebuie sa fii autentificat pentru a folosi puncte.");
-    if (!comandaId) return setFidelizareMsg("Adauga comandaId pentru aplicarea punctelor.");
-    if (reducerePct > 0) return setFidelizareMsg("Nu poti combina cuponul cu voucher/puncte.");
-    if (hasFidelizare) return setFidelizareMsg("Discount fidelizare deja aplicat.");
-
-    const p = Number(puncte || 0);
-    if (p <= 0) return setFidelizareMsg("Introdu numarul de puncte.");
-
-    setBusyFidelizare(true);
-    setFidelizareMsg("");
-    try {
-      const { data } = await api.post("/fidelizare/apply-points", {
-        utilizatorId: userId,
-        puncte: p,
-        comandaId,
-      });
-      const d = Number(data.discount || 0);
-      setDiscountFidelizare(d);
-      setFidelizareSource(`puncte (${p}p)`);
-      setFidelizareMsg(`Discount din puncte: -${d} MDL. Puncte ramase: ${data.puncteRamase}`);
-    } catch (e) {
-      setFidelizareMsg(e?.response?.data?.message || "Nu s-au putut aplica punctele.");
-      setDiscountFidelizare(0);
-      setFidelizareSource("");
-    } finally {
-      setBusyFidelizare(false);
-    }
-  };
-
-  useEffect(() => {
-    if (!comandaId || !totalDeBaza || !canUseEmbeddedStripe) return;
-    createPIWithAmount();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [comandaId, totalDeBaza, reducerePct, discountFidelizare, canUseEmbeddedStripe]);
-
   return (
-    <div className="max-w-4xl mx-auto px-4 py-6">
-      <h1 className="text-3xl font-bold text-gray-900 mb-4">Plata comenzii</h1>
+    <div className="min-h-screen bg-gradient-to-br from-rose-50 via-pink-50 to-white">
+      <div className={`${containers.pageMax} space-y-6`}>
+        <header className="space-y-2">
+          <p className="font-semibold uppercase tracking-[0.2em] text-pink-500">
+            Payment
+          </p>
+          <h1 className="text-3xl font-bold text-gray-900">Plata comenzii</h1>
+          <p className="max-w-2xl text-sm text-gray-600">
+            Reducerile se aplica direct pe comanda, iar plata foloseste intotdeauna
+            totalul real salvat in backend.
+          </p>
+        </header>
 
-      {!userId && (
-        <div className="mb-3 text-red-700 bg-red-50 border border-red-200 rounded-md px-4 py-2">
-          Trebuie sa fii autentificat pentru a plati. Autentifica-te si reincearca.
-        </div>
-      )}
+        <StatusBanner
+          type={pageStatus.type || "info"}
+          message={pageStatus.message}
+        />
+        <StatusBanner
+          type="warning"
+          title="Autentificare necesara"
+          message={
+            !authLoading && !userId
+              ? "Trebuie sa fii autentificat pentru a plati aceasta comanda."
+              : ""
+          }
+        />
+        <StatusBanner
+          type="error"
+          title="Comanda lipsa"
+          message={!comandaId ? "Adauga ?comandaId=... in URL pentru a continua." : ""}
+        />
+        <StatusBanner type="error" message={comandaError} />
 
-      {!comandaId && (
-        <div className="mb-3 text-red-700 bg-red-50 border border-red-200 rounded-md px-4 py-2">
-          Adauga <code>?comandaId=...</code> in URL.
-        </div>
-      )}
-
-      {loadingComanda && <div>Se incarca datele comenzii...</div>}
-
-      {!!totalDeBaza && (
-        <div className="mb-4 space-y-1">
-          <div className="text-gray-800">
-            Total initial: <b>{money(totalDeBaza)}</b>
-          </div>
-          {reducerePct > 0 ? (
-            <div className="text-gray-800">
-              Reducere: <b>{reducerePct}%</b> - Total dupa reducere: <b>{money(totalRedus)}</b>
+        <div className="grid grid-cols-1 gap-6 lg:grid-cols-[1.3fr,0.9fr]">
+          <section className={`${cards.default} space-y-4`}>
+            <div className="flex items-center justify-between">
+              <div>
+                <h2 className="text-xl font-semibold text-gray-900">
+                  Rezumat comanda
+                </h2>
+                <p className="text-sm text-gray-500">
+                  {comanda?.numeroComanda || comanda?._id || "Comanda in curs"}
+                </p>
+              </div>
+              {orderPaid ? (
+                <span className="rounded-full bg-emerald-100 px-3 py-1 text-xs font-semibold text-emerald-700">
+                  Platita
+                </span>
+              ) : (
+                <span className="rounded-full bg-amber-100 px-3 py-1 text-xs font-semibold text-amber-700">
+                  In asteptare
+                </span>
+              )}
             </div>
-          ) : (
-            <div className="text-gray-600 text-sm">Poti aplica un cupon mai jos.</div>
-          )}
-          {discountFidelizare > 0 ? (
-            <div className="text-green-700">
-              Discount fidelizare ({fidelizareSource || "-"}) : -{money(discountFidelizare)} - Total final: <b>{money(totalFinal)}</b>
-            </div>
-          ) : (
-            <div className="text-gray-700">
-              Total final: <b>{money(totalFinal)}</b>
-            </div>
-          )}
-        </div>
-      )}
 
-      <div className="max-w-xl mb-4">
-        <label className="block mb-2 font-semibold text-gray-800">Cod cupon</label>
-        <div className="flex gap-2">
-          <input
-            value={codCupon}
-            onChange={(e) => setCodCupon(e.target.value)}
-            placeholder="ex: DULCE10"
-            disabled={hasFidelizare}
-            className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:border-pink-500 outline-none disabled:bg-gray-100"
-          />
-          <button
-            onClick={verificaCupon}
-            disabled={hasFidelizare}
-            className="px-4 py-2 rounded-lg bg-pink-500 text-white hover:bg-pink-600"
-          >
-            Verifica
-          </button>
-        </div>
-        {cuponStatus === "ok" && <div className="text-green-700 mt-2">Cupon valid: {reducerePct}% reducere.</div>}
-        {cuponStatus === "invalid" && <div className="text-red-700 mt-2">Cupon invalid sau expirat.</div>}
-      </div>
-
-      <div className="max-w-xl mb-6">
-        <h3 className="text-xl font-semibold text-gray-900 mb-3">Fidelizare</h3>
-        <div className="mb-4">
-          <label className="block mb-2 font-semibold text-gray-800">Cod voucher</label>
-          <div className="flex gap-2">
-            <input
-              value={codVoucher}
-              onChange={(e) => setCodVoucher(e.target.value)}
-              placeholder="ex: PROMO-123"
-              className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:border-pink-500 outline-none"
-            />
-            <button
-              onClick={applyVoucher}
-              disabled={fidelizareDisabled}
-              className="px-4 py-2 rounded-lg bg-pink-500 text-white hover:bg-pink-600 disabled:opacity-50"
-            >
-              Aplica voucher
-            </button>
-          </div>
-        </div>
-        <div className="mb-2">
-          <label className="block mb-2 font-semibold text-gray-800">Foloseste puncte</label>
-          <div className="flex gap-2">
-            <input
-              type="number"
-              min="0"
-              value={puncte}
-              onChange={(e) => setPuncte(e.target.value)}
-              placeholder="ex: 100"
-              className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:border-pink-500 outline-none"
-            />
-            <button
-              onClick={applyPoints}
-              disabled={fidelizareDisabled}
-              className="px-4 py-2 rounded-lg bg-emerald-500 text-white hover:bg-emerald-600 disabled:opacity-50"
-            >
-              Aplica puncte
-            </button>
-          </div>
-        </div>
-        {fidelizareMsg && (
-          <div className={`mt-2 ${fidelizareMsg.toLowerCase().includes("nu") ? "text-red-700" : "text-green-700"}`}>
-            {fidelizareMsg}
-          </div>
-        )}
-        {loadingWallet ? (
-          <div className="mt-2 text-gray-600">Se incarca portofelul...</div>
-        ) : (
-          <div className="mt-2 text-sm text-gray-600">
-            Puncte disponibile: {wallet.puncteCurent || 0}
-            {wallet.reduceriDisponibile?.length > 0 && (
-              <div className="mt-1">
-                Vouchere disponibile:
-                <ul className="pl-4 list-disc">
-                  {wallet.reduceriDisponibile.map((v) => (
-                    <li
-                      key={v.codigPromo}
-                      className="cursor-pointer hover:text-pink-600"
-                      onClick={() => setCodVoucher(v.codigPromo)}
-                    >
-                      {v.codigPromo} {v.valoareFixa ? `- ${v.valoareFixa} MDL` : ""} {v.procent ? `- ${v.procent}%` : ""}
-                    </li>
-                  ))}
-                </ul>
+            {loadingComanda && (
+              <div className="rounded-2xl bg-gray-50 px-4 py-6 text-sm text-gray-600">
+                Se incarca datele comenzii...
               </div>
             )}
-          </div>
-        )}
+
+            {!loadingComanda && comanda && (
+              <div className="space-y-4">
+                <div className="grid gap-3 rounded-2xl border border-rose-100 bg-rose-50/60 p-4 text-sm text-gray-700 md:grid-cols-2">
+                  <div>
+                    <div className="text-gray-500">Livrare</div>
+                    <div className="font-semibold">
+                      {comanda.dataLivrare || "-"} {comanda.oraLivrare || ""}
+                    </div>
+                  </div>
+                  <div>
+                    <div className="text-gray-500">Metoda</div>
+                    <div className="font-semibold">
+                      {comanda.metodaLivrare || "ridicare"}
+                    </div>
+                  </div>
+                  {comanda.adresaLivrare && (
+                    <div className="md:col-span-2">
+                      <div className="text-gray-500">Adresa</div>
+                      <div className="font-semibold">{comanda.adresaLivrare}</div>
+                    </div>
+                  )}
+                </div>
+
+                <div className="space-y-2">
+                  {(comanda.items || []).length === 0 ? (
+                    <div className="text-sm text-gray-600">
+                      Nu exista produse pe aceasta comanda.
+                    </div>
+                  ) : (
+                    (comanda.items || []).map((item, index) => (
+                      <div
+                        key={`${item.productId || item._id || index}`}
+                        className="flex items-start justify-between gap-4 rounded-2xl border border-gray-100 px-4 py-3"
+                      >
+                        <div>
+                          <div className="font-semibold text-gray-900">
+                            {item.name || item.nume || "Produs"}
+                          </div>
+                          <div className="text-sm text-gray-500">
+                            Cantitate: {item.qty || item.cantitate || 1}
+                          </div>
+                        </div>
+                        <div className="font-semibold text-pink-600">
+                          {money(item.price || item.pret || 0)}
+                        </div>
+                      </div>
+                    ))
+                  )}
+                </div>
+
+                <div className="space-y-2 rounded-2xl border border-gray-100 bg-white p-4 text-sm text-gray-700">
+                  <div className="flex justify-between">
+                    <span>Total initial</span>
+                    <span className="font-semibold">{money(orderBaseTotal)}</span>
+                  </div>
+                  {orderDiscount > 0 && (
+                    <div className="flex justify-between text-emerald-700">
+                      <span>Discount aplicat {discountLabel ? `(${discountLabel})` : ""}</span>
+                      <span className="font-semibold">-{money(orderDiscount)}</span>
+                    </div>
+                  )}
+                  <div className="flex justify-between border-t border-gray-100 pt-2 text-base text-gray-900">
+                    <span>Total final</span>
+                    <span className="font-bold">{money(orderTotalFinal)}</span>
+                  </div>
+                </div>
+
+                {orderPaid && (
+                  <StatusBanner
+                    type="success"
+                    message="Comanda este deja platita. Poti reveni in pagina de confirmare sau in profil."
+                  />
+                )}
+              </div>
+            )}
+          </section>
+
+          <section className="space-y-4">
+            <div className={cards.elevated}>
+              <h2 className="mb-3 text-xl font-semibold text-gray-900">
+                Discounturi si fidelizare
+              </h2>
+
+              <StatusBanner type="error" message={walletError} />
+              {orderHasDiscount && !orderPaid && (
+                <StatusBanner
+                  type="info"
+                  message="Comanda are deja un discount aplicat. Nu se pot combina mai multe reduceri."
+                />
+              )}
+
+              <div className="space-y-4">
+                <div>
+                  <label className="mb-2 block text-sm font-semibold text-gray-700">
+                    Cod cupon
+                  </label>
+                  <div className="flex gap-2">
+                    <input
+                      value={codCupon}
+                      onChange={(event) => setCodCupon(event.target.value)}
+                      placeholder="ex: DULCE10"
+                      disabled={discountDisabled}
+                      className={`${inputs.default} flex-1`}
+                    />
+                    <button
+                      type="button"
+                      onClick={applyCoupon}
+                      disabled={discountDisabled}
+                      className={buttons.outline}
+                    >
+                      {busyDiscount.coupon ? "Se aplica..." : "Aplica"}
+                    </button>
+                  </div>
+                </div>
+
+                <div>
+                  <label className="mb-2 block text-sm font-semibold text-gray-700">
+                    Cod voucher
+                  </label>
+                  <div className="flex gap-2">
+                    <input
+                      value={codVoucher}
+                      onChange={(event) => setCodVoucher(event.target.value)}
+                      placeholder="ex: PROMO-123"
+                      disabled={discountDisabled}
+                      className={`${inputs.default} flex-1`}
+                    />
+                    <button
+                      type="button"
+                      onClick={applyVoucher}
+                      disabled={discountDisabled}
+                      className={buttons.outline}
+                    >
+                      {busyDiscount.voucher ? "Se aplica..." : "Aplica"}
+                    </button>
+                  </div>
+                </div>
+
+                <div>
+                  <label className="mb-2 block text-sm font-semibold text-gray-700">
+                    Foloseste puncte
+                  </label>
+                  <div className="flex gap-2">
+                    <input
+                      type="number"
+                      min="0"
+                      value={puncte}
+                      onChange={(event) => setPuncte(event.target.value)}
+                      placeholder="ex: 100"
+                      disabled={discountDisabled}
+                      className={`${inputs.default} flex-1`}
+                    />
+                    <button
+                      type="button"
+                      onClick={applyPoints}
+                      disabled={discountDisabled}
+                      className={buttons.outline}
+                    >
+                      {busyDiscount.points ? "Se aplica..." : "Aplica"}
+                    </button>
+                  </div>
+                </div>
+
+                <div className="rounded-2xl bg-gray-50 px-4 py-3 text-sm text-gray-600">
+                  {loadingWallet ? (
+                    "Se incarca portofelul..."
+                  ) : (
+                    <>
+                      <div>Puncte disponibile: {wallet.puncteCurent || 0}</div>
+                      {(wallet.reduceriDisponibile || []).length > 0 && (
+                        <div className="mt-2 space-y-1">
+                          <div className="font-semibold text-gray-700">
+                            Vouchere disponibile
+                          </div>
+                          {(wallet.reduceriDisponibile || []).map((voucher) => (
+                            <button
+                              key={voucher.codigPromo}
+                              type="button"
+                              className="block text-left text-pink-600 underline"
+                              onClick={() => setCodVoucher(voucher.codigPromo)}
+                              disabled={discountDisabled}
+                            >
+                              {voucher.codigPromo}
+                              {voucher.valoareFixa
+                                ? ` - ${voucher.valoareFixa} MDL`
+                                : ""}
+                              {voucher.procent ? ` - ${voucher.procent}%` : ""}
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            <div className={cards.elevated}>
+              <h2 className="mb-3 text-xl font-semibold text-gray-900">
+                Metode de plata
+              </h2>
+
+              <StatusBanner
+                type="info"
+                message={
+                  !stripeStatus.loading
+                    ? `Stripe este ${stripeStatus.enabled ? "activ" : "indisponibil"} (${stripeStatus.mode}).`
+                    : ""
+                }
+              />
+
+              {orderTotalFinal <= 0 && comanda && !orderPaid && (
+                <StatusBanner
+                  type="warning"
+                  message="Totalul comenzii este 0. Verifica reducerile sau confirma manual cu administratorul."
+                />
+              )}
+
+              <div className="space-y-3">
+                {!stripeStatus.loading && canUseStripeCheckout && (
+                  <button
+                    type="button"
+                    onClick={goCheckout}
+                    disabled={paymentDisabled}
+                    className={buttons.secondary}
+                  >
+                    {creatingCheckout
+                      ? "Se creeaza sesiunea..."
+                      : `Stripe Checkout (${stripeStatus.mode})`}
+                  </button>
+                )}
+
+                {!stripeStatus.loading && canUseFallbackPayment && (
+                  <button
+                    type="button"
+                    onClick={fallbackPayment}
+                    disabled={paymentDisabled}
+                    className={buttons.success}
+                  >
+                    {creatingCheckout
+                      ? "Se confirma plata..."
+                      : "Confirma plata (fallback)"}
+                  </button>
+                )}
+
+                {!stripeStatus.loading &&
+                  !canUseStripeCheckout &&
+                  !canUseFallbackPayment && (
+                    <StatusBanner
+                      type="error"
+                      message="Plata este indisponibila momentan. Contacteaza administratorul."
+                    />
+                  )}
+
+                {canUseStripeCheckout && !publicKey && (
+                  <StatusBanner
+                    type="warning"
+                    message="Checkout redirect este disponibil. Payment Element este indisponibil pana configurezi VITE_STRIPE_PK."
+                  />
+                )}
+              </div>
+
+              {loadingPI && canUseEmbeddedStripe && !orderPaid && (
+                <div className="mt-4 text-sm text-gray-600">
+                  Se initializeaza plata cu cardul...
+                </div>
+              )}
+
+              {clientSecret && canUseEmbeddedStripe && stripePromise && !orderPaid && (
+                <div className="mt-4 border-t border-gray-100 pt-4">
+                  <Elements stripe={stripePromise} options={{ clientSecret }}>
+                    <PaymentForm
+                      clientSecret={clientSecret}
+                      displayTotal={orderTotalFinal}
+                      comandaId={comandaId}
+                      onStatusChange={setPageStatus}
+                    />
+                  </Elements>
+                </div>
+              )}
+            </div>
+          </section>
+        </div>
       </div>
-
-      {!stripeStatus.loading && canUseStripeCheckout && (
-        <div className="my-4">
-          <button
-            onClick={goCheckout}
-            disabled={creatingCheckout}
-            className="px-4 py-2 rounded-lg bg-purple-500 text-white hover:bg-purple-600 disabled:opacity-50"
-          >
-            {creatingCheckout ? "Se creeaza sesiunea..." : `Stripe Checkout (${stripeStatus.mode})`}
-          </button>
-        </div>
-      )}
-
-      {!stripeStatus.loading && canUseFallbackPayment && (
-        <div className="my-4">
-          <button
-            onClick={fallbackPayment}
-            disabled={creatingCheckout}
-            className="px-4 py-2 rounded-lg bg-emerald-600 text-white hover:bg-emerald-700 disabled:opacity-50"
-          >
-            {creatingCheckout ? "Se confirma plata..." : "Confirma plata (fallback)"}
-          </button>
-        </div>
-      )}
-
-      {!stripeStatus.loading && !canUseStripeCheckout && !canUseFallbackPayment && (
-        <div className="text-sm text-red-700">Plata este indisponibila momentan. Contacteaza administratorul.</div>
-      )}
-
-      {canUseStripeCheckout && !publicKey && (
-        <div className="text-sm text-amber-700 mb-4">
-          Checkout redirect este disponibil. Payment Element este indisponibil pana configurezi VITE_STRIPE_PK.
-        </div>
-      )}
-
-      <hr style={{ margin: "24px 0" }} />
-
-      {loadingPI && canUseEmbeddedStripe && <div>Se initializeaza plata...</div>}
-      {clientSecret && canUseEmbeddedStripe && stripePromise && (
-        <Elements stripe={stripePromise} options={{ clientSecret }}>
-          <PaymentForm clientSecret={clientSecret} displayTotal={totalFinal} comandaId={comandaId} />
-        </Elements>
-      )}
     </div>
   );
 }

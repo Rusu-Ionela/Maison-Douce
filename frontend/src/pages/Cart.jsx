@@ -5,8 +5,13 @@ import { useAuth } from "../context/AuthContext";
 import { OrdersAPI } from "../api/orders";
 import { getAvailability } from "../api/calendar";
 import SlotPicker from "../components/SlotPicker";
+import StatusBanner from "../components/StatusBanner";
 import api from "/src/lib/api.js";
 import { buttons, cards, inputs, containers } from "/src/lib/tailwindComponents.js";
+
+function buildStatus(type, message, title = "") {
+  return { type, message, title };
+}
 
 export default function Cart() {
   const { items, updateQty, remove, clear, subtotal } = useCart();
@@ -26,6 +31,9 @@ export default function Cart() {
   const [windowStart, setWindowStart] = useState("");
   const [windowEnd, setWindowEnd] = useState("");
   const [attachments, setAttachments] = useState([]);
+  const [submitting, setSubmitting] = useState(false);
+  const [checkoutStatus, setCheckoutStatus] = useState(buildStatus("", "", ""));
+
   const LIVRARE_FEE = 100;
   const prestatorId = import.meta.env.VITE_PRESTATOR_ID || "default";
 
@@ -75,7 +83,10 @@ export default function Cart() {
   }, [addressMode, selectedAddressIdx, addressOptions]);
 
   const leadHours = useMemo(() => {
-    const maxPrep = items.reduce((max, it) => Math.max(max, Number(it.prepHours || 0)), 0);
+    const maxPrep = items.reduce(
+      (max, it) => Math.max(max, Number(it.prepHours || 0)),
+      0
+    );
     return Math.max(24, maxPrep || 0);
   }, [items]);
 
@@ -112,6 +123,15 @@ export default function Cart() {
     return windowStart || windowEnd || "";
   };
 
+  const resetDraftState = () => {
+    setAttachments([]);
+    setNotes("");
+    setDeliveryInstructions("");
+    setWindowStart("");
+    setWindowEnd("");
+    setCheckoutStatus(buildStatus("", "", ""));
+  };
+
   const uploadAttachments = async () => {
     if (!attachments.length) return [];
     const uploaded = [];
@@ -126,34 +146,60 @@ export default function Cart() {
     return uploaded;
   };
 
-  async function checkout() {
+  const validateCheckout = () => {
     if (!user?._id) {
-      alert("Autentifica-te inainte de a continua.");
+      setCheckoutStatus(
+        buildStatus(
+          "warning",
+          "Autentifica-te inainte de a continua.",
+          "Autentificare necesara"
+        )
+      );
       nav("/login");
-      return;
+      return false;
     }
     if (items.length === 0) {
-      alert("Cosul este gol.");
-      return;
+      setCheckoutStatus(buildStatus("warning", "Cosul este gol."));
+      return false;
     }
     if (!date || !time) {
-      alert("Selecteaza data si ora livrarii.");
-      return;
+      setCheckoutStatus(
+        buildStatus("warning", "Selecteaza data si ora pentru comanda.")
+      );
+      return false;
     }
     if (!slotIsValid()) {
-      alert(`Alege un slot cu minim ${leadHours}h inainte.`);
-      return;
+      setCheckoutStatus(
+        buildStatus("warning", `Alege un slot cu minim ${leadHours}h inainte.`)
+      );
+      return false;
     }
     if (metodaLivrare === "livrare" && !adresa.trim()) {
-      alert("Completeaza adresa.");
-      return;
+      setCheckoutStatus(buildStatus("warning", "Completeaza adresa de livrare."));
+      return false;
     }
+    return true;
+  };
+
+  async function checkout() {
+    if (submitting) return;
+    if (!validateCheckout()) return;
+
+    setSubmitting(true);
+    setCheckoutStatus(buildStatus("info", "Se creeaza comanda si se incarca atasamentele..."));
 
     let uploaded = [];
     try {
       uploaded = await uploadAttachments();
     } catch (e) {
-      alert("Nu am putut incarca atasamentele. Incearca din nou.");
+      setSubmitting(false);
+      setCheckoutStatus(
+        buildStatus(
+          "error",
+          e?.response?.data?.message ||
+            "Nu am putut incarca atasamentele. Incearca din nou."
+        )
+      );
       return;
     }
 
@@ -168,7 +214,8 @@ export default function Cart() {
       })),
       metodaLivrare: metodaLivrare === "livrare" ? "livrare" : "ridicare",
       adresaLivrare: metodaLivrare === "livrare" ? adresa.trim() : undefined,
-      deliveryInstructions: metodaLivrare === "livrare" ? deliveryInstructions.trim() : "",
+      deliveryInstructions:
+        metodaLivrare === "livrare" ? deliveryInstructions.trim() : "",
       deliveryWindow: metodaLivrare === "livrare" ? buildDeliveryWindow() : "",
       attachments: uploaded,
       dataLivrare: date,
@@ -180,13 +227,17 @@ export default function Cart() {
     try {
       const comanda = await OrdersAPI.create(payload);
       clear();
-      setAttachments([]);
-      setDeliveryInstructions("");
-      setWindowStart("");
-      setWindowEnd("");
+      resetDraftState();
       nav(`/plata?comandaId=${comanda._id}`);
     } catch (e) {
-      alert(e?.response?.data?.message || "Eroare la creare comanda.");
+      setCheckoutStatus(
+        buildStatus(
+          "error",
+          e?.response?.data?.message || "Eroare la creare comanda."
+        )
+      );
+    } finally {
+      setSubmitting(false);
     }
   }
 
@@ -195,11 +246,19 @@ export default function Cart() {
       <div className={`${containers.pageMax} space-y-6`}>
         <div className="flex items-center justify-between">
           <div>
-            <p className="text-pink-500 font-semibold uppercase tracking-wide">Checkout</p>
+            <p className="text-pink-500 font-semibold uppercase tracking-wide">
+              Checkout
+            </p>
             <h1 className="text-3xl font-bold text-gray-900">Cos</h1>
           </div>
           <span className="text-gray-600">{items.length} produse</span>
         </div>
+
+        <StatusBanner
+          type={checkoutStatus.type || "info"}
+          title={checkoutStatus.title}
+          message={checkoutStatus.message}
+        />
 
         {!items.length && (
           <div className={cards.bordered}>
@@ -211,11 +270,14 @@ export default function Cart() {
         )}
 
         {items.length > 0 && (
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-            <div className="lg:col-span-2 space-y-3">
+          <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
+            <div className="space-y-3 lg:col-span-2">
               {items.map((it) => (
-                <div key={`${it.id}_${it.variantKey || ""}`} className={`${cards.default} flex items-center gap-4`}>
-                  <div className="h-16 w-16 rounded-xl bg-rose-50 overflow-hidden flex items-center justify-center">
+                <div
+                  key={`${it.id}_${it.variantKey || ""}`}
+                  className={`${cards.default} flex items-center gap-4`}
+                >
+                  <div className="flex h-16 w-16 items-center justify-center overflow-hidden rounded-xl bg-rose-50">
                     <img
                       src={it.image || "/images/placeholder.png"}
                       alt={it.name}
@@ -227,21 +289,32 @@ export default function Cart() {
                     {it.options && Object.keys(it.options).length > 0 && (
                       <div className="text-xs text-gray-500">
                         {Object.entries(it.options)
-                          .filter(([, v]) => v)
-                          .map(([k, v]) => `${k}: ${v}`)
+                          .filter(([, value]) => value)
+                          .map(([key, value]) => `${key}: ${value}`)
                           .join(" | ")}
                       </div>
                     )}
-                    <div className="text-pink-600 font-bold">{it.price} MDL</div>
+                    <div className="font-bold text-pink-600">{it.price} MDL</div>
                   </div>
                   <input
                     type="number"
                     min={1}
                     value={it.qty}
-                    onChange={(e) => updateQty(it.id, parseInt(e.target.value || 1, 10), it.variantKey)}
+                    onChange={(e) =>
+                      updateQty(
+                        it.id,
+                        parseInt(e.target.value || 1, 10),
+                        it.variantKey
+                      )
+                    }
                     className={`${inputs.default} w-24`}
+                    disabled={submitting}
                   />
-                  <button className={buttons.outline} onClick={() => remove(it.id, it.variantKey)}>
+                  <button
+                    className={buttons.outline}
+                    onClick={() => remove(it.id, it.variantKey)}
+                    disabled={submitting}
+                  >
                     Sterge
                   </button>
                 </div>
@@ -249,9 +322,11 @@ export default function Cart() {
             </div>
 
             <aside className={cards.elevated}>
-              <h3 className="text-xl font-semibold text-gray-900 mb-3">Rezumat</h3>
+              <h3 className="mb-3 text-xl font-semibold text-gray-900">Rezumat</h3>
 
-              <label className="block text-sm font-semibold text-gray-700 mb-2">Data livrare</label>
+              <label className="mb-2 block text-sm font-semibold text-gray-700">
+                Data livrare
+              </label>
               <input
                 type="date"
                 min={minDate}
@@ -259,26 +334,50 @@ export default function Cart() {
                 onChange={(e) => {
                   setDate(e.target.value);
                   setTime("");
+                  setCheckoutStatus(buildStatus("", "", ""));
                 }}
                 className={`${inputs.default} mb-3`}
+                disabled={submitting}
               />
 
-              <label className="block text-sm font-semibold text-gray-700 mb-2">Ora livrare</label>
+              <label className="mb-2 block text-sm font-semibold text-gray-700">
+                Ora livrare
+              </label>
               <div className="mb-3">
-                {loadingSlots && <div className="text-sm text-gray-500">Se incarca intervalele...</div>}
+                {loadingSlots && (
+                  <div className="text-sm text-gray-500">
+                    Se incarca intervalele...
+                  </div>
+                )}
                 {!loadingSlots && slots && (
-                  <SlotPicker slots={slots} date={date} value={time} onChange={setTime} />
+                  <SlotPicker
+                    slots={slots}
+                    date={date}
+                    value={time}
+                    onChange={(value) => {
+                      setTime(value);
+                      setCheckoutStatus(buildStatus("", "", ""));
+                    }}
+                  />
+                )}
+                {!loadingSlots && date && !slots && (
+                  <div className="text-sm text-amber-700">
+                    Nu am putut incarca intervalele pentru ziua selectata.
+                  </div>
                 )}
               </div>
-              <div className="text-xs text-gray-500 mb-3">
+              <div className="mb-3 text-xs text-gray-500">
                 Timp minim de pregatire: {leadHours}h.
               </div>
 
-              <label className="block text-sm font-semibold text-gray-700 mb-2">Metoda predarii</label>
+              <label className="mb-2 block text-sm font-semibold text-gray-700">
+                Metoda predarii
+              </label>
               <select
                 value={metodaLivrare}
                 onChange={(e) => setMetodaLivrare(e.target.value)}
                 className={`${inputs.default} mb-3`}
+                disabled={submitting}
               >
                 <option value="ridicare">Ridicare de la patiserie</option>
                 <option value="livrare">Livrare (+100 MDL)</option>
@@ -287,13 +386,16 @@ export default function Cart() {
               {metodaLivrare === "livrare" && (
                 <div className="mb-4 space-y-3">
                   <div>
-                    <label className="block text-sm font-semibold text-gray-700 mb-2">Adresa livrare</label>
+                    <label className="mb-2 block text-sm font-semibold text-gray-700">
+                      Adresa livrare
+                    </label>
                     {addressOptions.length > 0 && (
-                      <div className="flex flex-wrap gap-2 mb-2">
+                      <div className="mb-2 flex flex-wrap gap-2">
                         <select
                           value={addressMode}
                           onChange={(e) => setAddressMode(e.target.value)}
                           className={`${inputs.default} flex-1`}
+                          disabled={submitting}
                         >
                           <option value="saved">Adrese salvate</option>
                           <option value="custom">Adresa noua</option>
@@ -303,6 +405,7 @@ export default function Cart() {
                             value={selectedAddressIdx}
                             onChange={(e) => setSelectedAddressIdx(e.target.value)}
                             className={`${inputs.default} flex-1`}
+                            disabled={submitting}
                           >
                             {addressOptions.map((opt, idx) => (
                               <option key={`${opt.label}_${idx}`} value={String(idx)}>
@@ -314,7 +417,7 @@ export default function Cart() {
                       </div>
                     )}
                     {addressMode === "saved" && selectedAddressIdx !== "" ? (
-                      <div className="text-sm text-gray-600 border rounded-lg p-2 bg-gray-50">
+                      <div className="rounded-lg border bg-gray-50 p-2 text-sm text-gray-600">
                         {adresa || "Selecteaza o adresa salvata."}
                       </div>
                     ) : (
@@ -323,12 +426,13 @@ export default function Cart() {
                         placeholder="Adresa livrare"
                         value={adresa}
                         onChange={(e) => setAdresa(e.target.value)}
+                        disabled={submitting}
                       />
                     )}
                   </div>
 
                   <div>
-                    <label className="block text-sm font-semibold text-gray-700 mb-2">
+                    <label className="mb-2 block text-sm font-semibold text-gray-700">
                       Fereastra livrare (optional)
                     </label>
                     <div className="grid grid-cols-2 gap-2">
@@ -337,46 +441,57 @@ export default function Cart() {
                         value={windowStart}
                         onChange={(e) => setWindowStart(e.target.value)}
                         className={inputs.default}
+                        disabled={submitting}
                       />
                       <input
                         type="time"
                         value={windowEnd}
                         onChange={(e) => setWindowEnd(e.target.value)}
                         className={inputs.default}
+                        disabled={submitting}
                       />
                     </div>
                   </div>
 
                   <div>
-                    <label className="block text-sm font-semibold text-gray-700 mb-2">Instructiuni curier</label>
+                    <label className="mb-2 block text-sm font-semibold text-gray-700">
+                      Instructiuni curier
+                    </label>
                     <textarea
                       className={`${inputs.default} min-h-[80px]`}
                       placeholder="Etaj, interfon, indicatii speciale..."
                       value={deliveryInstructions}
                       onChange={(e) => setDeliveryInstructions(e.target.value)}
+                      disabled={submitting}
                     />
                   </div>
                 </div>
               )}
 
-              <label className="block text-sm font-semibold text-gray-700 mb-2">Note comanda</label>
+              <label className="mb-2 block text-sm font-semibold text-gray-700">
+                Note comanda
+              </label>
               <textarea
                 className={`${inputs.default} mb-4 min-h-[90px]`}
                 placeholder="Preferinte, alergii, mesaj pe tort..."
                 value={notes}
                 onChange={(e) => setNotes(e.target.value)}
+                disabled={submitting}
               />
 
-              <label className="block text-sm font-semibold text-gray-700 mb-2">Atasamente (optional)</label>
+              <label className="mb-2 block text-sm font-semibold text-gray-700">
+                Atasamente (optional)
+              </label>
               <input
                 type="file"
                 multiple
                 onChange={(e) => setAttachments(Array.from(e.target.files || []))}
                 className={`${inputs.default} mb-2`}
+                disabled={submitting}
               />
               {attachments.length > 0 && (
-                <div className="text-xs text-gray-600 mb-3">
-                  Fisiere: {attachments.map((f) => f.name).join(", ")}
+                <div className="mb-3 text-xs text-gray-600">
+                  Fisiere: {attachments.map((file) => file.name).join(", ")}
                 </div>
               )}
 
@@ -391,7 +506,7 @@ export default function Cart() {
                     <span className="font-semibold">{LIVRARE_FEE} MDL</span>
                   </div>
                 )}
-                <div className="flex justify-between text-lg pt-1">
+                <div className="flex justify-between pt-1 text-lg">
                   <span>Total</span>
                   <span className="font-bold text-gray-900">{total.toFixed(2)} MDL</span>
                 </div>
@@ -402,17 +517,18 @@ export default function Cart() {
                   className={buttons.outline}
                   onClick={() => {
                     clear();
-                    setAttachments([]);
-                    setNotes("");
-                    setDeliveryInstructions("");
-                    setWindowStart("");
-                    setWindowEnd("");
+                    resetDraftState();
                   }}
+                  disabled={submitting}
                 >
                   Goleste cosul
                 </button>
-                <button className={buttons.primary} onClick={checkout}>
-                  Continua la plata
+                <button
+                  className={buttons.primary}
+                  onClick={checkout}
+                  disabled={submitting}
+                >
+                  {submitting ? "Se proceseaza..." : "Continua la plata"}
                 </button>
               </div>
             </aside>
