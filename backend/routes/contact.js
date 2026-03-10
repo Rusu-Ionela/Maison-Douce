@@ -2,43 +2,46 @@ const express = require("express");
 const router = express.Router();
 const ContactMessage = require("../models/ContactMessage");
 const { authRequired, roleCheck } = require("../middleware/auth");
+const { withValidation } = require("../middleware/validate");
+const {
+  readEmail,
+  readEnum,
+  readMongoId,
+  readNumber,
+  readString,
+} = require("../utils/validation");
 const { notifyAdmins } = require("../utils/notifications");
 
-function cleanText(value, max = 200) {
-  return String(value || "")
-    .replace(/\s+/g, " ")
-    .trim()
-    .slice(0, max);
-}
-
-function isValidEmail(email) {
-  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(email || "").trim());
-}
-
-function parseLimit(value, fallback = 50) {
-  const n = Number(value);
-  if (!Number.isFinite(n)) return fallback;
-  return Math.max(1, Math.min(200, Math.floor(n)));
-}
-
-// POST /api/contact
-router.post("/", async (req, res) => {
-  try {
-    const nume = cleanText(req.body?.nume, 120);
-    const email = cleanText(req.body?.email, 160).toLowerCase();
-    const telefon = cleanText(req.body?.telefon, 40);
-    const subiect = cleanText(req.body?.subiect, 160);
-    const mesaj = cleanText(req.body?.mesaj, 4000);
-
-    if (!nume) {
-      return res.status(400).json({ message: "Numele este obligatoriu." });
-    }
-    if (!email || !isValidEmail(email)) {
-      return res.status(400).json({ message: "Email invalid." });
-    }
-    if (!mesaj || mesaj.length < 10) {
-      return res.status(400).json({ message: "Mesajul trebuie sa aiba minimum 10 caractere." });
-    }
+router.post(
+  "/",
+  withValidation((req) => ({
+    nume: readString(req.body?.nume, {
+      field: "nume",
+      required: true,
+      min: 2,
+      max: 120,
+    }),
+    email: readEmail(req.body?.email, {
+      field: "email",
+      required: true,
+      max: 160,
+    }),
+    telefon: readString(req.body?.telefon, {
+      field: "telefon",
+      max: 40,
+    }),
+    subiect: readString(req.body?.subiect, {
+      field: "subiect",
+      max: 160,
+    }),
+    mesaj: readString(req.body?.mesaj, {
+      field: "mesaj",
+      required: true,
+      min: 10,
+      max: 4000,
+    }),
+  }), async (req, res) => {
+    const { nume, email, telefon, subiect, mesaj } = req.validated;
 
     const contact = await ContactMessage.create({
       nume,
@@ -46,7 +49,10 @@ router.post("/", async (req, res) => {
       telefon,
       subiect,
       mesaj,
-      sursa: cleanText(req.get("origin") || "", 255),
+      sursa: readString(req.get("origin") || "", {
+        field: "origin",
+        max: 255,
+      }),
       userId: null,
     });
 
@@ -62,66 +68,75 @@ router.post("/", async (req, res) => {
       messageId: contact._id,
       message: "Mesajul a fost trimis cu succes.",
     });
-  } catch (e) {
-    console.error("POST /contact error:", e);
-    return res.status(500).json({ message: "Nu am putut trimite mesajul." });
-  }
-});
+  })
+);
 
-// GET /api/contact
-router.get("/", authRequired, roleCheck("admin", "patiser"), async (req, res) => {
-  try {
-    const status = cleanText(req.query?.status, 20);
-    const limit = parseLimit(req.query?.limit, 100);
-    const query = {};
-    if (["nou", "in_proces", "rezolvat"].includes(status)) {
-      query.status = status;
+router.get(
+  "/",
+  authRequired,
+  roleCheck("admin", "patiser"),
+  withValidation((req) => ({
+    status: readEnum(req.query?.status, ["nou", "in_proces", "rezolvat"], {
+      field: "status",
+      defaultValue: "",
+    }),
+    limit: readNumber(req.query?.limit, {
+      field: "limit",
+      min: 1,
+      max: 200,
+      integer: true,
+      defaultValue: 100,
+    }),
+  }), async (req, res) => {
+    try {
+      const query = {};
+      if (req.validated.status) {
+        query.status = req.validated.status;
+      }
+
+      const list = await ContactMessage.find(query)
+        .sort({ createdAt: -1 })
+        .limit(req.validated.limit || 100)
+        .lean();
+      res.json(list);
+    } catch (e) {
+      console.error("GET /contact error:", e);
+      res.status(500).json({ message: "Nu am putut incarca mesajele." });
     }
+  })
+);
 
-    const list = await ContactMessage.find(query)
-      .sort({ createdAt: -1 })
-      .limit(limit)
-      .lean();
-    res.json(list);
-  } catch (e) {
-    console.error("GET /contact error:", e);
-    res.status(500).json({ message: "Nu am putut incarca mesajele." });
-  }
-});
-
-// PATCH /api/contact/:id/status
 router.patch(
   "/:id/status",
   authRequired,
   roleCheck("admin", "patiser"),
-  async (req, res) => {
-    try {
-      const status = cleanText(req.body?.status, 20);
-      if (!["nou", "in_proces", "rezolvat"].includes(status)) {
-        return res.status(400).json({ message: "Status invalid." });
-      }
-
-      const updated = await ContactMessage.findByIdAndUpdate(
-        req.params.id,
-        {
-          $set: {
-            status,
-            gestionatDe: req.user.id || req.user._id,
-            gestionatLa: new Date(),
-          },
+  withValidation((req) => ({
+    id: readMongoId(req.params?.id, {
+      field: "id",
+      required: true,
+    }),
+    status: readEnum(req.body?.status, ["nou", "in_proces", "rezolvat"], {
+      field: "status",
+      required: true,
+    }),
+  }), async (req, res) => {
+    const updated = await ContactMessage.findByIdAndUpdate(
+      req.validated.id,
+      {
+        $set: {
+          status: req.validated.status,
+          gestionatDe: req.user.id || req.user._id,
+          gestionatLa: new Date(),
         },
-        { new: true, runValidators: true }
-      ).lean();
+      },
+      { new: true, runValidators: true }
+    ).lean();
 
-      if (!updated) {
-        return res.status(404).json({ message: "Mesajul nu exista." });
-      }
-      res.json(updated);
-    } catch (e) {
-      console.error("PATCH /contact/:id/status error:", e);
-      res.status(500).json({ message: "Nu am putut actualiza statusul." });
+    if (!updated) {
+      return res.status(404).json({ message: "Mesajul nu exista." });
     }
-  }
+    res.json(updated);
+  })
 );
 
 module.exports = router;

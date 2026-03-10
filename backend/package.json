@@ -8,6 +8,7 @@
   "scripts": {
     "dev": "nodemon index.js",
     "start": "node index.js",
+    "test": "node test/utils.test.js",
     "checklist": "node ../scripts/checklist.js",
     "vapid": "node scripts/generate-vapid.js"
   },
