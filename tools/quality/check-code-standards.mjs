@@ -54,6 +54,7 @@ function checkFiles(files, { id, pattern, message, allowList = [] }) {
   for (const filePath of files) {
     const relPath = relative(filePath);
     if (allowed.has(relPath)) continue;
+    if (relPath.includes(".test.") || relPath.includes("/src/test/")) continue;
 
     const content = fs.readFileSync(filePath, "utf8");
     const hits = matchLines(content, pattern);

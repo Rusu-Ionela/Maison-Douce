@@ -14,4 +14,10 @@ export default defineConfig({
       "/socket.io": { target: "ws://localhost:5000", ws: true }, // WebSocket
     },
   },
+  test: {
+    environment: "jsdom",
+    globals: true,
+    setupFiles: "./src/test/setup.js",
+    css: true,
+  },
 });

@@ -45,8 +45,5 @@ jobs:
       - name: Install frontend dependencies
         run: npm ci --prefix frontend
 
-      - name: Run frontend standards
-        run: node tools/quality/check-code-standards.mjs frontend
-
-      - name: Build frontend
-        run: npm --prefix frontend run build
+      - name: Run frontend quality
+        run: npm --prefix frontend run quality

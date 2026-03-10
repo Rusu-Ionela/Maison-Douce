@@ -124,7 +124,9 @@ export default function ChatUtilizatori() {
     } catch {
       try {
         await api.post("/mesaje-chat", payload);
-      } catch {}
+      } catch (fallbackError) {
+        console.warn("Nu am putut trimite mesajul prin fallback HTTP.", fallbackError);
+      }
     }
 
     setMessages((prev) => [...prev, { ...payload, data: Date.now() }]);

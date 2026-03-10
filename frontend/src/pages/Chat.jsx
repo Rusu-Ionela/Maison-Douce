@@ -78,7 +78,9 @@ export default function Chat() {
       console.warn("Socket emit failed, fallback HTTP:", e?.message || e);
       try {
         await api.post("/mesaje-chat", payload);
-      } catch {}
+      } catch (fallbackError) {
+        console.warn("HTTP fallback failed:", fallbackError?.message || fallbackError);
+      }
     }
 
     setMsgs((prev) => [...prev, { ...payload, data: Date.now() }]);

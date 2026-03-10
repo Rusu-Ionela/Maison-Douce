@@ -6,7 +6,7 @@ function extractFilename(contentDisposition, fallback) {
   const value = String(contentDisposition || "");
   const utf8 = value.match(/filename\*=UTF-8''([^;]+)/i);
   if (utf8?.[1]) return decodeURIComponent(utf8[1]);
-  const plain = value.match(/filename=\"?([^\";]+)\"?/i);
+  const plain = value.match(/filename="?([^";]+)"?/i);
   if (plain?.[1]) return plain[1];
   return fallback;
 }
