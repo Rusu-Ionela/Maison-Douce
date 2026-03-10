@@ -15,7 +15,7 @@ export default function AdminAlbume() {
     try {
       const res = await api.get("/albume", { params: { userId: utilizatorId } });
       setAlbume(Array.isArray(res.data) ? res.data : []);
-    } catch (e) {
+    } catch {
       setAlbume([]);
     }
   };

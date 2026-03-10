@@ -40,7 +40,7 @@ export default function AdminStats() {
         if (!alive) return;
         setOrders(Array.isArray(ordersRes.data) ? ordersRes.data : []);
         setTorturi(Array.isArray(tortRes.data?.items) ? tortRes.data.items : []);
-      } catch (e) {
+      } catch {
         if (!alive) return;
         setMsg("Nu am putut incarca statisticile.");
       } finally {

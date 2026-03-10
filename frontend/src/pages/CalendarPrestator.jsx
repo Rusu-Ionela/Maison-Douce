@@ -1,9 +1,18 @@
-import React, { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import api from "/src/lib/api.js";
 import { useAuth } from "../context/AuthContext";
 
 function toDateStr(d) {
   return d.toISOString().slice(0, 10);
+}
+
+async function fetchAvailability(prestatorId) {
+  const from = toDateStr(new Date());
+  const to = toDateStr(new Date(Date.now() + 30 * 24 * 60 * 60 * 1000));
+  const res = await api.get(`/calendar/availability/${prestatorId}`, {
+    params: { from, to },
+  });
+  return res.data?.slots || [];
 }
 
 export default function CalendarPrestator() {
@@ -26,22 +35,26 @@ export default function CalendarPrestator() {
     [slots, date]
   );
 
-  const fetchSlots = async () => {
-    try {
-      const from = toDateStr(new Date());
-      const to = toDateStr(new Date(Date.now() + 30 * 24 * 60 * 60 * 1000));
-      const res = await api.get(`/calendar/availability/${prestatorId}`, {
-        params: { from, to },
-      });
-      setSlots(res.data?.slots || []);
-    } catch (e) {
-      console.error("fetch slots error:", e);
-      setSlots([]);
-    }
-  };
-
   useEffect(() => {
-    fetchSlots();
+    let cancelled = false;
+
+    (async () => {
+      try {
+        const nextSlots = await fetchAvailability(prestatorId);
+        if (!cancelled) {
+          setSlots(nextSlots);
+        }
+      } catch (error) {
+        console.error("fetch slots error:", error);
+        if (!cancelled) {
+          setSlots([]);
+        }
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
   }, [prestatorId]);
 
   const addSlot = async () => {
@@ -56,7 +69,7 @@ export default function CalendarPrestator() {
         slots: [{ date, time, capacity: Number(capacity || 1) }],
       });
       setTime("");
-      await fetchSlots();
+      setSlots(await fetchAvailability(prestatorId));
     } catch (e) {
       console.error("add slot error:", e);
       setMsg(e?.response?.data?.message || "Nu am putut salva slotul.");

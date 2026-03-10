@@ -15,6 +15,11 @@ function defaultForm() {
   };
 }
 
+async function fetchFillings() {
+  const { data } = await api.get("/umpluturi");
+  return Array.isArray(data) ? data : [];
+}
+
 export default function PatiserUmpluturi() {
   const [recipes, setRecipes] = useState([]);
   const [selectedId, setSelectedId] = useState("");
@@ -28,24 +33,33 @@ export default function PatiserUmpluturi() {
   const [targetKg, setTargetKg] = useState(1);
   const [manualCoef, setManualCoef] = useState("");
 
-  const load = async () => {
-    setLoading(true);
-    try {
-      const { data } = await api.get("/umpluturi");
-      const list = Array.isArray(data) ? data : [];
-      setRecipes(list);
-      if (!selectedId && list.length) {
-        setSelectedId(list[0]._id);
-      }
-    } catch (e) {
-      setMsg(e?.response?.data?.message || "Nu am putut incarca umpluturile.");
-    } finally {
-      setLoading(false);
-    }
-  };
-
   useEffect(() => {
-    load();
+    let cancelled = false;
+
+    (async () => {
+      setLoading(true);
+      try {
+        const list = await fetchFillings();
+        if (!cancelled) {
+          setRecipes(list);
+          if (list.length) {
+            setSelectedId((prev) => prev || list[0]._id);
+          }
+        }
+      } catch (error) {
+        if (!cancelled) {
+          setMsg(error?.response?.data?.message || "Nu am putut incarca umpluturile.");
+        }
+      } finally {
+        if (!cancelled) {
+          setLoading(false);
+        }
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   const selectedRecipe = useMemo(
@@ -162,7 +176,11 @@ export default function PatiserUmpluturi() {
         await api.post("/umpluturi", payload);
         setMsg("Umplutura a fost adaugata.");
       }
-      await load();
+      const nextRecipes = await fetchFillings();
+      setRecipes(nextRecipes);
+      if (nextRecipes.length) {
+        setSelectedId((prev) => prev || nextRecipes[0]._id);
+      }
       startCreate();
     } catch (e) {
       setMsg(e?.response?.data?.message || "Nu am putut salva umplutura.");
@@ -175,8 +193,11 @@ export default function PatiserUmpluturi() {
     if (!window.confirm("Arhivezi aceasta umplutura?")) return;
     try {
       await api.delete(`/umpluturi/${id}`);
-      if (String(selectedId) === String(id)) setSelectedId("");
-      await load();
+      const nextRecipes = await fetchFillings();
+      setRecipes(nextRecipes);
+      if (String(selectedId) === String(id)) {
+        setSelectedId(nextRecipes[0]?._id || "");
+      }
       setMsg("Umplutura arhivata.");
     } catch (e) {
       setMsg(e?.response?.data?.message || "Nu am putut arhiva umplutura.");

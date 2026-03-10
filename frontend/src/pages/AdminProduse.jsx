@@ -4,6 +4,12 @@ import api from "/src/lib/api.js";
 const TIPURI = ["ingredient", "blat", "crema", "umplutura", "decor", "topping", "culoare", "aroma"];
 const UNITATI = ["g", "kg", "ml", "l", "buc"];
 
+async function fetchIngredients(filterTip) {
+  const params = filterTip ? { tip: filterTip } : {};
+  const res = await api.get("/ingrediente", { params });
+  return Array.isArray(res.data) ? res.data : [];
+}
+
 export default function AdminProduse() {
   const [items, setItems] = useState([]);
   const [filterTip, setFilterTip] = useState("");
@@ -19,14 +25,25 @@ export default function AdminProduse() {
   });
   const [msg, setMsg] = useState("");
 
-  const load = async () => {
-    const params = filterTip ? { tip: filterTip } : {};
-    const res = await api.get("/ingrediente", { params });
-    setItems(Array.isArray(res.data) ? res.data : []);
-  };
-
   useEffect(() => {
-    load().catch(() => setItems([]));
+    let cancelled = false;
+
+    (async () => {
+      try {
+        const nextItems = await fetchIngredients(filterTip);
+        if (!cancelled) {
+          setItems(nextItems);
+        }
+      } catch {
+        if (!cancelled) {
+          setItems([]);
+        }
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
   }, [filterTip]);
 
   const resetForm = () => {
@@ -54,7 +71,7 @@ export default function AdminProduse() {
         setMsg("Ingredient adaugat.");
       }
       resetForm();
-      load();
+      setItems(await fetchIngredients(filterTip));
     } catch (e) {
       setMsg(e?.response?.data?.error || "Eroare la salvare.");
     }
@@ -76,7 +93,7 @@ export default function AdminProduse() {
   const remove = async (id) => {
     if (!window.confirm("Stergi ingredientul?")) return;
     await api.delete(`/ingrediente/${id}`);
-    load();
+    setItems(await fetchIngredients(filterTip));
   };
 
   return (

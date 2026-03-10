@@ -46,6 +46,15 @@ const OPTIONS = {
 
 const BASE_PRET = 250;
 const BASE_ORE = 24;
+const DEFAULT_OPTIONS = {
+  blat: OPTIONS.blat[0].id,
+  crema: OPTIONS.crema[0].id,
+  umplutura: OPTIONS.umplutura[0].id,
+  decor: OPTIONS.decor[0].id,
+  topping: OPTIONS.topping[0].id,
+  culoare: OPTIONS.culori[0].id,
+  font: OPTIONS.font[0].id,
+};
 
 export default function CakeConstructor2D({ designId: propDesignId }) {
   const stageRef = useRef(null);
@@ -55,14 +64,14 @@ export default function CakeConstructor2D({ designId: propDesignId }) {
   const [designId, setDesignId] = useState(null);
   const [status, setStatus] = useState({ type: "", text: "" });
 
-  const [blat, setBlat] = useState(OPTIONS.blat[0].id);
-  const [crema, setCrema] = useState(OPTIONS.crema[0].id);
-  const [umplutura, setUmplutura] = useState(OPTIONS.umplutura[0].id);
-  const [decor, setDecor] = useState(OPTIONS.decor[0].id);
-  const [topping, setTopping] = useState(OPTIONS.topping[0].id);
-  const [culoare, setCuloare] = useState(OPTIONS.culori[0].id);
+  const [blat, setBlat] = useState(DEFAULT_OPTIONS.blat);
+  const [crema, setCrema] = useState(DEFAULT_OPTIONS.crema);
+  const [umplutura, setUmplutura] = useState(DEFAULT_OPTIONS.umplutura);
+  const [decor, setDecor] = useState(DEFAULT_OPTIONS.decor);
+  const [topping, setTopping] = useState(DEFAULT_OPTIONS.topping);
+  const [culoare, setCuloare] = useState(DEFAULT_OPTIONS.culoare);
   const [mesaj, setMesaj] = useState("");
-  const [font, setFont] = useState(OPTIONS.font[0].id);
+  const [font, setFont] = useState(DEFAULT_OPTIONS.font);
 
   useEffect(() => {
     try {
@@ -76,13 +85,13 @@ export default function CakeConstructor2D({ designId: propDesignId }) {
           const { data } = await api.get(`/personalizare/${id}`);
           if (data) {
             if (data.options) {
-              setBlat(data.options.blat || blat);
-              setCrema(data.options.crema || crema);
-              setUmplutura(data.options.umplutura || umplutura);
-              setDecor(data.options.decor || decor);
-              setTopping(data.options.topping || topping);
-              setCuloare(data.options.culoare || culoare);
-              setFont(data.options.font || font);
+              setBlat(data.options.blat || DEFAULT_OPTIONS.blat);
+              setCrema(data.options.crema || DEFAULT_OPTIONS.crema);
+              setUmplutura(data.options.umplutura || DEFAULT_OPTIONS.umplutura);
+              setDecor(data.options.decor || DEFAULT_OPTIONS.decor);
+              setTopping(data.options.topping || DEFAULT_OPTIONS.topping);
+              setCuloare(data.options.culoare || DEFAULT_OPTIONS.culoare);
+              setFont(data.options.font || DEFAULT_OPTIONS.font);
             }
             if (data.mesaj) setMesaj(data.mesaj);
           }

@@ -1,5 +1,21 @@
-import { useEffect, useMemo, useState } from "react";
+﻿import { useEffect, useMemo, useState } from "react";
 import api from "/src/lib/api.js";
+
+function defaultIngredientRow() {
+  return { ingredient: "", qty: 0, unit: "g", note: "" };
+}
+
+function defaultNewRecipe() {
+  return {
+    nume: "",
+    descriere: "",
+    pret: "",
+    imagine: "",
+    retetaBaseKg: 1,
+    ocazii: "",
+    ingredients: [defaultIngredientRow()],
+  };
+}
 
 export default function AdminProduction() {
   const [recipes, setRecipes] = useState([]);
@@ -14,15 +30,6 @@ export default function AdminProduction() {
   const [baseKgInput, setBaseKgInput] = useState(1);
   const [savingRecipe, setSavingRecipe] = useState(false);
   const [recipeNotice, setRecipeNotice] = useState("");
-  const defaultNewRecipe = () => ({
-    nume: "",
-    descriere: "",
-    pret: "",
-    imagine: "",
-    retetaBaseKg: 1,
-    ocazii: "",
-    ingredients: [{ ingredient: "", qty: 0, unit: "g", note: "" }],
-  });
   const [newRecipeForm, setNewRecipeForm] = useState(() => defaultNewRecipe());
   const [newRecipeMsg, setNewRecipeMsg] = useState("");
   const [newRecipeSaving, setNewRecipeSaving] = useState(false);
@@ -34,8 +41,8 @@ export default function AdminProduction() {
     try {
       const { data } = await api.get("/notificari");
       setNotifications(Array.isArray(data) ? data.slice(0, 5) : []);
-    } catch (e) {
-      console.error("Nu pot incarca notificarile.", e);
+    } catch (error) {
+      console.error("Nu pot incarca notificarile.", error);
       setNotifications([]);
     } finally {
       setLoadingNotifications(false);
@@ -43,36 +50,58 @@ export default function AdminProduction() {
   };
 
   useEffect(() => {
-    const fetch = async () => {
+    let cancelled = false;
+
+    (async () => {
       setLoadingRecipes(true);
       try {
         const { data } = await api.get("/admin/production/recipes");
-        setRecipes(Array.isArray(data) ? data : []);
-        if (!selectedTort && data?.length) {
-          setSelectedTort(data[0]._id);
+        if (cancelled) return;
+        const list = Array.isArray(data) ? data : [];
+        setRecipes(list);
+        if (list.length) {
+          setSelectedTort((prev) => prev || list[0]._id);
         }
-      } catch (e) {
-        setMsg("Nu am putut incarca retetele.");
+      } catch {
+        if (!cancelled) {
+          setMsg("Nu am putut incarca retetele.");
+        }
       } finally {
-        setLoadingRecipes(false);
+        if (!cancelled) {
+          setLoadingRecipes(false);
+        }
       }
+    })();
+
+    return () => {
+      cancelled = true;
     };
-    fetch();
   }, []);
 
   useEffect(() => {
-    const fetchBoard = async () => {
+    let cancelled = false;
+
+    (async () => {
       setLoadingBoard(true);
       try {
         const { data } = await api.get("/admin/production/board", { params: { date } });
-        setBoard(data.board || []);
-      } catch (e) {
-        setMsg("Nu am putut incarca boardul de productie.");
+        if (!cancelled) {
+          setBoard(data.board || []);
+        }
+      } catch {
+        if (!cancelled) {
+          setMsg("Nu am putut incarca boardul de productie.");
+        }
       } finally {
-        setLoadingBoard(false);
+        if (!cancelled) {
+          setLoadingBoard(false);
+        }
       }
+    })();
+
+    return () => {
+      cancelled = true;
     };
-    fetchBoard();
   }, [date]);
 
   useEffect(() => {
@@ -80,23 +109,23 @@ export default function AdminProduction() {
   }, []);
 
   const recipe = useMemo(
-    () =>
-      recipes.find((r) => String(r._id) === String(selectedTort)) || null,
+    () => recipes.find((item) => String(item._id) === String(selectedTort)) || null,
     [recipes, selectedTort]
   );
 
   useEffect(() => {
     if (!recipe) {
-      setEditIngredients([{ ingredient: "", qty: 0, unit: "g", note: "" }]);
+      setEditIngredients([defaultIngredientRow()]);
       setBaseKgInput(1);
       return;
     }
+
     setRecipeNotice("");
     setBaseKgInput(recipe.retetaBaseKg || 1);
     setEditIngredients(
       Array.isArray(recipe.reteta) && recipe.reteta.length
-        ? recipe.reteta.map((ing) => ({ ...ing }))
-        : [{ ingredient: "", qty: 0, unit: "g", note: "" }]
+        ? recipe.reteta.map((ingredient) => ({ ...ingredient }))
+        : [defaultIngredientRow()]
     );
   }, [recipe]);
 
@@ -109,18 +138,18 @@ export default function AdminProduction() {
     });
   }, [recipe, targetKg]);
 
-  const ingredientRows = editIngredients.length
-    ? editIngredients
-    : [{ ingredient: "", qty: 0, unit: "g", note: "" }];
+  const ingredientRows = editIngredients.length ? editIngredients : [defaultIngredientRow()];
 
   const updateIngredient = (idx, key, value) => {
     setEditIngredients((prev) =>
-      prev.map((ing, index) => (index === idx ? { ...ing, [key]: value } : ing))
+      prev.map((ingredient, index) =>
+        index === idx ? { ...ingredient, [key]: value } : ingredient
+      )
     );
   };
 
   const addIngredient = () => {
-    setEditIngredients((prev) => [...prev, { ingredient: "", qty: 0, unit: "g", note: "" }]);
+    setEditIngredients((prev) => [...prev, defaultIngredientRow()]);
   };
 
   const removeIngredient = (idx) => {
@@ -134,8 +163,8 @@ export default function AdminProduction() {
   const updateNewIngredient = (idx, key, value) => {
     setNewRecipeForm((prev) => ({
       ...prev,
-      ingredients: prev.ingredients.map((ing, index) =>
-        index === idx ? { ...ing, [key]: value } : ing
+      ingredients: prev.ingredients.map((ingredient, index) =>
+        index === idx ? { ...ingredient, [key]: value } : ingredient
       ),
     }));
   };
@@ -143,7 +172,7 @@ export default function AdminProduction() {
   const addNewIngredient = () => {
     setNewRecipeForm((prev) => ({
       ...prev,
-      ingredients: [...prev.ingredients, { ingredient: "", qty: 0, unit: "g", note: "" }],
+      ingredients: [...prev.ingredients, defaultIngredientRow()],
     }));
   };
 
@@ -156,14 +185,14 @@ export default function AdminProduction() {
 
   const newIngredientRows = newRecipeForm.ingredients.length
     ? newRecipeForm.ingredients
-    : [{ ingredient: "", qty: 0, unit: "g", note: "" }];
+    : [defaultIngredientRow()];
 
   const createRecipe = async () => {
     if (!newRecipeForm.nume.trim()) {
       setNewRecipeMsg("Completeaza numele tortului.");
       return;
     }
-    if (!newRecipeForm.ingredients.some((ing) => ing.ingredient?.trim())) {
+    if (!newRecipeForm.ingredients.some((ingredient) => ingredient.ingredient?.trim())) {
       setNewRecipeMsg("Adauga cel putin un ingredient.");
       return;
     }
@@ -181,11 +210,11 @@ export default function AdminProduction() {
           .split(",")
           .map((item) => item.trim())
           .filter(Boolean),
-        reteta: newIngredientRows.map((ing) => ({
-          ingredient: String(ing.ingredient || "").trim(),
-          qty: Number(ing.qty || 0),
-          unit: String(ing.unit || "g").trim(),
-          note: String(ing.note || "").trim(),
+        reteta: newIngredientRows.map((ingredient) => ({
+          ingredient: String(ingredient.ingredient || "").trim(),
+          qty: Number(ingredient.qty || 0),
+          unit: String(ingredient.unit || "g").trim(),
+          note: String(ingredient.note || "").trim(),
         })),
       };
       const { data } = await api.post("/admin/production/recipes", payload);
@@ -197,8 +226,8 @@ export default function AdminProduction() {
       } else {
         setNewRecipeMsg("Nu am creat reteta.");
       }
-    } catch (e) {
-      setNewRecipeMsg(e?.response?.data?.message || "Nu am putut crea reteta.");
+    } catch (error) {
+      setNewRecipeMsg(error?.response?.data?.message || "Nu am putut crea reteta.");
     } finally {
       setNewRecipeSaving(false);
     }
@@ -211,11 +240,11 @@ export default function AdminProduction() {
     try {
       const payload = {
         retetaBaseKg: Number(baseKgInput) || 1,
-        reteta: ingredientRows.map((ing) => ({
-          ingredient: String(ing.ingredient || "").trim(),
-          qty: Number(ing.qty || 0),
-          unit: String(ing.unit || "g").trim(),
-          note: String(ing.note || ""),
+        reteta: ingredientRows.map((ingredient) => ({
+          ingredient: String(ingredient.ingredient || "").trim(),
+          qty: Number(ingredient.qty || 0),
+          unit: String(ingredient.unit || "g").trim(),
+          note: String(ingredient.note || ""),
         })),
       };
       const { data } = await api.put(`/admin/production/recipes/${recipe._id}`, payload);
@@ -225,12 +254,12 @@ export default function AdminProduction() {
             String(item._id) === String(data.tort._id) ? { ...item, ...data.tort } : item
           )
         );
-        setRecipeNotice("Rețeta a fost salvată.");
+        setRecipeNotice("Reteta a fost salvata.");
       } else {
-        setRecipeNotice("Rețeta nu a fost actualizată.");
+        setRecipeNotice("Reteta nu a fost actualizata.");
       }
-    } catch (e) {
-      setRecipeNotice(e?.response?.data?.message || "Nu am putut salva rețeta.");
+    } catch (error) {
+      setRecipeNotice(error?.response?.data?.message || "Nu am putut salva reteta.");
     } finally {
       setSavingRecipe(false);
     }
@@ -242,38 +271,43 @@ export default function AdminProduction() {
         <header className="space-y-2">
           <h1 className="text-3xl font-bold text-gray-900">Calculator productie</h1>
           <p className="text-gray-600">
-            Selecteaza un tort și ajustează câte kilograme trebuie să produci; ingredientele se scalează automat.
+            Selecteaza un tort si ajusteaza cate kilograme trebuie sa produci;
+            ingredientele se scaleaza automat.
           </p>
         </header>
 
         {msg && <div className="text-sm text-rose-700">{msg}</div>}
 
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           <div className="bg-white border border-rose-100 rounded-2xl p-6 space-y-6 shadow-sm">
             <div className="space-y-3">
               <label className="text-sm font-semibold text-gray-700 block">Tort</label>
               <select
                 value={selectedTort}
-                onChange={(e) => setSelectedTort(e.target.value)}
+                onChange={(event) => setSelectedTort(event.target.value)}
                 className="w-full border rounded-lg p-2"
               >
-                {recipes.map((t) => (
-                  <option key={t._id} value={t._id}>
-                    {t.nume}
+                {recipes.map((tort) => (
+                  <option key={tort._id} value={tort._id}>
+                    {tort.nume}
                   </option>
                 ))}
               </select>
-              <label className="text-sm font-semibold text-gray-700 block mt-3">Kilograme dorite</label>
+              <label className="text-sm font-semibold text-gray-700 block mt-3">
+                Kilograme dorite
+              </label>
               <input
                 type="number"
                 min="0.1"
                 step="0.1"
                 value={targetKg}
-                onChange={(e) => setTargetKg(Number(e.target.value || 0))}
+                onChange={(event) => setTargetKg(Number(event.target.value || 0))}
                 className="w-full border rounded-lg p-2"
               />
               <div className="text-sm text-gray-500">
-                {recipe ? `Reteta de baza: ${recipe.retetaBaseKg || 1}kg` : "Selecteaza un tort pentru reteta."}
+                {recipe
+                  ? `Reteta de baza: ${recipe.retetaBaseKg || 1}kg`
+                  : "Selecteaza un tort pentru reteta."}
               </div>
             </div>
 
@@ -282,20 +316,24 @@ export default function AdminProduction() {
                 <div className="text-sm text-gray-500">Se incarca retetele...</div>
               ) : recipe && scaledIngredients.length > 0 ? (
                 <div className="space-y-2">
-                  {scaledIngredients.map((ing) => (
-                    <div key={ing.ingredient} className="border rounded-lg p-2 bg-white">
+                  {scaledIngredients.map((ingredient) => (
+                    <div key={ingredient.ingredient} className="border rounded-lg p-2 bg-white">
                       <div className="flex items-center justify-between text-sm">
-                        <span className="font-semibold">{ing.ingredient}</span>
+                        <span className="font-semibold">{ingredient.ingredient}</span>
                         <span className="text-gray-600">
-                          {ing.scaled} {ing.unit}
+                          {ingredient.scaled} {ingredient.unit}
                         </span>
                       </div>
-                      {ing.note && <div className="text-xs text-gray-500">{ing.note}</div>}
+                      {ingredient.note && (
+                        <div className="text-xs text-gray-500">{ingredient.note}</div>
+                      )}
                     </div>
                   ))}
                 </div>
               ) : (
-                <div className="text-sm text-gray-500">Reteta nu contine ingrediente detaliate.</div>
+                <div className="text-sm text-gray-500">
+                  Reteta nu contine ingrediente detaliate.
+                </div>
               )}
             </div>
 
@@ -304,9 +342,12 @@ export default function AdminProduction() {
                 <div>
                   <p className="text-xs uppercase tracking-[0.15em] text-rose-600">Reteta</p>
                   <h3 className="text-xl font-semibold text-gray-900">Editeaza ingredientele</h3>
-                  <p className="text-xs text-gray-500">Salvezi pentru a actualiza baza din Mongo.</p>
+                  <p className="text-xs text-gray-500">
+                    Salvezi pentru a actualiza baza din Mongo.
+                  </p>
                 </div>
                 <button
+                  type="button"
                   onClick={saveRecipe}
                   disabled={!recipe || savingRecipe}
                   className="px-4 py-2 rounded-lg bg-rose-600 text-white text-sm font-semibold disabled:opacity-60 disabled:cursor-not-allowed hover:bg-rose-700"
@@ -323,7 +364,7 @@ export default function AdminProduction() {
                     min="0.1"
                     step="0.1"
                     value={baseKgInput}
-                    onChange={(e) => setBaseKgInput(Number(e.target.value || 0))}
+                    onChange={(event) => setBaseKgInput(Number(event.target.value || 0))}
                     className="mt-1 w-full border rounded-lg p-2"
                   />
                 </label>
@@ -333,15 +374,17 @@ export default function AdminProduction() {
               </div>
 
               <div className="space-y-3">
-                {ingredientRows.map((ing, idx) => (
-                  <div key={`${ing.ingredient}-${idx}`} className="border rounded-lg p-3 bg-rose-50">
+                {ingredientRows.map((ingredient, idx) => (
+                  <div key={`${ingredient.ingredient}-${idx}`} className="border rounded-lg p-3 bg-rose-50">
                     <div className="grid gap-2 sm:grid-cols-12">
                       <input
                         className="sm:col-span-5 border rounded-lg p-2"
                         type="text"
                         placeholder="Ingrediente"
-                        value={ing.ingredient}
-                        onChange={(e) => updateIngredient(idx, "ingredient", e.target.value)}
+                        value={ingredient.ingredient}
+                        onChange={(event) =>
+                          updateIngredient(idx, "ingredient", event.target.value)
+                        }
                       />
                       <input
                         className="sm:col-span-2 border rounded-lg p-2"
@@ -349,22 +392,24 @@ export default function AdminProduction() {
                         min="0"
                         step="0.1"
                         placeholder="Cantitate"
-                        value={ing.qty}
-                        onChange={(e) => updateIngredient(idx, "qty", Number(e.target.value || 0))}
+                        value={ingredient.qty}
+                        onChange={(event) =>
+                          updateIngredient(idx, "qty", Number(event.target.value || 0))
+                        }
                       />
                       <input
                         className="sm:col-span-2 border rounded-lg p-2"
                         type="text"
                         placeholder="Unitate"
-                        value={ing.unit}
-                        onChange={(e) => updateIngredient(idx, "unit", e.target.value)}
+                        value={ingredient.unit}
+                        onChange={(event) => updateIngredient(idx, "unit", event.target.value)}
                       />
                       <input
                         className="sm:col-span-3 border rounded-lg p-2"
                         type="text"
                         placeholder="Note"
-                        value={ing.note}
-                        onChange={(e) => updateIngredient(idx, "note", e.target.value)}
+                        value={ingredient.note}
+                        onChange={(event) => updateIngredient(idx, "note", event.target.value)}
                       />
                       <button
                         type="button"
@@ -380,7 +425,11 @@ export default function AdminProduction() {
               </div>
 
               <div className="flex justify-between items-center text-xs text-gray-500">
-                <button type="button" onClick={addIngredient} className="text-rose-600 hover:underline">
+                <button
+                  type="button"
+                  onClick={addIngredient}
+                  className="text-rose-600 hover:underline"
+                >
                   + Adauga ingredient
                 </button>
                 {recipeNotice && <span className="text-rose-700">{recipeNotice}</span>}
@@ -392,12 +441,14 @@ export default function AdminProduction() {
             <div className="flex flex-col md:flex-row md:items-end md:justify-between gap-3">
               <div>
                 <h2 className="text-xl font-semibold text-gray-900">Program productie</h2>
-                <p className="text-sm text-gray-500">Selecteaza ziua pentru lista comenzilor.</p>
+                <p className="text-sm text-gray-500">
+                  Selecteaza ziua pentru lista comenzilor.
+                </p>
               </div>
               <input
                 type="date"
                 value={date}
-                onChange={(e) => setDate(e.target.value)}
+                onChange={(event) => setDate(event.target.value)}
                 className="border rounded-lg p-2"
               />
             </div>
@@ -416,6 +467,7 @@ export default function AdminProduction() {
                       ? "Livrare"
                       : order.method || "Ridicare";
                   const totalValue = Number(order.total || order.totalFinal || 0);
+
                   return (
                     <div key={order.orderId} className="border rounded-2xl p-4 bg-rose-50">
                       <div className="flex flex-wrap gap-2 items-center justify-between">
@@ -439,9 +491,15 @@ export default function AdminProduction() {
                       <div className="mt-3 flex gap-3">
                         <div className="w-32 h-24 overflow-hidden rounded-xl bg-white border border-rose-100">
                           {order.image ? (
-                            <img src={order.image} alt="Produs" className="w-full h-full object-cover" />
+                            <img
+                              src={order.image}
+                              alt="Produs"
+                              className="w-full h-full object-cover"
+                            />
                           ) : (
-                            <div className="text-center text-xs text-gray-500 py-8">Fara imagine</div>
+                            <div className="text-center text-xs text-gray-500 py-8">
+                              Fara imagine
+                            </div>
                           )}
                         </div>
                         <div className="flex-1 space-y-2 text-sm text-gray-700">
@@ -454,7 +512,7 @@ export default function AdminProduction() {
                           <div className="space-y-1">
                             {order.items.map((item) => (
                               <div key={`${order.orderId}-${item.name}`} className="text-xs">
-                                - {item.name} � {item.qty} {item.personalizari?.marime || ""}
+                                - {item.name} × {item.qty} {item.personalizari?.marime || ""}
                               </div>
                             ))}
                           </div>
@@ -473,10 +531,15 @@ export default function AdminProduction() {
             <div className="flex items-center justify-between gap-3">
               <div>
                 <p className="text-xs uppercase tracking-[0.2em] text-rose-600">Reteta noua</p>
-                <h2 className="text-xl font-semibold text-gray-900">Adauga o reteta / batch nou</h2>
-                <p className="text-xs text-gray-500">Se salveaza direct in catalogul torturilor active.</p>
+                <h2 className="text-xl font-semibold text-gray-900">
+                  Adauga o reteta / batch nou
+                </h2>
+                <p className="text-xs text-gray-500">
+                  Se salveaza direct in catalogul torturilor active.
+                </p>
               </div>
               <button
+                type="button"
                 onClick={createRecipe}
                 disabled={newRecipeSaving}
                 className="px-4 py-2 rounded-lg bg-rose-600 text-white text-sm font-semibold disabled:opacity-60 disabled:cursor-not-allowed hover:bg-rose-700"
@@ -484,18 +547,19 @@ export default function AdminProduction() {
                 {newRecipeSaving ? "Salvez..." : "Salveaza reteta"}
               </button>
             </div>
+
             <div className="grid gap-3">
               <input
                 type="text"
                 placeholder="Numele tortului"
                 value={newRecipeForm.nume}
-                onChange={(e) => updateNewRecipeField("nume", e.target.value)}
+                onChange={(event) => updateNewRecipeField("nume", event.target.value)}
                 className="border rounded-lg p-2"
               />
               <textarea
                 placeholder="Descriere scurta"
                 value={newRecipeForm.descriere}
-                onChange={(e) => updateNewRecipeField("descriere", e.target.value)}
+                onChange={(event) => updateNewRecipeField("descriere", event.target.value)}
                 className="border rounded-lg p-2 h-24"
               />
               <div className="grid grid-cols-2 gap-3">
@@ -504,14 +568,14 @@ export default function AdminProduction() {
                   min="0"
                   placeholder="Pret (MDL)"
                   value={newRecipeForm.pret}
-                  onChange={(e) => updateNewRecipeField("pret", e.target.value)}
+                  onChange={(event) => updateNewRecipeField("pret", event.target.value)}
                   className="border rounded-lg p-2"
                 />
                 <input
                   type="text"
                   placeholder="URL imagine (optional)"
                   value={newRecipeForm.imagine}
-                  onChange={(e) => updateNewRecipeField("imagine", e.target.value)}
+                  onChange={(event) => updateNewRecipeField("imagine", event.target.value)}
                   className="border rounded-lg p-2"
                 />
               </div>
@@ -522,28 +586,33 @@ export default function AdminProduction() {
                   step="0.1"
                   placeholder="Kg baza"
                   value={newRecipeForm.retetaBaseKg}
-                  onChange={(e) => updateNewRecipeField("retetaBaseKg", Number(e.target.value || 0))}
+                  onChange={(event) =>
+                    updateNewRecipeField("retetaBaseKg", Number(event.target.value || 0))
+                  }
                   className="border rounded-lg p-2"
                 />
                 <input
                   type="text"
                   placeholder="Ocazii (separate prin virgula)"
                   value={newRecipeForm.ocazii}
-                  onChange={(e) => updateNewRecipeField("ocazii", e.target.value)}
+                  onChange={(event) => updateNewRecipeField("ocazii", event.target.value)}
                   className="border rounded-lg p-2"
                 />
               </div>
             </div>
+
             <div className="space-y-3">
-              {newIngredientRows.map((ing, idx) => (
-                <div key={`${ing.ingredient}-${idx}`} className="border rounded-lg p-3 bg-rose-50">
+              {newIngredientRows.map((ingredient, idx) => (
+                <div key={`${ingredient.ingredient}-${idx}`} className="border rounded-lg p-3 bg-rose-50">
                   <div className="grid gap-2 sm:grid-cols-12">
                     <input
                       className="sm:col-span-5 border rounded-lg p-2"
                       type="text"
-                      placeholder="Ingredienta"
-                      value={ing.ingredient}
-                      onChange={(e) => updateNewIngredient(idx, "ingredient", e.target.value)}
+                      placeholder="Ingredient"
+                      value={ingredient.ingredient}
+                      onChange={(event) =>
+                        updateNewIngredient(idx, "ingredient", event.target.value)
+                      }
                     />
                     <input
                       className="sm:col-span-2 border rounded-lg p-2"
@@ -551,22 +620,24 @@ export default function AdminProduction() {
                       min="0"
                       step="0.1"
                       placeholder="Cantitate"
-                      value={ing.qty}
-                      onChange={(e) => updateNewIngredient(idx, "qty", Number(e.target.value || 0))}
+                      value={ingredient.qty}
+                      onChange={(event) =>
+                        updateNewIngredient(idx, "qty", Number(event.target.value || 0))
+                      }
                     />
                     <input
                       className="sm:col-span-2 border rounded-lg p-2"
                       type="text"
                       placeholder="Unitate"
-                      value={ing.unit}
-                      onChange={(e) => updateNewIngredient(idx, "unit", e.target.value)}
+                      value={ingredient.unit}
+                      onChange={(event) => updateNewIngredient(idx, "unit", event.target.value)}
                     />
                     <input
                       className="sm:col-span-3 border rounded-lg p-2"
                       type="text"
                       placeholder="Note"
-                      value={ing.note}
-                      onChange={(e) => updateNewIngredient(idx, "note", e.target.value)}
+                      value={ingredient.note}
+                      onChange={(event) => updateNewIngredient(idx, "note", event.target.value)}
                     />
                     <button
                       type="button"
@@ -580,8 +651,13 @@ export default function AdminProduction() {
                 </div>
               ))}
             </div>
+
             <div className="flex justify-between items-center text-xs text-gray-500">
-              <button type="button" onClick={addNewIngredient} className="text-rose-600 hover:underline">
+              <button
+                type="button"
+                onClick={addNewIngredient}
+                className="text-rose-600 hover:underline"
+              >
                 + Adauga ingredient
               </button>
               {newRecipeMsg && <span className="text-rose-700">{newRecipeMsg}</span>}
@@ -595,6 +671,7 @@ export default function AdminProduction() {
                 <h2 className="text-xl font-semibold text-gray-900">Ultimele notificari</h2>
               </div>
               <button
+                type="button"
                 onClick={fetchNotifications}
                 className="text-rose-600 text-sm font-semibold hover:underline"
               >
@@ -607,19 +684,24 @@ export default function AdminProduction() {
               <div className="text-sm text-gray-500">Nu exista notificari.</div>
             ) : (
               <div className="space-y-3">
-                {notifications.map((notif) => (
-                  <div key={notif._id} className="border border-rose-100 rounded-lg p-3 bg-rose-50">
+                {notifications.map((notification) => (
+                  <div
+                    key={notification._id}
+                    className="border border-rose-100 rounded-lg p-3 bg-rose-50"
+                  >
                     <div className="flex justify-between items-start gap-3">
                       <div>
-                        <div className="font-semibold text-sm">{notif.titlu || "Notificare"}</div>
-                        <div className="text-xs text-gray-700">{notif.mesaj}</div>
+                        <div className="font-semibold text-sm">
+                          {notification.titlu || "Notificare"}
+                        </div>
+                        <div className="text-xs text-gray-700">{notification.mesaj}</div>
                       </div>
                       <span className="text-[10px] uppercase tracking-wide text-gray-500">
-                        {notif.tip || "info"}
+                        {notification.tip || "info"}
                       </span>
                     </div>
                     <div className="text-[10px] text-gray-500 mt-2">
-                      {new Date(notif.data).toLocaleString()}
+                      {new Date(notification.data).toLocaleString()}
                     </div>
                   </div>
                 ))}

@@ -3,6 +3,23 @@ import api from "/src/lib/api.js";
 import { getSocket } from "../lib/socket";
 import { useAuth } from "../context/AuthContext";
 
+async function fetchChatRooms() {
+  const res = await api.get("/mesaje-chat");
+  const list = Array.isArray(res.data) ? res.data : [];
+  const map = new Map();
+
+  list.forEach((message) => {
+    if (!message.room) return;
+    const previous = map.get(message.room);
+    const at = new Date(message.data || message.at || Date.now());
+    if (!previous || at > previous.at) {
+      map.set(message.room, { room: message.room, last: message.text, at });
+    }
+  });
+
+  return Array.from(map.values()).sort((a, b) => b.at - a.at);
+}
+
 export default function ChatUtilizatori() {
   const { user } = useAuth() || {};
   const role = user?.rol || user?.role;
@@ -16,30 +33,30 @@ export default function ChatUtilizatori() {
   const [file, setFile] = useState(null);
   const [status, setStatus] = useState("offline");
 
-  const loadRooms = async () => {
-    try {
-      const res = await api.get("/mesaje-chat");
-      const list = Array.isArray(res.data) ? res.data : [];
-      const map = new Map();
-      list.forEach((m) => {
-        if (!m.room) return;
-        const prev = map.get(m.room);
-        const at = new Date(m.data || m.at || Date.now());
-        if (!prev || at > prev.at) {
-          map.set(m.room, { room: m.room, last: m.text, at });
-        }
-      });
-      const sorted = Array.from(map.values()).sort((a, b) => b.at - a.at);
-      setRooms(sorted);
-      if (!activeRoom && sorted.length) setActiveRoom(sorted[0].room);
-    } catch {
-      setRooms([]);
-    }
-  };
-
   useEffect(() => {
     if (!isAdmin) return;
-    loadRooms();
+
+    let cancelled = false;
+
+    (async () => {
+      try {
+        const sorted = await fetchChatRooms();
+        if (!cancelled) {
+          setRooms(sorted);
+          if (sorted.length) {
+            setActiveRoom((prev) => prev || sorted[0].room);
+          }
+        }
+      } catch {
+        if (!cancelled) {
+          setRooms([]);
+        }
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
   }, [isAdmin]);
 
   useEffect(() => {

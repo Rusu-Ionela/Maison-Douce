@@ -32,7 +32,7 @@ export default function AdminRapoarte() {
       link.click();
       link.remove();
       window.URL.revokeObjectURL(href);
-    } catch (e) {
+    } catch {
       setMsg("Nu s-a putut face exportul CSV.");
     }
   };
@@ -44,7 +44,7 @@ export default function AdminRapoarte() {
       setComenzi(Array.isArray(res.data) ? res.data : []);
       const tortRes = await api.get("/torturi", { params: { limit: 200 } });
       setTorturi(Array.isArray(tortRes.data?.items) ? tortRes.data.items : []);
-    } catch (e) {
+    } catch {
       setMsg("Eroare la incarcare raport.");
     }
   };

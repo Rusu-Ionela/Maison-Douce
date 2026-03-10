@@ -9,6 +9,10 @@ import { buttons, cards, containers, inputs } from "/src/lib/tailwindComponents.
 
 const publicKey = import.meta.env.VITE_STRIPE_PK || "";
 const stripePromise = publicKey ? loadStripe(publicKey) : null;
+const EMPTY_WALLET = {
+  puncteCurent: 0,
+  reduceriDisponibile: [],
+};
 
 function money(value) {
   return `${Number(value || 0).toFixed(2)} MDL`;
@@ -16,6 +20,19 @@ function money(value) {
 
 function isPaidOrder(order) {
   return order?.paymentStatus === "paid" || order?.statusPlata === "paid";
+}
+
+async function getOrderDetails(comandaId) {
+  const { data } = await api.get(`/comenzi/${comandaId}`);
+  return data;
+}
+
+async function getWalletDetails(userId) {
+  const { data } = await api.get(`/fidelizare/client/${userId}`);
+  return {
+    puncteCurent: data.puncteCurent || 0,
+    reduceriDisponibile: data.reduceriDisponibile || [],
+  };
 }
 
 function PaymentForm({ clientSecret, displayTotal, comandaId, onStatusChange }) {
@@ -116,10 +133,7 @@ export default function Plata() {
   const [codVoucher, setCodVoucher] = useState("");
   const [puncte, setPuncte] = useState("");
 
-  const [wallet, setWallet] = useState({
-    puncteCurent: 0,
-    reduceriDisponibile: [],
-  });
+  const [wallet, setWallet] = useState(EMPTY_WALLET);
   const [loadingWallet, setLoadingWallet] = useState(false);
   const [walletError, setWalletError] = useState("");
 
@@ -164,48 +178,6 @@ export default function Plata() {
     return "";
   }, [comanda]);
 
-  async function fetchComanda() {
-    if (authLoading || !userId || !comandaId) return;
-
-    setLoadingComanda(true);
-    setComandaError("");
-    try {
-      const { data } = await api.get(`/comenzi/${comandaId}`);
-      setComanda(data);
-    } catch (error) {
-      setComanda(null);
-      setComandaError(
-        error?.response?.data?.message || "Nu am putut incarca aceasta comanda."
-      );
-    } finally {
-      setLoadingComanda(false);
-    }
-  }
-
-  async function fetchWallet() {
-    if (authLoading || !userId) return;
-
-    setLoadingWallet(true);
-    setWalletError("");
-    try {
-      const { data } = await api.get(`/fidelizare/client/${userId}`);
-      setWallet({
-        puncteCurent: data.puncteCurent || 0,
-        reduceriDisponibile: data.reduceriDisponibile || [],
-      });
-    } catch (error) {
-      setWallet({
-        puncteCurent: 0,
-        reduceriDisponibile: [],
-      });
-      setWalletError(
-        error?.response?.data?.message || "Nu am putut incarca portofelul de fidelizare."
-      );
-    } finally {
-      setLoadingWallet(false);
-    }
-  }
-
   useEffect(() => {
     let cancelled = false;
     (async () => {
@@ -236,12 +208,66 @@ export default function Plata() {
 
   useEffect(() => {
     if (authLoading || !userId || !comandaId) return;
-    fetchComanda();
+
+    let cancelled = false;
+    setLoadingComanda(true);
+    setComandaError("");
+
+    (async () => {
+      try {
+        const data = await getOrderDetails(comandaId);
+        if (!cancelled) {
+          setComanda(data);
+        }
+      } catch (error) {
+        if (!cancelled) {
+          setComanda(null);
+          setComandaError(
+            error?.response?.data?.message || "Nu am putut incarca aceasta comanda."
+          );
+        }
+      } finally {
+        if (!cancelled) {
+          setLoadingComanda(false);
+        }
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
   }, [authLoading, userId, comandaId]);
 
   useEffect(() => {
     if (authLoading || !userId) return;
-    fetchWallet();
+
+    let cancelled = false;
+    setLoadingWallet(true);
+    setWalletError("");
+
+    (async () => {
+      try {
+        const data = await getWalletDetails(userId);
+        if (!cancelled) {
+          setWallet(data);
+        }
+      } catch (error) {
+        if (!cancelled) {
+          setWallet(EMPTY_WALLET);
+          setWalletError(
+            error?.response?.data?.message || "Nu am putut incarca portofelul de fidelizare."
+          );
+        }
+      } finally {
+        if (!cancelled) {
+          setLoadingWallet(false);
+        }
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
   }, [authLoading, userId]);
 
   useEffect(() => {
@@ -314,7 +340,33 @@ export default function Plata() {
   };
 
   const refreshAfterDiscount = async () => {
-    await Promise.all([fetchComanda(), fetchWallet()]);
+    if (comandaId) {
+      try {
+        const nextOrder = await getOrderDetails(comandaId);
+        setComanda(nextOrder);
+        setComandaError("");
+      } catch (error) {
+        setComanda(null);
+        setComandaError(
+          error?.response?.data?.message || "Nu am putut reincarca aceasta comanda."
+        );
+      }
+    }
+
+    if (userId) {
+      try {
+        const nextWallet = await getWalletDetails(userId);
+        setWallet(nextWallet);
+        setWalletError("");
+      } catch (error) {
+        setWallet(EMPTY_WALLET);
+        setWalletError(
+          error?.response?.data?.message ||
+            "Nu am putut reincarca portofelul de fidelizare."
+        );
+      }
+    }
+
     clearDiscountInputs();
   };
 

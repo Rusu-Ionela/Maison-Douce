@@ -76,7 +76,7 @@ export default function Home() {
         setNoutati(nou?.items || []);
         setPromotii(promo?.items || []);
         setRecenzii(Array.isArray(rev?.data) ? rev.data : []);
-      } catch (e) {
+      } catch {
         if (!alive) return;
         setPopular([]);
         setNoutati([]);
