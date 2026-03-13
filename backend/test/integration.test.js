@@ -4,6 +4,7 @@ const net = require("node:net");
 const path = require("node:path");
 const { spawn } = require("node:child_process");
 const mongoose = require("mongoose");
+const Stripe = require("stripe");
 
 function wait(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -86,7 +87,9 @@ function createRequest(baseUrl) {
     }
 
     let body;
-    if (options.body !== undefined) {
+    if (options.rawBody !== undefined) {
+      body = options.rawBody;
+    } else if (options.body !== undefined) {
       headers["Content-Type"] = "application/json";
       body = JSON.stringify(options.body);
     }
@@ -111,13 +114,27 @@ function createRequest(baseUrl) {
   };
 }
 
-async function createHarness() {
+function createMongoUri(baseUri) {
+  const fallbackBase = "mongodb://127.0.0.1:27017/tort_app_integration";
+  const source = String(baseUri || fallbackBase);
+  const suffix = `${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+  const [root, query = ""] = source.split("?");
+  const slashIndex = root.lastIndexOf("/");
+  const prefix = slashIndex >= 0 ? root.slice(0, slashIndex + 1) : `${root}/`;
+  const databaseName = slashIndex >= 0 ? root.slice(slashIndex + 1) : "tort_app_integration";
+  const nextRoot = `${prefix}${databaseName}_${suffix}`;
+  return query ? `${nextRoot}?${query}` : nextRoot;
+}
+
+async function createHarness(envOverrides = {}) {
   const backendDir = path.join(__dirname, "..");
   const port = await getFreePort();
-  const mongoUri =
-    process.env.MONGODB_URI ||
-    process.env.MONGO_URI ||
-    "mongodb://127.0.0.1:27017/tort_app_integration";
+  const mongoUri = createMongoUri(
+    envOverrides.MONGODB_URI ||
+      envOverrides.MONGO_URI ||
+      process.env.MONGODB_URI ||
+      process.env.MONGO_URI
+  );
   const baseUrl = `http://127.0.0.1:${port}/api`;
   const logs = [];
 
@@ -136,6 +153,9 @@ async function createHarness() {
       STRIPE_WEBHOOK_SECRET: "",
       SMTP_USER: "",
       SMTP_PASS: "",
+      ...envOverrides,
+      PORT: String(port),
+      MONGODB_URI: mongoUri,
     },
     stdio: ["ignore", "pipe", "pipe"],
   });
@@ -227,6 +247,27 @@ test("backend integration flows", async (t) => {
     });
   }
 
+  async function seedUser(role = "admin") {
+    const email = uniqueEmail(role);
+    const password = "Secret123!";
+    const response = await harness.request("/auth/seed-test-user", {
+      method: "POST",
+      body: {
+        email,
+        password,
+        rol: role,
+      },
+    });
+
+    return {
+      ...response,
+      email,
+      password,
+      token: response.data?.token,
+      user: response.data?.user,
+    };
+  }
+
   try {
     await t.test("public auth blocks admin registration and supports login/me", async () => {
       await harness.resetDb();
@@ -303,6 +344,128 @@ test("backend integration flows", async (t) => {
         }
       );
       assert.equal(otherWallet.status, 403);
+    });
+
+    await t.test("coupon and fidelizare flows update totals consistently", async () => {
+      await harness.resetDb();
+
+      const admin = await seedUser("admin");
+      const client = await registerUser("client");
+      assert.equal(admin.status, 200);
+      assert.equal(client.status, 201);
+
+      const couponCreate = await harness.request("/coupon/create", {
+        method: "POST",
+        token: admin.token,
+        body: {
+          cod: "SAVE10",
+          procentReducere: 10,
+        },
+      });
+      assert.equal(couponCreate.status, 200);
+
+      const couponOrder = await createOrder(client.token);
+      assert.equal(couponOrder.status, 201);
+      const couponApply = await harness.request("/coupon/apply", {
+        method: "POST",
+        token: client.token,
+        body: {
+          cod: "save10",
+          comandaId: couponOrder.data._id,
+        },
+      });
+      assert.equal(couponApply.status, 200);
+      assert.equal(couponApply.data?.discount, 15);
+      assert.equal(couponApply.data?.newTotal, 135);
+
+      const couponOrderDetail = await harness.request(
+        `/comenzi/${couponOrder.data._id}`,
+        { token: client.token }
+      );
+      assert.equal(couponOrderDetail.status, 200);
+      assert.equal(couponOrderDetail.data?.discountTotal, 15);
+      assert.equal(couponOrderDetail.data?.voucherCode, "SAVE10");
+      assert.equal(couponOrderDetail.data?.totalFinal, 135);
+
+      const addPoints = await harness.request("/fidelizare/add-points", {
+        method: "POST",
+        token: admin.token,
+        body: {
+          utilizatorId: client.user.id,
+          puncte: 220,
+          sursa: "integration-test",
+        },
+      });
+      assert.equal(addPoints.status, 200);
+      assert.equal(addPoints.data?.fidelizare?.puncteCurent, 220);
+
+      const pointsOrder = await createOrder(client.token);
+      assert.equal(pointsOrder.status, 201);
+      const applyPoints = await harness.request("/fidelizare/apply-points", {
+        method: "POST",
+        token: client.token,
+        body: {
+          utilizatorId: client.user.id,
+          puncte: 100,
+          comandaId: pointsOrder.data._id,
+        },
+      });
+      assert.equal(applyPoints.status, 200);
+      assert.equal(applyPoints.data?.discount, 50);
+      assert.equal(applyPoints.data?.newTotal, 100);
+      assert.equal(applyPoints.data?.puncteRamase, 120);
+
+      const pointsOrderDetail = await harness.request(
+        `/comenzi/${pointsOrder.data._id}`,
+        { token: client.token }
+      );
+      assert.equal(pointsOrderDetail.status, 200);
+      assert.equal(pointsOrderDetail.data?.pointsUsed, 100);
+      assert.equal(pointsOrderDetail.data?.totalFinal, 100);
+
+      const redeemVoucher = await harness.request("/fidelizare/redeem", {
+        method: "POST",
+        token: client.token,
+        body: {
+          utilizatorId: client.user.id,
+          puncteDeUtilizat: 100,
+        },
+      });
+      assert.equal(redeemVoucher.status, 200);
+      assert.ok(redeemVoucher.data?.voucher?.cod);
+      assert.equal(redeemVoucher.data?.puncteCurent, 20);
+
+      const voucherOrder = await createOrder(client.token);
+      assert.equal(voucherOrder.status, 201);
+      const applyVoucher = await harness.request("/fidelizare/apply-voucher", {
+        method: "POST",
+        token: client.token,
+        body: {
+          utilizatorId: client.user.id,
+          cod: redeemVoucher.data.voucher.cod,
+          comandaId: voucherOrder.data._id,
+        },
+      });
+      assert.equal(applyVoucher.status, 200);
+      assert.equal(applyVoucher.data?.discount, 50);
+      assert.equal(applyVoucher.data?.newTotal, 100);
+
+      const wallet = await harness.request(
+        `/fidelizare/client/${client.user.id}`,
+        { token: client.token }
+      );
+      assert.equal(wallet.status, 200);
+      assert.equal(wallet.data?.puncteCurent, 20);
+
+      const blockedCoupon = await harness.request("/coupon/apply", {
+        method: "POST",
+        token: client.token,
+        body: {
+          cod: "SAVE10",
+          comandaId: voucherOrder.data._id,
+        },
+      });
+      assert.equal(blockedCoupon.status, 409);
     });
 
     await t.test("calendar reserve creates reservation, order and slot usage", async () => {
@@ -386,6 +549,126 @@ test("backend integration flows", async (t) => {
       assert.equal(paidOrder.data?.paymentStatus, "paid");
       assert.equal(paidOrder.data?.statusPlata, "paid");
     });
+  } finally {
+    await harness.stop();
+  }
+});
+
+test("stripe webhook integration awards payment state and fidelizare once", async (t) => {
+  const webhookSecret = "whsec_test_integration";
+  const stripe = new Stripe("sk_test_integration", {
+    apiVersion: "2023-10-16",
+  });
+  const harness = await createHarness({
+    STRIPE_SECRET_KEY: "sk_test_integration",
+    STRIPE_WEBHOOK_SECRET: webhookSecret,
+  });
+
+  async function registerClient() {
+    const password = "Secret123!";
+    const response = await harness.request("/utilizatori/register", {
+      method: "POST",
+      body: {
+        nume: "Stripe Client",
+        email: uniqueEmail("stripe-client"),
+        parola: password,
+        rol: "client",
+      },
+    });
+    return {
+      ...response,
+      password,
+      token: response.data?.token,
+      user: response.data?.user,
+    };
+  }
+
+  try {
+    await harness.resetDb();
+
+    const client = await registerClient();
+    assert.equal(client.status, 201);
+
+    const order = await harness.request("/comenzi", {
+      method: "POST",
+      token: client.token,
+      body: {
+        items: [
+          {
+            productId: "cake-webhook",
+            name: "Tort webhook",
+            qty: 1,
+            price: 150,
+          },
+        ],
+        metodaLivrare: "ridicare",
+        prestatorId: "default",
+        dataLivrare: futureDate(6),
+        oraLivrare: "16:00",
+      },
+    });
+    assert.equal(order.status, 201);
+    const orderId = order.data?._id;
+    assert.ok(orderId);
+
+    const eventPayload = JSON.stringify({
+      id: "evt_test_payment_intent_succeeded",
+      object: "event",
+      type: "payment_intent.succeeded",
+      data: {
+        object: {
+          id: "pi_test_webhook",
+          object: "payment_intent",
+          metadata: { orderId },
+        },
+      },
+    });
+    const signature = stripe.webhooks.generateTestHeaderString({
+      payload: eventPayload,
+      secret: webhookSecret,
+    });
+
+    const webhookResponse = await harness.request("/stripe/webhook", {
+      method: "POST",
+      rawBody: eventPayload,
+      headers: {
+        "Content-Type": "application/json",
+        "stripe-signature": signature,
+      },
+    });
+    assert.equal(webhookResponse.status, 200);
+    assert.equal(webhookResponse.data?.received, true);
+
+    const paidOrder = await harness.request(`/comenzi/${orderId}`, {
+      token: client.token,
+    });
+    assert.equal(paidOrder.status, 200);
+    assert.equal(paidOrder.data?.paymentStatus, "paid");
+    assert.equal(paidOrder.data?.statusPlata, "paid");
+
+    const walletAfterFirstWebhook = await harness.request(
+      `/fidelizare/client/${client.user.id}`,
+      { token: client.token }
+    );
+    assert.equal(walletAfterFirstWebhook.status, 200);
+    assert.equal(walletAfterFirstWebhook.data?.puncteCurent, 15);
+
+    const secondWebhook = await harness.request("/stripe/webhook", {
+      method: "POST",
+      rawBody: eventPayload,
+      headers: {
+        "Content-Type": "application/json",
+        "stripe-signature": signature,
+      },
+    });
+    assert.equal(secondWebhook.status, 200);
+
+    const walletAfterSecondWebhook = await harness.request(
+      `/fidelizare/client/${client.user.id}`,
+      { token: client.token }
+    );
+    assert.equal(walletAfterSecondWebhook.status, 200);
+    assert.equal(walletAfterSecondWebhook.data?.puncteCurent, 15);
   } finally {
     await harness.stop();
   }
