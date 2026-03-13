@@ -4,6 +4,7 @@ import { QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter } from "react-router-dom";
 import App from "./App.jsx";
 import RootErrorBoundary from "./components/RootErrorBoundary";
+import RuntimeErrorReporter from "./components/RuntimeErrorReporter";
 import { AuthProvider } from "./context/AuthContext";
 import { CartProvider } from "./context/CartContext";
 import "./index.css";
@@ -16,6 +17,7 @@ ReactDOM.createRoot(document.getElementById("root")).render(
         <BrowserRouter>
           <AuthProvider>
             <CartProvider>
+              <RuntimeErrorReporter />
               <App />
             </CartProvider>
           </AuthProvider>

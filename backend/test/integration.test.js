@@ -408,6 +408,33 @@ test("backend integration flows", async (t) => {
       assert.equal(userAfterReset?.resetTokenExp, undefined);
     });
 
+    await t.test("client runtime errors are accepted through the monitoring endpoint", async () => {
+      await harness.resetDb();
+
+      const client = await registerUser("client");
+      assert.equal(client.status, 201);
+
+      const report = await harness.request("/monitoring/client-error", {
+        method: "POST",
+        body: {
+          kind: "react_render_error",
+          message: "Boundary exploded",
+          stack: "Error: Boundary exploded",
+          componentStack: "at App",
+          url: "http://127.0.0.1:5173/profil",
+          userId: client.user._id,
+          userEmail: client.user.email,
+          userRole: client.user.rol,
+          release: "test-suite",
+          metadata: {
+            page: "profil",
+          },
+        },
+      });
+      assert.equal(report.status, 202);
+      assert.equal(report.data?.ok, true);
+    });
+
     await t.test("orders and wallets remain owner scoped", async () => {
       await harness.resetDb();
 

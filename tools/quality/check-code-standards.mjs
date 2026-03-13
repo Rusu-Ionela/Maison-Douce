@@ -98,6 +98,9 @@ if (scope === "all" || scope === "frontend") {
       id: "frontend-no-authstorage-pages",
       pattern: /authStorage\.getUser\s*\(/,
       message: "Use AuthContext instead of reading authStorage directly in pages/components.",
+      allowList: [
+        "frontend/src/lib/errorReporting.js",
+      ],
     })
   );
 

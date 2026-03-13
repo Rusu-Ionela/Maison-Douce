@@ -33,7 +33,9 @@ function validateCriticalEnv() {
   }
 
   if (missing.length > 0) {
-    console.error(`Missing required environment variables: ${missing.join(", ")}`);
+    log("error", "missing_required_env", {
+      missing,
+    });
     process.exit(1);
   }
 }
@@ -181,6 +183,7 @@ mount("/api/recenzii", "./routes/recenzii");
 mount("/api/albume", "./routes/albumeRoutes");
 mount("/api/partajare", "./routes/partajareRoutes");
 mount("/api/contact", "./routes/contact");
+mount("/api/monitoring", "./routes/monitoring");
 mount("/api/upload", "./routes/upload");
 mount("/api/notificari", "./routes/notificari");
 mount("/api/notificari-foto", "./routes/notificariFotoRoutes");
