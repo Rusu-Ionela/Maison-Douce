@@ -96,7 +96,7 @@ router.get(
     limit: readNumber(req.query?.limit, {
       field: "limit",
       min: 1,
-      max: 48,
+      max: 200,
       integer: true,
       defaultValue: 12,
     }),

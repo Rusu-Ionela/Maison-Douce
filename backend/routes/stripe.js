@@ -16,8 +16,13 @@ const STRIPE_KEY =
   process.env.STRIPE_SECRET_KEY ||
   process.env.STRIPE_SECRET ||
   process.env.STRIPE_SK;
+const stripeForcedFallback =
+  String(
+    process.env.FORCE_DEV_PAYMENT_FALLBACK || process.env.DISABLE_STRIPE || ""
+  ).toLowerCase() === "true";
 const STRIPE_MODE = STRIPE_KEY?.startsWith("sk_live") ? "live" : "test";
 const stripe = STRIPE_KEY
+  && !stripeForcedFallback
   ? new Stripe(STRIPE_KEY, { apiVersion: "2023-10-16" })
   : null;
 const stripeEnabled = Boolean(stripe);
@@ -504,6 +509,7 @@ router.get("/config", (_req, res) => {
     mode: STRIPE_MODE || "unknown",
     enabled: stripeEnabled,
     fallbackAvailable: fallbackAllowed,
+    forcedFallback: stripeForcedFallback,
     webhookConfigured: !!process.env.STRIPE_WEBHOOK_SECRET,
     publishable: process.env.STRIPE_PUBLISHABLE_KEY ? "present" : "missing",
     rotateHint:
@@ -516,6 +522,7 @@ router.get("/status", (_req, res) => {
     mode: STRIPE_MODE || "unknown",
     enabled: stripeEnabled,
     fallbackAvailable: fallbackAllowed,
+    forcedFallback: stripeForcedFallback,
     webhookConfigured: !!process.env.STRIPE_WEBHOOK_SECRET,
     publishable: process.env.STRIPE_PUBLISHABLE_KEY ? "present" : "missing",
   });

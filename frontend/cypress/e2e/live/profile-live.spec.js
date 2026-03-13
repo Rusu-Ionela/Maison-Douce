@@ -1,3 +1,5 @@
+const apiUrl = Cypress.env("apiUrl") || "http://127.0.0.1:5000/api";
+
 describe("Profile flow (live backend)", () => {
   const email = `live-client-${Date.now()}@example.com`;
   const password = "Secret123!";
@@ -5,7 +7,7 @@ describe("Profile flow (live backend)", () => {
   beforeEach(() => {
     cy.clearCookies();
     cy.clearLocalStorage();
-    cy.request("POST", "http://127.0.0.1:5000/api/auth/seed-test-user", {
+    cy.request("POST", `${apiUrl}/auth/seed-test-user`, {
       email,
       password,
       rol: "client",

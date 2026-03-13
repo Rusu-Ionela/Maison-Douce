@@ -76,7 +76,7 @@ export default function AdminRapoarte() {
       return s + costUnit * qty;
     }, 0);
     return sum + (Number(c.total || 0) - cost);
-  }, [filtered, costMap]);
+  }, 0);
   const totalOrders = filtered.length;
 
   return (

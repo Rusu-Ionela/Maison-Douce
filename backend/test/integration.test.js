@@ -626,6 +626,268 @@ test("backend integration flows", async (t) => {
       assert.equal(otherWallet.status, 403);
     });
 
+    await t.test("content and support routes execute create read update flows", async () => {
+      await harness.resetDb();
+
+      const client = await registerUser("client");
+      const admin = await seedUser("admin");
+      const patiser = await seedUser("patiser");
+      const clientId = client.user?.id || client.user?._id;
+      assert.equal(client.status, 201);
+      assert.equal(admin.status, 200);
+      assert.equal(patiser.status, 200);
+      assert.ok(clientId);
+
+      const tortResponse = await harness.request("/torturi", {
+        method: "POST",
+        token: admin.token,
+        body: {
+          nume: "Tort integrare continut",
+          descriere: "Tort pentru testarea rutelor de continut",
+          pret: 180,
+          imagine: "https://example.com/tort.jpg",
+          ingrediente: ["ciocolata", "zmeura"],
+          categorie: "torturi",
+          portii: 8,
+          timpPreparareOre: 24,
+          activ: true,
+        },
+      });
+      assert.equal(tortResponse.status, 201);
+      const tortId = tortResponse.data?._id;
+      assert.ok(tortId);
+
+      const orderResponse = await createOrder(client.token, {
+        items: [
+          {
+            productId: tortId,
+            name: "Tort integrare continut",
+            qty: 1,
+            price: 180,
+          },
+        ],
+      });
+      assert.equal(orderResponse.status, 201);
+      const comandaId = orderResponse.data?._id;
+      assert.ok(comandaId);
+
+      const contactCreate = await harness.request("/contact", {
+        method: "POST",
+        body: {
+          nume: "Client Contact",
+          email: client.user.email,
+          telefon: "+37360000111",
+          subiect: "Intrebare integrare",
+          mesaj: "Acesta este un mesaj de contact suficient de lung pentru test.",
+        },
+      });
+      assert.equal(contactCreate.status, 201);
+      assert.equal(contactCreate.data?.ok, true);
+
+      const contactList = await harness.request("/contact?limit=20", {
+        token: admin.token,
+      });
+      assert.equal(contactList.status, 200);
+      assert.ok(Array.isArray(contactList.data));
+      assert.equal(contactList.data.length, 1);
+
+      const contactStatus = await harness.request(
+        `/contact/${contactList.data[0]._id}/status`,
+        {
+          method: "PATCH",
+          token: admin.token,
+          body: { status: "rezolvat" },
+        }
+      );
+      assert.equal(contactStatus.status, 200);
+      assert.equal(contactStatus.data?.status, "rezolvat");
+
+      const albumCreate = await harness.request("/albume", {
+        method: "POST",
+        token: admin.token,
+        body: {
+          titlu: "Album integrare",
+          utilizatorId: clientId,
+          comandaId,
+          fisiere: ["/uploads/shared/demo.jpg"],
+        },
+      });
+      assert.equal(albumCreate.status, 201);
+      const albumId = albumCreate.data?._id;
+      assert.ok(albumId);
+
+      const clientAlbums = await harness.request("/albume", {
+        token: client.token,
+      });
+      assert.equal(clientAlbums.status, 200);
+      assert.equal(clientAlbums.data.length, 1);
+
+      const albumDetails = await harness.request(`/albume/${albumId}`, {
+        token: client.token,
+      });
+      assert.equal(albumDetails.status, 200);
+      assert.equal(String(albumDetails.data?._id), String(albumId));
+
+      const photoNotifications = await harness.request(
+        `/notificari-foto/${clientId}`,
+        {
+          token: client.token,
+        }
+      );
+      assert.equal(photoNotifications.status, 200);
+      assert.ok(Array.isArray(photoNotifications.data));
+      assert.equal(photoNotifications.data.length, 1);
+
+      const markPhotoRead = await harness.request(
+        `/notificari-foto/citeste/${photoNotifications.data[0]._id}`,
+        {
+          method: "PUT",
+          token: client.token,
+        }
+      );
+      assert.equal(markPhotoRead.status, 200);
+
+      const personalizationCreate = await harness.request("/personalizare", {
+        method: "POST",
+        token: client.token,
+        body: {
+          forma: "rotund",
+          culori: ["roz", "alb"],
+          mesaj: "La multi ani",
+          note: "Design de integrare",
+          options: { etaje: 2 },
+          pretEstimat: 220,
+          timpPreparareOre: 36,
+          status: "draft",
+        },
+      });
+      assert.equal(personalizationCreate.status, 201);
+      assert.equal(personalizationCreate.data?.ok, true);
+      const personalizationId = personalizationCreate.data?.id;
+      assert.ok(personalizationId);
+
+      const personalizationList = await harness.request(
+        `/personalizare/client/${clientId}`,
+        {
+          token: client.token,
+        }
+      );
+      assert.equal(personalizationList.status, 200);
+      assert.equal(personalizationList.data.length, 1);
+
+      const personalizationUpdate = await harness.request(
+        `/personalizare/${personalizationId}`,
+        {
+          method: "PUT",
+          token: client.token,
+          body: {
+            mesaj: "Mesaj actualizat",
+            status: "ready",
+          },
+        }
+      );
+      assert.equal(personalizationUpdate.status, 200);
+      assert.equal(personalizationUpdate.data?.ok, true);
+
+      const productReview = await harness.request("/recenzii/produs", {
+        method: "POST",
+        token: client.token,
+        body: {
+          tortId,
+          stele: 5,
+          comentariu: "Produs excelent pentru test.",
+        },
+      });
+      assert.equal(productReview.status, 200);
+
+      const productReviewList = await harness.request(`/recenzii/produs/${tortId}`);
+      assert.equal(productReviewList.status, 200);
+      assert.equal(productReviewList.data.length, 1);
+
+      const orderReview = await harness.request("/recenzii/comanda", {
+        method: "POST",
+        token: client.token,
+        body: {
+          comandaId,
+          nota: 5,
+          comentariu: "Comanda a fost impecabila.",
+        },
+      });
+      assert.equal(orderReview.status, 200);
+
+      const orderReviewRead = await harness.request(`/recenzii/comanda/${comandaId}`);
+      assert.equal(orderReviewRead.status, 200);
+      assert.equal(String(orderReviewRead.data?.comandaId), String(comandaId));
+
+      const providerReview = await harness.request("/recenzii/prestator", {
+        method: "POST",
+        token: client.token,
+        body: {
+          prestatorId: patiser.user?._id,
+          stele: 5,
+          comentariu: "Prestator foarte bun.",
+        },
+      });
+      assert.equal(providerReview.status, 200);
+
+      const providerReviewList = await harness.request(
+        `/recenzii/prestator/${patiser.user?._id}`
+      );
+      assert.equal(providerReviewList.status, 200);
+      assert.equal(providerReviewList.data.length, 1);
+
+      const recentReviews = await harness.request("/recenzii/recent?limit=4");
+      assert.equal(recentReviews.status, 200);
+      assert.equal(recentReviews.data.length, 1);
+
+      const notifications = await harness.request("/notificari", {
+        token: admin.token,
+      });
+      assert.equal(notifications.status, 200);
+      assert.ok(Array.isArray(notifications.data));
+      assert.ok(notifications.data.length >= 2);
+
+      const recommendations = await harness.request("/recommendations?limit=4");
+      assert.equal(recommendations.status, 200);
+      assert.ok(Array.isArray(recommendations.data?.recomandate));
+      assert.equal(recommendations.data.recomandate.length, 1);
+
+      const aiRecommendations = await harness.request(
+        `/recommendations/ai?userId=${clientId}&limit=4&preferCategorie=torturi&excludePurchased=false`
+      );
+      assert.equal(aiRecommendations.status, 200);
+      assert.equal(aiRecommendations.data?.ok, true);
+      assert.ok(Array.isArray(aiRecommendations.data?.recomandate));
+      assert.equal(aiRecommendations.data.recomandate.length, 1);
+
+      const aiRecommendationsPost = await harness.request("/recommendations/ai", {
+        method: "POST",
+        body: {
+          userId: clientId,
+          limit: 4,
+          preferCategorie: "torturi",
+          avoid: ["fistic"],
+          excludePurchased: false,
+        },
+      });
+      assert.equal(aiRecommendationsPost.status, 200);
+      assert.equal(aiRecommendationsPost.data?.ok, true);
+
+      const pushStatus = await harness.request("/push/status");
+      assert.equal(pushStatus.status, 200);
+      assert.equal(typeof pushStatus.data?.configured, "boolean");
+
+      const pushPublicKey = await harness.request("/push/public-key");
+      assert.ok([200, 404].includes(pushPublicKey.status));
+
+      const albumDelete = await harness.request(`/albume/${albumId}`, {
+        method: "DELETE",
+        token: client.token,
+      });
+      assert.equal(albumDelete.status, 200);
+      assert.equal(albumDelete.data?.ok, true);
+    });
+
     await t.test("coupon and fidelizare flows update totals consistently", async () => {
       await harness.resetDb();
 

@@ -48,9 +48,16 @@ const server = http.createServer(app);
 const bootAt = Date.now();
 
 app.set("trust proxy", Number(process.env.TRUST_PROXY || 1));
+app.set("etag", false);
 
 const ORIGIN = process.env.BASE_CLIENT_URL || "http://localhost:5173";
-const CORS_ORIGINS = [ORIGIN, "http://localhost:5173", "http://localhost:5174"];
+const CORS_ORIGINS = [
+  ORIGIN,
+  "http://localhost:5173",
+  "http://127.0.0.1:5173",
+  "http://localhost:5174",
+  "http://127.0.0.1:5174",
+];
 
 app.use(
   cors({
@@ -99,6 +106,10 @@ app.use(
   })
 );
 app.use(rateLimit({ windowMs: 15 * 60 * 1000, max: 200 }));
+app.use("/api", (req, res, next) => {
+  res.setHeader("Cache-Control", "no-store");
+  next();
+});
 
 app.get("/api/health", (_req, res) => {
   const mongoStates = {

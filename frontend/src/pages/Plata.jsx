@@ -166,11 +166,17 @@ export default function Plata() {
     comanda?.discountTotal || comanda?.discountFidelizare || 0
   );
   const orderBaseTotal = Number(comanda?.total || 0);
-  const orderTotalFinal = Number(comanda?.totalFinal ?? comanda?.total ?? 0);
+  const rawOrderTotalFinal = Number(
+    comanda?.totalFinal ?? comanda?.total ?? 0
+  );
   const orderHasDiscount =
     orderDiscount > 0 ||
     Number(comanda?.pointsUsed || 0) > 0 ||
     Boolean(comanda?.voucherCode);
+  const orderTotalFinal =
+    rawOrderTotalFinal > 0 || orderHasDiscount
+      ? rawOrderTotalFinal
+      : orderBaseTotal;
 
   const discountLabel = useMemo(() => {
     if (!comanda) return "";
