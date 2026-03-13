@@ -29,6 +29,40 @@ jobs:
       - name: Run repo standards
         run: node tools/quality/check-code-standards.mjs backend
 
+  backend-integration:
+    needs: backend
+    runs-on: ubuntu-latest
+    services:
+      mongo:
+        image: mongo:7
+        ports:
+          - 27017:27017
+        options: >-
+          --health-cmd "mongosh --quiet --eval 'db.adminCommand({ ping: 1 })'"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: backend/package-lock.json
+
+      - name: Install backend dependencies
+        run: npm ci --prefix backend
+
+      - name: Run backend integration tests
+        env:
+          MONGODB_URI: mongodb://127.0.0.1:27017/tort_app_ci
+          JWT_SECRET: ci-integration-secret
+          BASE_CLIENT_URL: http://127.0.0.1:5173
+        run: npm --prefix backend run test:integration
+
   frontend:
     runs-on: ubuntu-latest
     steps:
@@ -74,3 +108,59 @@ jobs:
           wait-on: "http://127.0.0.1:5173"
           wait-on-timeout: 120
           command: npm run cypress:run:ci
+
+  frontend-e2e-live:
+    needs:
+      - frontend
+      - backend-integration
+    runs-on: ubuntu-latest
+    services:
+      mongo:
+        image: mongo:7
+        ports:
+          - 27017:27017
+        options: >-
+          --health-cmd "mongosh --quiet --eval 'db.adminCommand({ ping: 1 })'"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: |
+            backend/package-lock.json
+            frontend/package-lock.json
+
+      - name: Install backend dependencies
+        run: npm ci --prefix backend
+
+      - name: Install frontend dependencies
+        run: npm ci --prefix frontend
+
+      - name: Start backend
+        env:
+          PORT: 5000
+          NODE_ENV: test
+          MONGODB_URI: mongodb://127.0.0.1:27017/tort_app_live_e2e
+          JWT_SECRET: ci-live-secret
+          BASE_CLIENT_URL: http://127.0.0.1:5173
+        run: nohup npm --prefix backend start > backend.log 2>&1 &
+
+      - name: Run Cypress live E2E
+        uses: cypress-io/github-action@v6
+        with:
+          install: false
+          working-directory: frontend
+          start: npm run dev -- --host 127.0.0.1 --port 5173
+          wait-on: "http://127.0.0.1:5000/api/health http://127.0.0.1:5173"
+          wait-on-timeout: 180
+          command: npm run cypress:run:live
+        env:
+          VITE_API_URL: http://127.0.0.1:5000/api
+          VITE_PRESTATOR_ID: default
