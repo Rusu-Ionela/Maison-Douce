@@ -98,6 +98,8 @@ export const SITE_SECTIONS = [
       { label: "Notificari foto", to: "/admin/notificari-foto", roles: STAFF_ROLES },
       { label: "Fidelizare admin", to: "/admin/fidelizare", roles: ADMIN_ROLES },
       { label: "Cupoane", to: "/admin/cupoane", roles: ADMIN_ROLES },
+      { label: "Audit", to: "/admin/audit", roles: ADMIN_ROLES },
+      { label: "Monitoring", to: "/admin/monitoring", roles: ADMIN_ROLES },
       { label: "Abonamente", to: "/admin/abonamente", roles: STAFF_ROLES },
       { label: "Productie", to: "/admin/production", roles: STAFF_ROLES },
       { label: "Contabilitate stoc", to: "/admin/contabilitate", roles: STAFF_ROLES },

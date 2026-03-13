@@ -19,6 +19,23 @@ export const queryKeys = {
     filters.search || "",
     filters.status || "",
   ],
+  adminAudit: (filters = {}) => [
+    "admin",
+    "audit",
+    filters.action || "",
+    filters.entityType || "",
+    filters.entityId || "",
+    filters.actorId || "",
+    Number(filters.limit || 50),
+  ],
+  adminClientErrors: (filters = {}) => [
+    "admin",
+    "monitoring",
+    "client-errors",
+    filters.kind || "",
+    filters.search || "",
+    Number(filters.limit || 50),
+  ],
   paymentIntent: (orderId, totalFinal) => [
     "payments",
     "intent",
@@ -71,6 +88,30 @@ export async function fetchAdminCoupons(filters = {}) {
     params: {
       search: filters.search || "",
       status: filters.status || "",
+    },
+  });
+  return asArray(data?.items);
+}
+
+export async function fetchAdminAuditLogs(filters = {}) {
+  const { data } = await api.get("/audit", {
+    params: {
+      action: filters.action || "",
+      entityType: filters.entityType || "",
+      entityId: filters.entityId || "",
+      actorId: filters.actorId || "",
+      limit: Number(filters.limit || 50),
+    },
+  });
+  return asArray(data?.items);
+}
+
+export async function fetchAdminClientErrors(filters = {}) {
+  const { data } = await api.get("/monitoring/client-errors", {
+    params: {
+      kind: filters.kind || "",
+      search: filters.search || "",
+      limit: Number(filters.limit || 50),
     },
   });
   return asArray(data?.items);

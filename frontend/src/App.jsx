@@ -69,6 +69,8 @@ const AdminNotificari = lazyPage("./pages/AdminNotificari.jsx");
 const AdminFidelizare = lazyPage("./pages/AdminFidelizare.jsx");
 const AdminCupoane = lazyPage("./pages/AdminCupoane.jsx");
 const AdminAbonamente = lazyPage("./pages/AdminAbonamente.jsx");
+const AdminAudit = lazyPage("./pages/AdminAudit.jsx");
+const AdminMonitoring = lazyPage("./pages/AdminMonitoring.jsx");
 const AdminAlbume = lazyPage("./pages/AdminAlbume.jsx");
 const AdminProduction = lazyPage("./pages/AdminProduction.jsx");
 const AdminContactMesaje = lazyPage("./pages/AdminContactMesaje.jsx");
@@ -430,6 +432,22 @@ export default function App() {
             element={
               <RequireAdmin>
                 <AdminCupoane />
+              </RequireAdmin>
+            }
+          />
+          <Route
+            path="/admin/audit"
+            element={
+              <RequireAdmin>
+                <AdminAudit />
+              </RequireAdmin>
+            }
+          />
+          <Route
+            path="/admin/monitoring"
+            element={
+              <RequireAdmin>
+                <AdminMonitoring />
               </RequireAdmin>
             }
           />

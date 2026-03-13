@@ -498,7 +498,9 @@ test("backend integration flows", async (t) => {
       await harness.resetDb();
 
       const client = await registerUser("client");
+      const admin = await seedUser("admin");
       assert.equal(client.status, 201);
+      assert.equal(admin.status, 200);
 
       const report = await harness.request("/monitoring/client-error", {
         method: "POST",
@@ -519,6 +521,18 @@ test("backend integration flows", async (t) => {
       });
       assert.equal(report.status, 202);
       assert.equal(report.data?.ok, true);
+
+      const monitoringList = await harness.request(
+        "/monitoring/client-errors?kind=react_render_error&search=Boundary",
+        {
+          token: admin.token,
+        }
+      );
+      assert.equal(monitoringList.status, 200);
+      assert.ok(Array.isArray(monitoringList.data?.items));
+      assert.equal(monitoringList.data.items.length, 1);
+      assert.equal(monitoringList.data.items[0].kind, "react_render_error");
+      assert.equal(monitoringList.data.items[0].userEmail, client.user.email);
     });
 
     await t.test("api responses expose hardened security headers", async () => {
