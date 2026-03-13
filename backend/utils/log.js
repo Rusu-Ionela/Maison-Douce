@@ -18,6 +18,31 @@ function log(level, message, meta = {}) {
   console.log(line);
 }
 
+function createLogger(scope) {
+  const normalizedScope = String(scope || "").trim();
+
+  return {
+    info(message, meta = {}) {
+      log("info", message, {
+        scope: normalizedScope,
+        ...meta,
+      });
+    },
+    warn(message, meta = {}) {
+      log("warn", message, {
+        scope: normalizedScope,
+        ...meta,
+      });
+    },
+    error(message, meta = {}) {
+      log("error", message, {
+        scope: normalizedScope,
+        ...meta,
+      });
+    },
+  };
+}
+
 function serializeError(err) {
   if (!err) return {};
   return {
@@ -28,6 +53,7 @@ function serializeError(err) {
 }
 
 module.exports = {
+  createLogger,
   log,
   serializeError,
 };

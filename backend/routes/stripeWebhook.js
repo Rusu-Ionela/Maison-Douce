@@ -1,10 +1,12 @@
-// backend/routes/stripeWebhook.js
 const Stripe = require("stripe");
 const Comanda = require("../models/Comanda");
 const Fidelizare = require("../models/Fidelizare");
 const FidelizareConfig = require("../models/FidelizareConfig");
 const { notifyUser, notifyAdmins } = require("../utils/notifications");
 const { activateCutieFromComanda } = require("../utils/subscriptions");
+const { createLogger, serializeError } = require("../utils/log");
+
+const stripeLog = createLogger("stripe_webhook");
 
 const stripeKey =
   process.env.STRIPE_SECRET_KEY ||
@@ -82,7 +84,9 @@ async function awardFidelizareForPaidOrder(comanda) {
       reduceriDisponibile: [],
       istoric: [],
     });
-    console.log(`[stripe webhook] Created Fidelizare for clientId=${comanda.clientId}`);
+    stripeLog.info("wallet_created", {
+      clientId: String(comanda.clientId),
+    });
   }
 
   doc.puncteCurent = Number(doc.puncteCurent || 0) + earned;
@@ -115,76 +119,145 @@ async function awardFidelizareForPaidOrder(comanda) {
   else doc.nivelLoyalitate = "bronze";
 
   await doc.save();
-  console.log(`[stripe webhook] Fidelizare awarded: ${earned} points`);
+  stripeLog.info("wallet_awarded", {
+    clientId: String(comanda.clientId),
+    comandaId: String(comanda._id),
+    earned,
+  });
 }
 
 module.exports = async (req, res) => {
   if (!stripe || !process.env.STRIPE_WEBHOOK_SECRET) {
-    console.error("[stripe webhook] Config missing: stripe =", !!stripe, ", secret =", !!process.env.STRIPE_WEBHOOK_SECRET);
+    stripeLog.error("config_missing", {
+      hasStripe: Boolean(stripe),
+      hasSecret: Boolean(process.env.STRIPE_WEBHOOK_SECRET),
+      requestId: req.id,
+    });
     return res.status(400).send("Stripe webhook neconfigurat.");
   }
 
   const sig = req.headers["stripe-signature"];
   if (!sig) {
-    console.error("[stripe webhook] Missing stripe-signature header");
+    stripeLog.error("signature_header_missing", {
+      requestId: req.id,
+    });
     return res.status(400).send("Missing stripe-signature header");
   }
 
   let event;
   try {
-    // ATENȚIE: ruta asta trebuie montată cu express.raw({ type: 'application/json' })
     event = stripe.webhooks.constructEvent(
       req.body,
       sig,
       process.env.STRIPE_WEBHOOK_SECRET
     );
-    console.log('[stripe webhook] ✓ Event signature verified:', event.id, event.type);
+    stripeLog.info("signature_verified", {
+      requestId: req.id,
+      eventId: event.id,
+      eventType: event.type,
+    });
   } catch (err) {
-    console.error("[stripe webhook] ❌ Signature verification failed:", err.message);
+    stripeLog.error("signature_verification_failed", {
+      requestId: req.id,
+      error: serializeError(err),
+    });
     return res.status(400).send(`Webhook Error: ${err.message}`);
   }
 
   try {
-    console.log(`[stripe webhook] Processing event: type=${event.type}, id=${event.id}`);
+    stripeLog.info("event_received", {
+      requestId: req.id,
+      eventId: event.id,
+      eventType: event.type,
+    });
 
     if (event.type === "checkout.session.completed") {
       const session = event.data.object;
       const orderId = session?.metadata?.orderId || session?.client_reference_id;
-      console.log(`[stripe webhook] checkout.session.completed: orderId=${orderId}, sessionId=${session.id}`);
+      stripeLog.info("checkout_session_completed", {
+        requestId: req.id,
+        eventId: event.id,
+        orderId: String(orderId || ""),
+        sessionId: String(session?.id || ""),
+      });
 
       if (!orderId) {
-        console.warn(`[stripe webhook] ⚠ No orderId in session metadata`);
+        stripeLog.warn("order_id_missing_in_checkout_session", {
+          requestId: req.id,
+          eventId: event.id,
+        });
       } else {
         const comanda = await Comanda.findById(orderId);
         if (!comanda) {
-          console.warn(`[stripe webhook] ⚠ Comanda NOT found for orderId=${orderId}`);
+          stripeLog.warn("order_not_found_for_checkout_session", {
+            requestId: req.id,
+            eventId: event.id,
+            orderId: String(orderId),
+          });
         } else {
-          const changed = await markComandaPaid(comanda, "Stripe checkout.session.completed");
+          const changed = await markComandaPaid(
+            comanda,
+            "Stripe checkout.session.completed"
+          );
           if (changed) {
-            console.log("[stripe webhook] Comanda marked as paid");
+            stripeLog.info("order_marked_paid", {
+              requestId: req.id,
+              eventId: event.id,
+              orderId: String(comanda._id),
+              source: "checkout.session.completed",
+            });
             await awardFidelizareForPaidOrder(comanda);
           } else {
-            console.log(`[stripe webhook] Comanda already paid: ${comanda._id}`);
+            stripeLog.info("order_already_paid", {
+              requestId: req.id,
+              eventId: event.id,
+              orderId: String(comanda._id),
+            });
           }
         }
       }
     } else if (event.type === "payment_intent.succeeded") {
       const pi = event.data.object || {};
       const orderId = pi?.metadata?.orderId || pi?.metadata?.order_id;
-      console.log(`[stripe webhook] payment_intent.succeeded: orderId=${orderId}, pi=${pi.id}`);
+      stripeLog.info("payment_intent_succeeded", {
+        requestId: req.id,
+        eventId: event.id,
+        orderId: String(orderId || ""),
+        paymentIntentId: String(pi?.id || ""),
+      });
+
       if (!orderId) {
-        console.warn("[stripe webhook] No orderId in payment_intent metadata");
+        stripeLog.warn("order_id_missing_in_payment_intent", {
+          requestId: req.id,
+          eventId: event.id,
+        });
       } else {
         const comanda = await Comanda.findById(orderId);
         if (!comanda) {
-          console.warn(`[stripe webhook] Comanda NOT found for orderId=${orderId}`);
+          stripeLog.warn("order_not_found_for_payment_intent", {
+            requestId: req.id,
+            eventId: event.id,
+            orderId: String(orderId),
+          });
         } else {
-          const changed = await markComandaPaid(comanda, "Stripe payment_intent.succeeded");
+          const changed = await markComandaPaid(
+            comanda,
+            "Stripe payment_intent.succeeded"
+          );
           if (changed) {
-            console.log("[stripe webhook] Comanda marked as paid (payment_intent)");
+            stripeLog.info("order_marked_paid", {
+              requestId: req.id,
+              eventId: event.id,
+              orderId: String(comanda._id),
+              source: "payment_intent.succeeded",
+            });
             await awardFidelizareForPaidOrder(comanda);
           } else {
-            console.log(`[stripe webhook] Comanda already paid: ${comanda._id}`);
+            stripeLog.info("order_already_paid", {
+              requestId: req.id,
+              eventId: event.id,
+              orderId: String(comanda._id),
+            });
           }
         }
       }
@@ -195,12 +268,14 @@ module.exports = async (req, res) => {
       const obj = event.data.object || {};
       const orderId =
         obj?.metadata?.orderId || obj?.client_reference_id || obj?.metadata?.order_id;
+
       if (orderId) {
         const comanda = await Comanda.findById(orderId);
         if (comanda) {
           comanda.paymentStatus = "failed";
           comanda.statusPlata = "failed";
           await comanda.save();
+
           if (comanda.clientId) {
             await notifyUser(comanda.clientId, {
               titlu: "Plata esuata",
@@ -215,17 +290,31 @@ module.exports = async (req, res) => {
             tip: "warning",
             link: "/admin/comenzi",
           });
+
+          stripeLog.warn("order_marked_payment_failed", {
+            requestId: req.id,
+            eventId: event.id,
+            orderId: String(comanda._id),
+            source: event.type,
+          });
         }
       }
     } else {
-      console.log(`[stripe webhook] Unhandled event type: ${event.type}`);
+      stripeLog.info("event_ignored", {
+        requestId: req.id,
+        eventId: event.id,
+        eventType: event.type,
+      });
     }
-  } catch (e) {
-    console.error("[stripe webhook] ❌ Handler error:", e.message);
-    console.error("[stripe webhook] Error stack:", e.stack);
-    // răspundem 500 pentru a permite debugging; Stripe va reîncerca doar la 2xx
-    return res.status(500).json({ error: e.message, details: e.stack });
+  } catch (err) {
+    stripeLog.error("handler_failed", {
+      requestId: req.id,
+      eventId: event?.id,
+      eventType: event?.type,
+      error: serializeError(err),
+    });
+    return res.status(500).json({ error: err.message, details: err.stack });
   }
 
-  res.json({ received: true, eventId: event.id });
+  return res.json({ received: true, eventId: event.id });
 };

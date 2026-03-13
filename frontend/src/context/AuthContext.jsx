@@ -1,6 +1,7 @@
 import { createContext, useContext, useEffect, useState } from "react";
 import api from "/src/lib/api.js";
 import { authStorage } from "/src/lib/authStorage.js";
+import { appLogger } from "/src/lib/appLogger.js";
 
 const AuthContext = createContext(null);
 
@@ -56,7 +57,9 @@ export function AuthProvider({ children }) {
         const normalizedUser = persistSession(token, response.data || null);
         setUser(normalizedUser);
       } catch (error) {
-        console.warn("/utilizatori/me a esuat", error?.response?.status);
+        appLogger.warn("auth_me_request_failed", {
+          status: error?.response?.status || 0,
+        });
         clearSession();
         setUser(null);
       } finally {

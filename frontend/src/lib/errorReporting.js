@@ -1,5 +1,6 @@
 import { authStorage } from "./authStorage";
 import { BASE_URL } from "./api";
+import { appLogger } from "./appLogger";
 
 const REPORT_WINDOW_MS = 15000;
 const recentReports = new Map();
@@ -124,9 +125,9 @@ export async function reportClientError({
       status: response.status,
     };
   } catch (networkError) {
-    if (import.meta.env.DEV) {
-      console.warn("client error reporting failed", networkError);
-    }
+    appLogger.warn("client_error_reporting_failed", {
+      message: networkError?.message || String(networkError),
+    });
     return {
       ok: false,
       error: networkError,

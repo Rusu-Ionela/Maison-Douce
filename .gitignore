@@ -10,3 +10,4 @@ node_modules/
 frontend/dist/
 backend/.generated-vapid.json
 backend/uploads/mail-outbox/
+backups/

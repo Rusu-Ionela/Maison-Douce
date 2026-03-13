@@ -68,6 +68,7 @@ npm run quality
 npm run test:backend:integration
 npm run test:frontend:e2e:ci
 npm run test:frontend:e2e:live
+npm run docker:up
 npm run checklist
 ```
 
@@ -117,6 +118,34 @@ Frontend:
 - raportare pentru render errors, `window.error` si `unhandledrejection`
 - payload-ul trimite URL, release, user context si metadata minima
 
+## Docker
+
+Stack-ul poate rula complet din [docker-compose.yml](docker-compose.yml):
+
+```powershell
+docker compose --env-file backend/.env up --build
+```
+
+Servicii expuse:
+
+- frontend: `http://localhost:8080`
+- backend: `http://localhost:5000/api`
+- mongo: `mongodb://localhost:27017`
+
+Detalii:
+
+- [frontend/Dockerfile](frontend/Dockerfile) construieste bundle-ul Vite si il serveste prin Nginx
+- [frontend/nginx.conf](frontend/nginx.conf) face proxy pentru `/api`, `/uploads` si `/socket.io`
+- [backend/Dockerfile](backend/Dockerfile) porneste API-ul Express cu healthcheck
+
+Scripturi root:
+
+```powershell
+npm run docker:up
+npm run docker:down
+npm run docker:logs
+```
+
 ## Stripe
 
 Fluxurile de plata folosesc:
@@ -147,6 +176,23 @@ npm run test:frontend:e2e:ci
 ```
 
 6. Deploy frontend si backend doar dupa ce quality gates sunt verzi
+7. Fa un backup Mongo inainte de deploy daca actualizezi schema sau rulezi migratii
+
+## Backup si restore Mongo
+
+Backup:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\backup-mongo.ps1 -MongoUri "mongodb://127.0.0.1:27017/torturi"
+```
+
+Restore:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\restore-mongo.ps1 -InputDir ".\backups\mongo-20260313-120000" -MongoUri "mongodb://127.0.0.1:27017/torturi"
+```
+
+Ambele scripturi cer MongoDB Database Tools (`mongodump`, `mongorestore`) in `PATH`.
 
 ## Notite
 

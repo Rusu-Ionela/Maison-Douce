@@ -265,7 +265,10 @@ log("info", "mongo_config", { configured: Boolean(MONGO_URI) });
 
     server.on("error", (err) => {
       if (err.code === "EADDRINUSE") {
-        console.error(`Portul ${PORT} este deja folosit. Schimba PORT in .env`);
+        log("error", "port_in_use", {
+          port: PORT,
+          message: `Portul ${PORT} este deja folosit. Schimba PORT in .env`,
+        });
         process.exit(1);
       }
       throw err;

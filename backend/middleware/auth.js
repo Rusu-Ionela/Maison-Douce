@@ -1,5 +1,8 @@
 const Utilizator = require("../models/Utilizator");
 const { verifyAuthToken } = require("../utils/jwt");
+const { createLogger, serializeError } = require("../utils/log");
+
+const authLog = createLogger("auth");
 
 async function authRequired(req, res, next) {
   try {
@@ -25,7 +28,9 @@ async function authRequired(req, res, next) {
     req.auth = payload;
     next();
   } catch (err) {
-    console.error("Eroare authRequired:", err.message);
+    authLog.error("auth_required_failed", {
+      error: serializeError(err),
+    });
     if (err.message === "JWT_SECRET is not configured.") {
       return res.status(500).json({ message: "Configuratia de autentificare lipseste." });
     }
