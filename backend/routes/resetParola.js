@@ -36,7 +36,7 @@ router.post(
 
     try {
       const utilizator = await Utilizator.findOne({ email });
-      if (!utilizator) {
+      if (!utilizator || utilizator.activ === false) {
         return res.json({ message: GENERIC_RESET_MESSAGE });
       }
 

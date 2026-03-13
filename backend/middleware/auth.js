@@ -23,6 +23,9 @@ async function authRequired(req, res, next) {
     if (!user) {
       return res.status(401).json({ message: "Utilizator inexistent" });
     }
+    if (user.activ === false) {
+      return res.status(401).json({ message: "Contul este dezactivat." });
+    }
 
     req.user = user;
     req.auth = payload;

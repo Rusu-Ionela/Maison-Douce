@@ -412,6 +412,88 @@ test("backend integration flows", async (t) => {
       assert.equal(userAfterReset?.resetTokenExp, undefined);
     });
 
+    await t.test("authenticated users can change password and deactivate their account", async () => {
+      await harness.resetDb();
+
+      const client = await registerUser("client");
+      assert.equal(client.status, 201);
+
+      const changePassword = await harness.request("/utilizatori/me/change-password", {
+        method: "POST",
+        token: client.token,
+        body: {
+          currentPassword: client.password,
+          newPassword: "ChangedSecret123!",
+        },
+      });
+      assert.equal(changePassword.status, 200);
+      assert.equal(changePassword.data?.ok, true);
+      assert.ok(changePassword.data?.user?.lastPasswordChangeAt);
+
+      const loginWithOldPassword = await harness.request("/utilizatori/login", {
+        method: "POST",
+        body: {
+          email: client.user.email,
+          parola: client.password,
+        },
+      });
+      assert.equal(loginWithOldPassword.status, 401);
+
+      const loginWithNewPassword = await harness.request("/utilizatori/login", {
+        method: "POST",
+        body: {
+          email: client.user.email,
+          parola: "ChangedSecret123!",
+        },
+      });
+      assert.equal(loginWithNewPassword.status, 200);
+      assert.ok(loginWithNewPassword.data?.token);
+
+      const deactivateAccount = await harness.request("/utilizatori/me/deactivate", {
+        method: "POST",
+        token: loginWithNewPassword.data.token,
+        body: {
+          currentPassword: "ChangedSecret123!",
+          reason: "Nu mai am nevoie de cont.",
+        },
+      });
+      assert.equal(deactivateAccount.status, 200);
+      assert.equal(deactivateAccount.data?.ok, true);
+
+      const meAfterDeactivate = await harness.request("/utilizatori/me", {
+        token: loginWithNewPassword.data.token,
+      });
+      assert.equal(meAfterDeactivate.status, 401);
+
+      const loginAfterDeactivate = await harness.request("/utilizatori/login", {
+        method: "POST",
+        body: {
+          email: client.user.email,
+          parola: "ChangedSecret123!",
+        },
+      });
+      assert.equal(loginAfterDeactivate.status, 403);
+
+      harness.clearMailOutbox();
+      const resetAfterDeactivate = await harness.request("/reset-parola/send-reset-email", {
+        method: "POST",
+        body: {
+          email: client.user.email,
+        },
+      });
+      assert.equal(resetAfterDeactivate.status, 200);
+      assert.match(resetAfterDeactivate.data?.message || "", /Daca exista un cont/i);
+
+      const deactivatedUser = await Utilizator.findOne({ email: client.user.email })
+        .select("+resetToken +resetTokenExp")
+        .lean();
+      assert.equal(deactivatedUser?.activ, false);
+      assert.ok(deactivatedUser?.deactivatedAt);
+      assert.equal(deactivatedUser?.resetToken || "", "");
+      assert.equal(deactivatedUser?.resetTokenExp, undefined);
+      assert.match(deactivatedUser?.preferinte?.note || "", /Dezactivare cont:/i);
+    });
+
     await t.test("client runtime errors are accepted through the monitoring endpoint", async () => {
       await harness.resetDb();
 

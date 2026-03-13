@@ -89,6 +89,12 @@ router.post(
 
       if (user.rol !== desiredRole) {
         user.rol = desiredRole;
+      }
+      if (user.activ === false) {
+        user.activ = true;
+        user.deactivatedAt = null;
+      }
+      if (user.isModified()) {
         await user.save();
       }
 

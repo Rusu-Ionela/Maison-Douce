@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useNavigate } from "react-router-dom";
 import StatusBanner from "../components/StatusBanner";
 import { useAuth } from "../context/AuthContext";
 import api from "/src/lib/api.js";
@@ -17,6 +18,9 @@ const emptyProfile = {
   nume: "",
   prenume: "",
   email: "",
+  activ: true,
+  deactivatedAt: null,
+  lastPasswordChangeAt: null,
   telefon: "",
   adresa: "",
   adreseSalvate: [],
@@ -37,13 +41,25 @@ function buildProfileState(user) {
 }
 
 export default function ProfilClient() {
+  const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const { user, syncUser } = useAuth() || {};
+  const { user, syncUser, logout } = useAuth() || {};
   const userId = user?._id;
 
   const [profile, setProfile] = useState(emptyProfile);
   const [status, setStatus] = useState({ type: "", message: "" });
+  const [securityStatus, setSecurityStatus] = useState({ type: "", message: "" });
   const [newAddress, setNewAddress] = useState({ label: "", address: "" });
+  const [passwordForm, setPasswordForm] = useState({
+    currentPassword: "",
+    newPassword: "",
+    confirmPassword: "",
+  });
+  const [deactivateForm, setDeactivateForm] = useState({
+    currentPassword: "",
+    confirmEmail: "",
+    reason: "",
+  });
   const [pushState, setPushState] = useState({
     supported: false,
     subscribed: false,
@@ -127,6 +143,63 @@ export default function ProfilClient() {
       setStatus({
         type: "error",
         message: "Nu am putut marca notificarea ca citita.",
+      });
+    },
+  });
+
+  const changePasswordMutation = useMutation({
+    mutationFn: ({ currentPassword, newPassword }) =>
+      api.post("/utilizatori/me/change-password", {
+        currentPassword,
+        newPassword,
+      }),
+    onSuccess: (response) => {
+      const nextUser = response?.data?.user || null;
+      const syncedUser = nextUser && syncUser ? syncUser(nextUser) : nextUser;
+      if (syncedUser || nextUser) {
+        setProfile(buildProfileState(syncedUser || nextUser));
+      }
+      setPasswordForm({
+        currentPassword: "",
+        newPassword: "",
+        confirmPassword: "",
+      });
+      setSecurityStatus({
+        type: "success",
+        message: response?.data?.message || "Parola a fost schimbata cu succes.",
+      });
+    },
+    onError: (error) => {
+      setSecurityStatus({
+        type: "error",
+        message: getApiErrorMessage(error, "Nu am putut schimba parola."),
+      });
+    },
+  });
+
+  const deactivateAccountMutation = useMutation({
+    mutationFn: ({ currentPassword, reason }) =>
+      api.post("/utilizatori/me/deactivate", {
+        currentPassword,
+        reason,
+      }),
+    onSuccess: async (response) => {
+      setSecurityStatus({
+        type: "warning",
+        message:
+          response?.data?.message ||
+          "Contul a fost dezactivat. Vei fi deconectat automat.",
+      });
+      setTimeout(() => {
+        logout?.();
+        queryClient.clear();
+        navigate("/", { replace: true });
+      }, 1200);
+    },
+    onError: (error) => {
+      setSecurityStatus({
+        type: "error",
+        message: getApiErrorMessage(error, "Nu am putut dezactiva contul."),
       });
     },
   });
@@ -216,6 +289,63 @@ export default function ProfilClient() {
     event.preventDefault();
     setStatus({ type: "", message: "" });
     saveProfileMutation.mutate(profile);
+  };
+
+  const submitPasswordChange = (event) => {
+    event.preventDefault();
+    setSecurityStatus({ type: "", message: "" });
+
+    if (!passwordForm.currentPassword || !passwordForm.newPassword) {
+      setSecurityStatus({
+        type: "warning",
+        message: "Completeaza parola curenta si parola noua.",
+      });
+      return;
+    }
+    if (passwordForm.newPassword.length < 8) {
+      setSecurityStatus({
+        type: "warning",
+        message: "Parola noua trebuie sa aiba minim 8 caractere.",
+      });
+      return;
+    }
+    if (passwordForm.newPassword !== passwordForm.confirmPassword) {
+      setSecurityStatus({
+        type: "warning",
+        message: "Confirmarea parolei nu coincide.",
+      });
+      return;
+    }
+
+    changePasswordMutation.mutate({
+      currentPassword: passwordForm.currentPassword,
+      newPassword: passwordForm.newPassword,
+    });
+  };
+
+  const submitDeactivateAccount = (event) => {
+    event.preventDefault();
+    setSecurityStatus({ type: "", message: "" });
+
+    if (!deactivateForm.currentPassword) {
+      setSecurityStatus({
+        type: "warning",
+        message: "Introdu parola curenta pentru a confirma dezactivarea.",
+      });
+      return;
+    }
+    if (deactivateForm.confirmEmail.trim().toLowerCase() !== String(profile.email || "").toLowerCase()) {
+      setSecurityStatus({
+        type: "warning",
+        message: "Introdu exact adresa de email a contului pentru confirmare.",
+      });
+      return;
+    }
+
+    deactivateAccountMutation.mutate({
+      currentPassword: deactivateForm.currentPassword,
+      reason: deactivateForm.reason,
+    });
   };
 
   const orders = ordersQuery.data || [];
@@ -509,6 +639,147 @@ export default function ProfilClient() {
             {saveProfileMutation.isPending ? "Se salveaza..." : "Salveaza profilul"}
           </button>
         </form>
+
+        <section className="bg-white rounded-2xl border border-rose-100 p-6 shadow-sm space-y-4">
+          <div>
+            <h2 className="text-xl font-semibold">Security Center</h2>
+            <p className="text-gray-600 text-sm">
+              Schimba parola contului si gestioneaza dezactivarea lui.
+            </p>
+            <div className="mt-2 text-sm text-gray-600">
+              Status cont:{" "}
+              <span className={profile.activ === false ? "text-rose-700 font-semibold" : "text-emerald-700 font-semibold"}>
+                {profile.activ === false ? "dezactivat" : "activ"}
+              </span>
+            </div>
+            <div className="text-sm text-gray-600">
+              Ultima schimbare parola:{" "}
+              {profile.lastPasswordChangeAt
+                ? new Date(profile.lastPasswordChangeAt).toLocaleString()
+                : "necunoscuta"}
+            </div>
+          </div>
+
+          <StatusBanner type={securityStatus.type || "info"} message={securityStatus.message} />
+
+          <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+            <form
+              onSubmit={submitPasswordChange}
+              className="rounded-2xl border border-gray-100 bg-gray-50 p-4 space-y-3"
+            >
+              <h3 className="text-lg font-semibold text-gray-900">Schimba parola</h3>
+              <label className="block text-sm font-semibold text-gray-700">
+                Parola curenta
+                <input
+                  type="password"
+                  value={passwordForm.currentPassword}
+                  onChange={(event) =>
+                    setPasswordForm((current) => ({
+                      ...current,
+                      currentPassword: event.target.value,
+                    }))
+                  }
+                  className="mt-1 w-full border rounded-lg p-2"
+                />
+              </label>
+              <label className="block text-sm font-semibold text-gray-700">
+                Parola noua
+                <input
+                  type="password"
+                  value={passwordForm.newPassword}
+                  onChange={(event) =>
+                    setPasswordForm((current) => ({
+                      ...current,
+                      newPassword: event.target.value,
+                    }))
+                  }
+                  className="mt-1 w-full border rounded-lg p-2"
+                />
+              </label>
+              <label className="block text-sm font-semibold text-gray-700">
+                Confirma parola noua
+                <input
+                  type="password"
+                  value={passwordForm.confirmPassword}
+                  onChange={(event) =>
+                    setPasswordForm((current) => ({
+                      ...current,
+                      confirmPassword: event.target.value,
+                    }))
+                  }
+                  className="mt-1 w-full border rounded-lg p-2"
+                />
+              </label>
+              <button
+                type="submit"
+                disabled={changePasswordMutation.isPending}
+                className="px-4 py-2 rounded-lg bg-gray-900 text-white disabled:opacity-60"
+              >
+                {changePasswordMutation.isPending ? "Se actualizeaza..." : "Actualizeaza parola"}
+              </button>
+            </form>
+
+            <form
+              onSubmit={submitDeactivateAccount}
+              className="rounded-2xl border border-rose-200 bg-rose-50 p-4 space-y-3"
+            >
+              <h3 className="text-lg font-semibold text-rose-900">Dezactiveaza contul</h3>
+              <p className="text-sm text-rose-800">
+                Dezactivarea opreste autentificarea pe acest cont si notificarile. Nu exista
+                reactivare self-service in acest moment.
+              </p>
+              <label className="block text-sm font-semibold text-gray-700">
+                Parola curenta
+                <input
+                  type="password"
+                  value={deactivateForm.currentPassword}
+                  onChange={(event) =>
+                    setDeactivateForm((current) => ({
+                      ...current,
+                      currentPassword: event.target.value,
+                    }))
+                  }
+                  className="mt-1 w-full border rounded-lg p-2"
+                />
+              </label>
+              <label className="block text-sm font-semibold text-gray-700">
+                Confirma emailul contului
+                <input
+                  type="email"
+                  value={deactivateForm.confirmEmail}
+                  onChange={(event) =>
+                    setDeactivateForm((current) => ({
+                      ...current,
+                      confirmEmail: event.target.value,
+                    }))
+                  }
+                  className="mt-1 w-full border rounded-lg p-2"
+                  placeholder={profile.email}
+                />
+              </label>
+              <label className="block text-sm font-semibold text-gray-700">
+                Motiv (optional)
+                <textarea
+                  value={deactivateForm.reason}
+                  onChange={(event) =>
+                    setDeactivateForm((current) => ({
+                      ...current,
+                      reason: event.target.value,
+                    }))
+                  }
+                  className="mt-1 w-full border rounded-lg p-2 min-h-[90px]"
+                />
+              </label>
+              <button
+                type="submit"
+                disabled={deactivateAccountMutation.isPending}
+                className="px-4 py-2 rounded-lg bg-rose-700 text-white disabled:opacity-60"
+              >
+                {deactivateAccountMutation.isPending ? "Se dezactiveaza..." : "Dezactiveaza contul"}
+              </button>
+            </form>
+          </div>
+        </section>
 
         <section className="bg-white rounded-2xl border border-rose-100 p-6 shadow-sm space-y-4">
           <h2 className="text-xl font-semibold">Istoric comenzi</h2>

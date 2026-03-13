@@ -24,6 +24,9 @@ const UtilizatorSchema = new mongoose.Schema({
     prenume: String,
     email: { type: String, unique: true, lowercase: true, trim: true, required: true },
     rol: { type: String, enum: ["client", "admin", "patiser", "prestator"], default: "client" },
+    activ: { type: Boolean, default: true },
+    deactivatedAt: { type: Date, default: null },
+    lastPasswordChangeAt: { type: Date, default: null },
 
     telefon: String,
     adresa: String,
@@ -55,6 +58,7 @@ UtilizatorSchema.methods.setPassword = async function setPassword(plain) {
     const salt = await bcrypt.genSalt(10);
     this.parolaHash = await bcrypt.hash(plain, salt);
     this.parola = undefined;
+    this.lastPasswordChangeAt = new Date();
 };
 
 UtilizatorSchema.methods.comparePassword = async function comparePassword(plain) {

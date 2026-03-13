@@ -31,6 +31,13 @@ const resetLimiter = rateLimit({
   legacyHeaders: false,
 });
 
+const securityLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 15,
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
 function createToken(user) {
   return signAuthToken(user);
 }
@@ -51,6 +58,9 @@ function serializeUser(user) {
     prenume: user.prenume || "",
     email: user.email,
     rol: user.rol,
+    activ: user.activ !== false,
+    deactivatedAt: user.deactivatedAt || null,
+    lastPasswordChangeAt: user.lastPasswordChangeAt || null,
     telefon: user.telefon || "",
     adresa: user.adresa || "",
     preferinte: user.preferinte || {},
@@ -291,6 +301,9 @@ router.post(
       if (!user) {
         return res.status(401).json({ message: "Email sau parola gresite" });
       }
+      if (user.activ === false) {
+        return res.status(403).json({ message: "Contul este dezactivat." });
+      }
 
       const ok = await user.comparePassword(parola);
       if (!ok) {
@@ -403,6 +416,122 @@ router.put(
 );
 
 router.post(
+  "/me/change-password",
+  authRequired,
+  securityLimiter,
+  withValidation((req) => ({
+    currentPassword: readString(req.body?.currentPassword, {
+      field: "currentPassword",
+      required: true,
+      min: 1,
+      max: 200,
+    }),
+    newPassword: readString(req.body?.newPassword, {
+      field: "newPassword",
+      required: true,
+      min: 8,
+      max: 200,
+    }),
+  }), async (req, res) => {
+    try {
+      const user = await Utilizator.findById(req.user.id || req.user._id).select("+parolaHash +parola");
+      if (!user) {
+        return res.status(404).json({ message: "Utilizator inexistent" });
+      }
+      if (user.activ === false) {
+        return res.status(403).json({ message: "Contul este dezactivat." });
+      }
+
+      const { currentPassword, newPassword } = req.validated;
+      const ok = await user.comparePassword(currentPassword);
+      if (!ok) {
+        return res.status(401).json({ message: "Parola curenta este incorecta." });
+      }
+      if (currentPassword === newPassword) {
+        return res.status(409).json({
+          message: "Noua parola trebuie sa fie diferita de parola curenta.",
+        });
+      }
+
+      await user.setPassword(newPassword);
+      user.resetToken = "";
+      user.resetTokenExp = undefined;
+      await user.save();
+
+      res.json({
+        ok: true,
+        message: "Parola a fost schimbata cu succes.",
+        user: serializeUser(user),
+      });
+    } catch (e) {
+      console.error("change-password error:", e.message);
+      res.status(500).json({ message: "Eroare server la schimbare parola." });
+    }
+  })
+);
+
+router.post(
+  "/me/deactivate",
+  authRequired,
+  securityLimiter,
+  withValidation((req) => ({
+    currentPassword: readString(req.body?.currentPassword, {
+      field: "currentPassword",
+      required: true,
+      min: 1,
+      max: 200,
+    }),
+    reason: readString(req.body?.reason, {
+      field: "reason",
+      max: 500,
+      defaultValue: "",
+    }),
+  }), async (req, res) => {
+    try {
+      const user = await Utilizator.findById(req.user.id || req.user._id).select("+parolaHash +parola");
+      if (!user) {
+        return res.status(404).json({ message: "Utilizator inexistent" });
+      }
+      if (user.activ === false) {
+        return res.status(409).json({ message: "Contul este deja dezactivat." });
+      }
+
+      const ok = await user.comparePassword(req.validated.currentPassword);
+      if (!ok) {
+        return res.status(401).json({ message: "Parola curenta este incorecta." });
+      }
+
+      user.activ = false;
+      user.deactivatedAt = new Date();
+      user.resetToken = "";
+      user.resetTokenExp = undefined;
+      user.setariNotificari = {
+        email: false,
+        inApp: false,
+        push: false,
+      };
+      if (req.validated.reason) {
+        user.preferinte = {
+          ...(user.preferinte || {}),
+          note: [user.preferinte?.note || "", `Dezactivare cont: ${req.validated.reason}`]
+            .filter(Boolean)
+            .join("\n"),
+        };
+      }
+      await user.save();
+
+      res.json({
+        ok: true,
+        message: "Contul a fost dezactivat.",
+      });
+    } catch (e) {
+      console.error("deactivate-account error:", e.message);
+      res.status(500).json({ message: "Eroare server la dezactivare cont." });
+    }
+  })
+);
+
+router.post(
   "/reset-password",
   resetLimiter,
   withValidation((req) => ({
@@ -432,6 +561,9 @@ router.post(
         return res
           .status(400)
           .json({ message: "Linkul de resetare este invalid sau expirat." });
+      }
+      if (user.activ === false) {
+        return res.status(403).json({ message: "Contul este dezactivat." });
       }
 
       await user.setPassword(newPassword);

@@ -12,6 +12,9 @@ exports.login = async (req, res) => {
   if (!user) {
     return res.status(401).json({ message: "Credentiale invalide" });
   }
+  if (user.activ === false) {
+    return res.status(403).json({ message: "Contul este dezactivat." });
+  }
 
   const ok = await user.comparePassword(parola);
   if (!ok) {
