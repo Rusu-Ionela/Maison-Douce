@@ -10,6 +10,7 @@ const Rezervare = require("../models/Rezervare");
 const CalendarPrestator = require("../models/CalendarPrestator");
 const CalendarDayCapacity = require("../models/CalendarDayCapacity");
 const { notifyUser, notifyAdmins } = require("../utils/notifications");
+const { recordAuditLog } = require("../utils/audit");
 const Utilizator = require("../models/Utilizator");
 // const Utilizator = require("../models/Utilizator"); // folosește dacă vrei populate
 
@@ -455,6 +456,7 @@ router.patch("/:id/status", authRequired, roleCheck("admin", "patiser"), async (
         // încearcă Comanda
         let doc = await Comanda.findById(id);
         if (doc) {
+            const previousStatus = doc.status;
             const paid = doc.paymentStatus === "paid" || doc.statusPlata === "paid";
             const requiresPaid = ["acceptata", "in_lucru", "gata", "livrata", "ridicata", "confirmata"];
             if (!paid && requiresPaid.includes(nou)) {
@@ -471,6 +473,18 @@ router.patch("/:id/status", authRequired, roleCheck("admin", "patiser"), async (
                 mesaj: `Comanda #${doc.numeroComanda || doc._id} este acum: ${nou}.`,
                 tip: "status",
                 link: `/plata?comandaId=${doc._id}`,
+            });
+
+            await recordAuditLog(req, {
+                action: "order.status.updated",
+                entityType: "comanda",
+                entityId: doc._id,
+                summary: `Status comanda actualizat la ${nou}`,
+                metadata: {
+                    previousStatus,
+                    nextStatus: nou,
+                    note: req.body?.note || "",
+                },
             });
 
             return res.json({ ok: true, _source: "comanda" });
@@ -506,6 +520,17 @@ router.patch("/:id/status", authRequired, roleCheck("admin", "patiser"), async (
 
         doc = await Rezervare.findByIdAndUpdate(id, { $set: update }, { new: true });
         if (!doc) return res.status(404).json({ message: "Comanda/Rezervarea nu a fost găsită." });
+
+        await recordAuditLog(req, {
+            action: "reservation.status.updated",
+            entityType: "rezervare",
+            entityId: doc._id,
+            summary: `Status rezervare actualizat la ${nou}`,
+            metadata: {
+                nextStatus: update.status || nou,
+                handoffStatus: update.handoffStatus || "",
+            },
+        });
 
         res.json({ ok: true, _source: "rezervare" });
     } catch (e) {
@@ -564,6 +589,17 @@ router.patch("/:id/price", authRequired, roleCheck("admin", "patiser"), async (r
             mesaj: `Pret nou pentru comanda #${comanda.numeroComanda || comanda._id}: ${comanda.totalFinal || comanda.total} MDL.`,
             tip: "update",
             link: `/plata?comandaId=${comanda._id}`,
+        });
+
+        await recordAuditLog(req, {
+            action: "order.price.updated",
+            entityType: "comanda",
+            entityId: comanda._id,
+            summary: "Pret comanda actualizat",
+            metadata: {
+                updates,
+                note: noteText,
+            },
         });
 
         res.json({ ok: true, comanda });
@@ -638,6 +674,22 @@ router.patch("/:id/schedule", authRequired, roleCheck("admin", "patiser"), async
             tip: "update",
             link: `/plata?comandaId=${comanda._id}`,
         });
+        await recordAuditLog(req, {
+            action: "order.schedule.updated",
+            entityType: "comanda",
+            entityId: comanda._id,
+            summary: "Comanda reprogramata",
+            metadata: {
+                previousSchedule: {
+                    dataLivrare: prevDate || "",
+                    oraLivrare: prevTime || "",
+                },
+                nextSchedule: {
+                    dataLivrare,
+                    oraLivrare,
+                },
+            },
+        });
         res.json({ ok: true });
     } catch (e) {
         console.error("schedule update error:", e);
@@ -664,6 +716,15 @@ router.patch("/:id/refuza", authRequired, roleCheck("admin", "patiser"), async (
             mesaj: comanda.motivRefuz,
             tip: "warning",
             link: `/plata?comandaId=${comanda._id}`,
+        });
+        await recordAuditLog(req, {
+            action: "order.rejected",
+            entityType: "comanda",
+            entityId: comanda._id,
+            summary: "Comanda refuzata",
+            metadata: {
+                motiv: comanda.motivRefuz,
+            },
         });
         res.json({ ok: true });
     } catch (e) {
@@ -825,6 +886,17 @@ router.patch("/:id/cancel", authRequired, async (req, res) => {
                 console.warn('[comanda cancel] eliberare slot warning:', err?.message || err);
             }
         }
+
+        await recordAuditLog(req, {
+            action: "order.cancelled",
+            entityType: "comanda",
+            entityId: doc._id,
+            summary: "Comanda anulata",
+            metadata: {
+                actorIsStaff: isStaff,
+                clientId: String(doc.clientId || ""),
+            },
+        });
 
         res.json({ ok: true, status: doc.status });
     } catch (e) {

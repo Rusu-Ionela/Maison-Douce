@@ -111,6 +111,7 @@ Backend:
 - logging structurat in [`backend/utils/log.js`](backend/utils/log.js)
 - health endpoint la `/api/health`
 - endpoint pentru erori runtime din frontend la `/api/monitoring/client-error`
+- audit trail admin-only la `/api/audit`
 
 Frontend:
 

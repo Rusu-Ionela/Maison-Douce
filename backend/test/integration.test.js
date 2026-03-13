@@ -435,6 +435,41 @@ test("backend integration flows", async (t) => {
       assert.equal(report.data?.ok, true);
     });
 
+    await t.test("admin actions are persisted in the audit trail", async () => {
+      await harness.resetDb();
+
+      const client = await registerUser("client");
+      const admin = await seedUser("admin");
+      assert.equal(client.status, 201);
+      assert.equal(admin.status, 200);
+
+      const createdOrder = await createOrder(client.token);
+      assert.equal(createdOrder.status, 201);
+
+      const updateStatus = await harness.request(`/comenzi/${createdOrder.data._id}/status`, {
+        method: "PATCH",
+        token: admin.token,
+        body: {
+          status: "anulata",
+          note: "Audit integration test",
+        },
+      });
+      assert.equal(updateStatus.status, 200);
+
+      const auditLogs = await harness.request(
+        "/audit?action=order.status.updated&entityType=comanda&limit=5",
+        {
+          token: admin.token,
+        }
+      );
+      assert.equal(auditLogs.status, 200);
+      assert.ok(Array.isArray(auditLogs.data?.items));
+      assert.equal(auditLogs.data.items.length, 1);
+      assert.equal(auditLogs.data.items[0].action, "order.status.updated");
+      assert.equal(String(auditLogs.data.items[0].entityId), String(createdOrder.data._id));
+      assert.equal(auditLogs.data.items[0].actorRole, "admin");
+    });
+
     await t.test("orders and wallets remain owner scoped", async () => {
       await harness.resetDb();
 

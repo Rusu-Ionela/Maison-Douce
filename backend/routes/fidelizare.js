@@ -5,6 +5,7 @@ const Fidelizare = require("../models/Fidelizare");
 const FidelizareConfig = require("../models/FidelizareConfig");
 const Comanda = require("../models/Comanda");
 const { authRequired, roleCheck } = require("../middleware/auth");
+const { recordAuditLog } = require("../utils/audit");
 
 async function ensureConfig() {
   let config = await FidelizareConfig.findOne().lean();
@@ -108,6 +109,13 @@ router.put(
         { $set: update },
         { new: true, upsert: true }
       );
+      await recordAuditLog(req, {
+        action: "loyalty.config.updated",
+        entityType: "fidelizare_config",
+        entityId: cfg._id,
+        summary: "Configuratia de fidelizare a fost actualizata",
+        metadata: update,
+      });
       res.json({ ok: true, config: cfg });
     } catch (e) {
       res.status(500).json({ message: "Eroare la salvare config." });
@@ -202,6 +210,19 @@ router.post(
       });
       await fidelizare.save();
 
+      await recordAuditLog(req, {
+        action: "loyalty.voucher.created",
+        entityType: "fidelizare",
+        entityId: fidelizare._id,
+        summary: `Voucher creat pentru utilizatorul ${utilizatorId}`,
+        metadata: {
+          utilizatorId: String(utilizatorId),
+          cod: code,
+          procent: Number(procent || 0),
+          valoareFixa: Number(valoareFixa || 0),
+        },
+      });
+
       res.json({ ok: true, voucher });
     } catch (e) {
       res.status(500).json({ message: "Eroare la creare voucher." });
@@ -258,6 +279,19 @@ router.post("/add-points", authRequired, roleCheck("admin"), async (req, res) =>
     }
 
     await fidelizare.save();
+
+    await recordAuditLog(req, {
+      action: "loyalty.points.added",
+      entityType: "fidelizare",
+      entityId: fidelizare._id,
+      summary: `Puncte adaugate pentru utilizatorul ${utilizatorId}`,
+      metadata: {
+        utilizatorId: String(utilizatorId),
+        puncte: Number(puncte || 0),
+        sursa,
+        comandaId: String(comandaId || ""),
+      },
+    });
 
     return res.json({
       ok: true,

@@ -17,6 +17,7 @@ const {
   toPublicUploadPath,
   withUpload,
 } = require("../utils/multer");
+const { recordAuditLog } = require("../utils/audit");
 
 const upload = createUploadMiddleware({
   subdir: "torturi",
@@ -271,6 +272,16 @@ router.post(
       };
 
       const tort = await Tort.create(data);
+      await recordAuditLog(req, {
+        action: "catalog.cake.created",
+        entityType: "tort",
+        entityId: tort._id,
+        summary: `Tort creat: ${tort.nume || tort._id}`,
+        metadata: {
+          nume: tort.nume || "",
+          categorie: tort.categorie || "",
+        },
+      });
       res.status(201).json(tort);
     } catch (err) {
       cleanupUploadedFiles(req);
@@ -345,6 +356,15 @@ router.put(
       });
 
       if (!tort) return res.status(404).json({ message: "Tort negasit" });
+      await recordAuditLog(req, {
+        action: "catalog.cake.updated",
+        entityType: "tort",
+        entityId: tort._id,
+        summary: `Tort actualizat: ${tort.nume || tort._id}`,
+        metadata: {
+          nume: tort.nume || "",
+        },
+      });
       res.json(tort);
     } catch (err) {
       cleanupUploadedFiles(req);
@@ -366,6 +386,15 @@ router.delete(
     try {
       const tort = await Tort.findByIdAndDelete(req.validated.id);
       if (!tort) return res.status(404).json({ message: "Tort negasit" });
+      await recordAuditLog(req, {
+        action: "catalog.cake.deleted",
+        entityType: "tort",
+        entityId: tort._id,
+        summary: `Tort sters: ${tort.nume || tort._id}`,
+        metadata: {
+          nume: tort.nume || "",
+        },
+      });
       res.json({ message: "Tort sters cu succes" });
     } catch (err) {
       res.status(500).json({ message: err.message });
