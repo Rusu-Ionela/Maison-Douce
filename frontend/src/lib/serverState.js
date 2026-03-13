@@ -13,6 +13,12 @@ export const queryKeys = {
   orderDetail: (orderId) => ["orders", "detail", orderId],
   mySubscription: () => ["subscriptions", "me"],
   adminSubscriptions: () => ["admin", "subscriptions"],
+  adminCoupons: (filters = {}) => [
+    "admin",
+    "coupons",
+    filters.search || "",
+    filters.status || "",
+  ],
   paymentIntent: (orderId, totalFinal) => [
     "payments",
     "intent",
@@ -58,6 +64,16 @@ export async function fetchMySubscription() {
 export async function fetchAdminSubscriptions() {
   const { data } = await api.get("/cutie-lunara");
   return asArray(data);
+}
+
+export async function fetchAdminCoupons(filters = {}) {
+  const { data } = await api.get("/coupon/admin", {
+    params: {
+      search: filters.search || "",
+      status: filters.status || "",
+    },
+  });
+  return asArray(data?.items);
 }
 
 export async function fetchWalletDetails(userId) {

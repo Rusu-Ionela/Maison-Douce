@@ -652,6 +652,229 @@ test("backend integration flows", async (t) => {
       assert.equal(blockedCoupon.status, 409);
     });
 
+    await t.test("admin coupon management supports limits expiry and activation rules", async () => {
+      await harness.resetDb();
+
+      const admin = await seedUser("admin");
+      const client = await registerUser("client");
+      const other = await registerUser("client");
+      assert.equal(admin.status, 200);
+      assert.equal(client.status, 201);
+      assert.equal(other.status, 201);
+
+      const fixedCoupon = await harness.request("/coupon/admin", {
+        method: "POST",
+        token: admin.token,
+        body: {
+          cod: "FIX50",
+          descriere: "Reducere fixa pentru client VIP",
+          tipReducere: "fixed",
+          procentReducere: 0,
+          valoareFixa: 50,
+          valoareMinima: 100,
+          usageLimit: 2,
+          perUserLimit: 1,
+          allowedUserId: client.user.id,
+          dataExpirare: futureDate(15),
+          notesAdmin: "Test management",
+        },
+      });
+      assert.equal(fixedCoupon.status, 201);
+      assert.equal(fixedCoupon.data?.coupon?.tipReducere, "fixed");
+      assert.equal(fixedCoupon.data?.coupon?.valoareFixa, 50);
+
+      const updateFixedCoupon = await harness.request(
+        `/coupon/admin/${fixedCoupon.data.coupon._id}`,
+        {
+          method: "PATCH",
+          token: admin.token,
+          body: {
+            descriere: "Reducere fixa updatata",
+            notesAdmin: "Updated note",
+          },
+        }
+      );
+      assert.equal(updateFixedCoupon.status, 200);
+      assert.equal(updateFixedCoupon.data?.coupon?.descriere, "Reducere fixa updatata");
+
+      const adminList = await harness.request("/coupon/admin?status=active", {
+        token: admin.token,
+      });
+      assert.equal(adminList.status, 200);
+      assert.equal(adminList.data?.items?.length, 1);
+      assert.equal(adminList.data?.items?.[0]?.cod, "FIX50");
+
+      const deactivateCoupon = await harness.request(
+        `/coupon/admin/${fixedCoupon.data.coupon._id}`,
+        {
+          method: "PATCH",
+          token: admin.token,
+          body: { activ: false },
+        }
+      );
+      assert.equal(deactivateCoupon.status, 200);
+      assert.equal(deactivateCoupon.data?.coupon?.activ, false);
+
+      const verifyInactive = await harness.request("/coupon/verify/FIX50");
+      assert.equal(verifyInactive.status, 404);
+
+      const reactivateCoupon = await harness.request(
+        `/coupon/admin/${fixedCoupon.data.coupon._id}`,
+        {
+          method: "PATCH",
+          token: admin.token,
+          body: { activ: true },
+        }
+      );
+      assert.equal(reactivateCoupon.status, 200);
+      assert.equal(reactivateCoupon.data?.coupon?.activ, true);
+
+      const unauthorizedOrder = await createOrder(other.token, {
+        items: [
+          {
+            productId: "coupon-order-other",
+            name: "Order for restricted coupon",
+            qty: 1,
+            price: 200,
+          },
+        ],
+      });
+      assert.equal(unauthorizedOrder.status, 201);
+      const unauthorizedApply = await harness.request("/coupon/apply", {
+        method: "POST",
+        token: other.token,
+        body: {
+          cod: "FIX50",
+          comandaId: unauthorizedOrder.data._id,
+        },
+      });
+      assert.equal(unauthorizedApply.status, 409);
+
+      const eligibleOrder = await createOrder(client.token, {
+        items: [
+          {
+            productId: "coupon-order-client",
+            name: "Eligible coupon order",
+            qty: 1,
+            price: 200,
+          },
+        ],
+      });
+      assert.equal(eligibleOrder.status, 201);
+      const fixedApply = await harness.request("/coupon/apply", {
+        method: "POST",
+        token: client.token,
+        body: {
+          cod: "FIX50",
+          comandaId: eligibleOrder.data._id,
+        },
+      });
+      assert.equal(fixedApply.status, 200);
+      assert.equal(fixedApply.data?.discount, 50);
+      assert.equal(fixedApply.data?.newTotal, 150);
+
+      const perUserLimitOrder = await createOrder(client.token, {
+        items: [
+          {
+            productId: "coupon-order-repeat",
+            name: "Repeat coupon order",
+            qty: 1,
+            price: 180,
+          },
+        ],
+      });
+      assert.equal(perUserLimitOrder.status, 201);
+      const blockedByPerUserLimit = await harness.request("/coupon/apply", {
+        method: "POST",
+        token: client.token,
+        body: {
+          cod: "FIX50",
+          comandaId: perUserLimitOrder.data._id,
+        },
+      });
+      assert.equal(blockedByPerUserLimit.status, 409);
+
+      const onceCoupon = await harness.request("/coupon/admin", {
+        method: "POST",
+        token: admin.token,
+        body: {
+          cod: "ONCE20",
+          tipReducere: "percent",
+          procentReducere: 20,
+          usageLimit: 1,
+          perUserLimit: 0,
+        },
+      });
+      assert.equal(onceCoupon.status, 201);
+
+      const onceOrder = await createOrder(client.token, {
+        items: [
+          {
+            productId: "coupon-once-order",
+            name: "Single use coupon order",
+            qty: 1,
+            price: 300,
+          },
+        ],
+      });
+      assert.equal(onceOrder.status, 201);
+      const onceApply = await harness.request("/coupon/apply", {
+        method: "POST",
+        token: client.token,
+        body: {
+          cod: "ONCE20",
+          comandaId: onceOrder.data._id,
+        },
+      });
+      assert.equal(onceApply.status, 200);
+      assert.equal(onceApply.data?.discount, 60);
+
+      const blockedByUsageLimitOrder = await createOrder(other.token, {
+        items: [
+          {
+            productId: "coupon-usage-limit-order",
+            name: "Usage limit coupon order",
+            qty: 1,
+            price: 250,
+          },
+        ],
+      });
+      assert.equal(blockedByUsageLimitOrder.status, 201);
+      const blockedByUsageLimit = await harness.request("/coupon/apply", {
+        method: "POST",
+        token: other.token,
+        body: {
+          cod: "ONCE20",
+          comandaId: blockedByUsageLimitOrder.data._id,
+        },
+      });
+      assert.equal(blockedByUsageLimit.status, 409);
+
+      const expiredCoupon = await harness.request("/coupon/admin", {
+        method: "POST",
+        token: admin.token,
+        body: {
+          cod: "EXPIRED10",
+          tipReducere: "percent",
+          procentReducere: 10,
+          dataExpirare: futureDate(-1),
+        },
+      });
+      assert.equal(expiredCoupon.status, 201);
+
+      const verifyExpired = await harness.request("/coupon/verify/EXPIRED10");
+      assert.equal(verifyExpired.status, 404);
+
+      const listWithUsage = await harness.request("/coupon/admin", {
+        token: admin.token,
+      });
+      assert.equal(listWithUsage.status, 200);
+      const onceCouponSummary = listWithUsage.data?.items?.find(
+        (item) => item.cod === "ONCE20"
+      );
+      assert.equal(onceCouponSummary?.usedCount, 1);
+    });
+
     await t.test("subscriptions support pause resume pending plan changes and staff management", async () => {
       await harness.resetDb();
 
