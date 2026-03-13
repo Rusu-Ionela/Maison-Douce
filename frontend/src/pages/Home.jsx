@@ -375,7 +375,7 @@ export default function Home() {
               <Link to="/abonament" className="px-4 py-3 rounded-lg bg-pink-500 text-white hover:bg-pink-600 shadow">
                 Vezi planuri
               </Link>
-              <Link to="/abonament/form" className="px-4 py-3 rounded-lg border border-pink-200 text-pink-600 hover:bg-pink-50">
+              <Link to="/abonament?plan=basic" className="px-4 py-3 rounded-lg border border-pink-200 text-pink-600 hover:bg-pink-50">
                 Aboneaza-te
               </Link>
             </div>

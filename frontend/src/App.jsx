@@ -24,8 +24,6 @@ const FAQ = lazyPage("./pages/FAQ.jsx");
 const Termeni = lazyPage("./pages/Termeni.jsx");
 const Confidentialitate = lazyPage("./pages/Confidentialitate.jsx");
 const HartaSite = lazyPage("./pages/HartaSite.jsx");
-const AbonamentCutie = lazyPage("./pages/AbonamentCutie.jsx");
-const AbonamentCutieForm = lazyPage("./pages/AbonamentCutieForm.jsx");
 const Abonament = lazyPage("./pages/Abonament.jsx");
 const CreareAlbum = lazyPage("./pages/CreareAlbum.jsx");
 const VizualizareAlbume = lazyPage("./pages/VizualizareAlbume.jsx");
@@ -69,6 +67,7 @@ const AdminRapoarte = lazyPage("./pages/AdminRapoarte.jsx");
 const AdminStats = lazyPage("./pages/AdminStats.jsx");
 const AdminNotificari = lazyPage("./pages/AdminNotificari.jsx");
 const AdminFidelizare = lazyPage("./pages/AdminFidelizare.jsx");
+const AdminAbonamente = lazyPage("./pages/AdminAbonamente.jsx");
 const AdminAlbume = lazyPage("./pages/AdminAlbume.jsx");
 const AdminProduction = lazyPage("./pages/AdminProduction.jsx");
 const AdminContactMesaje = lazyPage("./pages/AdminContactMesaje.jsx");
@@ -159,8 +158,8 @@ export default function App() {
           <Route path="/termeni" element={<Termeni />} />
           <Route path="/confidentialitate" element={<Confidentialitate />} />
           <Route path="/harta-site" element={<HartaSite />} />
-          <Route path="/abonament" element={<AbonamentCutie />} />
-          <Route path="/abonament/form" element={<AbonamentCutieForm />} />
+          <Route path="/abonament" element={<Abonament />} />
+          <Route path="/abonament/form" element={<Abonament />} />
           <Route path="/abonament/planuri" element={<Abonament />} />
           <Route path="/comanda" element={<ComandaClient />} />
           <Route path="/comanda-demo" element={<Navigate to="/comanda" replace />} />
@@ -423,6 +422,14 @@ export default function App() {
               <RequireAdmin>
                 <AdminFidelizare />
               </RequireAdmin>
+            }
+          />
+          <Route
+            path="/admin/abonamente"
+            element={
+              <RequireStaff>
+                <AdminAbonamente />
+              </RequireStaff>
             }
           />
           <Route

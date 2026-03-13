@@ -652,6 +652,180 @@ test("backend integration flows", async (t) => {
       assert.equal(blockedCoupon.status, 409);
     });
 
+    await t.test("subscriptions support pause resume pending plan changes and staff management", async () => {
+      await harness.resetDb();
+
+      const client = await registerUser("client");
+      const staff = await registerUser("patiser");
+      assert.equal(client.status, 201);
+      assert.equal(staff.status, 201);
+
+      const initialCheckout = await harness.request("/cutie-lunara/checkout", {
+        method: "POST",
+        token: client.token,
+        body: {
+          plan: "basic",
+          preferinte: "fara nuci",
+        },
+      });
+      assert.equal(initialCheckout.status, 201);
+      assert.ok(initialCheckout.data?.comandaId);
+
+      const pendingSubscription = await harness.request("/cutie-lunara/me", {
+        token: client.token,
+      });
+      assert.equal(pendingSubscription.status, 200);
+      assert.equal(pendingSubscription.data?.abonament?.activ, false);
+      assert.equal(pendingSubscription.data?.abonament?.plan, "basic");
+      assert.equal(pendingSubscription.data?.abonament?.statusPlata, "pending");
+
+      const blockedResume = await harness.request(
+        `/cutie-lunara/${pendingSubscription.data.abonament._id}/resume`,
+        {
+          method: "PATCH",
+          token: client.token,
+        }
+      );
+      assert.equal(blockedResume.status, 409);
+
+      const firstPayment = await harness.request("/stripe/fallback-confirm", {
+        method: "POST",
+        token: client.token,
+        body: { comandaId: initialCheckout.data.comandaId },
+      });
+      assert.equal(firstPayment.status, 200);
+
+      const firstActivation = await harness.request(
+        `/cutie-lunara/activate-from-order/${initialCheckout.data.comandaId}`,
+        {
+          method: "POST",
+          token: client.token,
+        }
+      );
+      assert.equal(firstActivation.status, 200);
+      assert.equal(firstActivation.data?.abonament?.activ, true);
+      assert.equal(firstActivation.data?.abonament?.plan, "basic");
+
+      const savedPreferences = await harness.request(
+        `/cutie-lunara/${firstActivation.data.abonament._id}`,
+        {
+          method: "PATCH",
+          token: client.token,
+          body: {
+            preferinte: "fara nuci si arahide",
+          },
+        }
+      );
+      assert.equal(savedPreferences.status, 200);
+      assert.equal(savedPreferences.data?.abonament?.preferinte, "fara nuci si arahide");
+
+      const pause = await harness.request(
+        `/cutie-lunara/${firstActivation.data.abonament._id}/pause`,
+        {
+          method: "PATCH",
+          token: client.token,
+        }
+      );
+      assert.equal(pause.status, 200);
+      assert.equal(pause.data?.abonament?.activ, false);
+
+      const resume = await harness.request(
+        `/cutie-lunara/${firstActivation.data.abonament._id}/resume`,
+        {
+          method: "PATCH",
+          token: client.token,
+        }
+      );
+      assert.equal(resume.status, 200);
+      assert.equal(resume.data?.abonament?.activ, true);
+
+      const blockedDirectPlanChange = await harness.request(
+        `/cutie-lunara/${firstActivation.data.abonament._id}`,
+        {
+          method: "PATCH",
+          token: client.token,
+          body: {
+            plan: "premium",
+          },
+        }
+      );
+      assert.equal(blockedDirectPlanChange.status, 409);
+
+      const pendingChange = await harness.request("/cutie-lunara/checkout", {
+        method: "POST",
+        token: client.token,
+        body: {
+          plan: "deluxe",
+          preferinte: "fara gluten",
+        },
+      });
+      assert.equal(pendingChange.status, 201);
+
+      const reusedPendingChange = await harness.request("/cutie-lunara/checkout", {
+        method: "POST",
+        token: client.token,
+        body: {
+          plan: "deluxe",
+          preferinte: "fara gluten si capsuni",
+        },
+      });
+      assert.equal(reusedPendingChange.status, 200);
+      assert.equal(
+        String(reusedPendingChange.data?.comandaId),
+        String(pendingChange.data?.comandaId)
+      );
+
+      const activeWithPendingChange = await harness.request("/cutie-lunara/me", {
+        token: client.token,
+      });
+      assert.equal(activeWithPendingChange.status, 200);
+      assert.equal(activeWithPendingChange.data?.abonament?.activ, true);
+      assert.equal(activeWithPendingChange.data?.abonament?.plan, "basic");
+      assert.equal(activeWithPendingChange.data?.abonament?.pendingPlan, "deluxe");
+      assert.equal(
+        activeWithPendingChange.data?.abonament?.pendingPreferinte,
+        "fara gluten si capsuni"
+      );
+
+      const staffList = await harness.request("/cutie-lunara", {
+        token: staff.token,
+      });
+      assert.equal(staffList.status, 200);
+      assert.equal(staffList.data?.length, 1);
+      assert.equal(staffList.data?.[0]?.pendingPlan, "deluxe");
+
+      const secondPayment = await harness.request("/stripe/fallback-confirm", {
+        method: "POST",
+        token: client.token,
+        body: { comandaId: pendingChange.data.comandaId },
+      });
+      assert.equal(secondPayment.status, 200);
+
+      const secondActivation = await harness.request(
+        `/cutie-lunara/activate-from-order/${pendingChange.data.comandaId}`,
+        {
+          method: "POST",
+          token: client.token,
+        }
+      );
+      assert.equal(secondActivation.status, 200);
+      assert.equal(secondActivation.data?.abonament?.activ, true);
+      assert.equal(secondActivation.data?.abonament?.plan, "deluxe");
+      assert.equal(secondActivation.data?.abonament?.pendingPlan, undefined);
+      assert.equal(secondActivation.data?.abonament?.pendingOrderId, null);
+
+      const stoppedByStaff = await harness.request(
+        `/cutie-lunara/${secondActivation.data.abonament._id}/stop`,
+        {
+          method: "PATCH",
+          token: staff.token,
+        }
+      );
+      assert.equal(stoppedByStaff.status, 200);
+      assert.equal(stoppedByStaff.data?.abonament?.activ, false);
+      assert.equal(stoppedByStaff.data?.abonament?.pendingOrderId, null);
+    });
+
     await t.test("calendar reserve creates reservation, order and slot usage", async () => {
       await harness.resetDb();
 

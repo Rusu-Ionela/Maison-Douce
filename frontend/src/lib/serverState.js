@@ -11,6 +11,8 @@ export function getApiErrorMessage(error, fallbackMessage) {
 export const queryKeys = {
   stripeStatus: () => ["stripe-status"],
   orderDetail: (orderId) => ["orders", "detail", orderId],
+  mySubscription: () => ["subscriptions", "me"],
+  adminSubscriptions: () => ["admin", "subscriptions"],
   paymentIntent: (orderId, totalFinal) => [
     "payments",
     "intent",
@@ -46,6 +48,16 @@ export async function fetchStripeStatus() {
 export async function fetchOrderDetails(orderId) {
   const { data } = await api.get(`/comenzi/${orderId}`);
   return data;
+}
+
+export async function fetchMySubscription() {
+  const { data } = await api.get("/cutie-lunara/me");
+  return data?.abonament || null;
+}
+
+export async function fetchAdminSubscriptions() {
+  const { data } = await api.get("/cutie-lunara");
+  return asArray(data);
 }
 
 export async function fetchWalletDetails(userId) {

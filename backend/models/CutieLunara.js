@@ -18,6 +18,12 @@ const CutieLunaraSchema = new mongoose.Schema(
             default: "pending",
         },
         pendingOrderId: { type: mongoose.Schema.Types.ObjectId, ref: "Comanda", default: null },
+        pendingPlan: {
+            type: String,
+            enum: ["basic", "premium", "deluxe"],
+            default: undefined,
+        },
+        pendingPreferinte: { type: String, default: "" },
         ultimaComandaId: { type: mongoose.Schema.Types.ObjectId, ref: "Comanda", default: null },
         dataActivare: { type: Date, default: null },
         ultimaPlataLa: { type: Date, default: null },

@@ -62,6 +62,8 @@ async function activateCutieFromComanda(comanda) {
   abonament.pretLunar = pretLunar;
   abonament.statusPlata = "paid";
   abonament.pendingOrderId = null;
+  abonament.pendingPlan = undefined;
+  abonament.pendingPreferinte = "";
   abonament.ultimaComandaId = comanda._id;
   abonament.ultimaPlataLa = new Date();
   if (!abonament.dataActivare) {
