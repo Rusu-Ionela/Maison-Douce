@@ -23,7 +23,6 @@ export const SITE_SECTIONS = [
       { label: "Abonament planuri", to: "/abonament/planuri" },
       { label: "Comanda", to: "/comanda" },
       { label: "Calendar", to: "/calendar" },
-      { label: "Rezervare client", to: "/rezervare/client" },
       { label: "Plata", to: "/plata" },
       { label: "Plata succes", to: "/plata/succes", matchPrefix: "/plata/succes" },
       { label: "Plata eroare", to: "/plata/eroare", matchPrefix: "/plata/eroare" },
@@ -86,7 +85,6 @@ export const SITE_SECTIONS = [
     fullWidth: true,
     items: [
       { label: "Dashboard", to: "/admin", roles: STAFF_ROLES },
-      { label: "Panel", to: "/admin/panel", roles: STAFF_ROLES },
       { label: "Produse", to: "/admin/produse", roles: STAFF_ROLES },
       { label: "Torturi", to: "/admin/torturi", roles: STAFF_ROLES },
       { label: "Comenzi", to: "/admin/comenzi", roles: STAFF_ROLES },

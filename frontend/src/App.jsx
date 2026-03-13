@@ -36,7 +36,6 @@ const ComandaClient = lazyPage("./pages/ComandaClient.jsx");
 const RecenziiPrestator = lazyPage("./pages/RecenziiPrestator.jsx");
 const RecenzieComanda = lazyPage("./pages/RecenzieComanda.jsx");
 const CalendarClient = lazyPage("./pages/CalendarClient.jsx");
-const RezervareClient = lazyPage("./pages/RezervareClient.jsx");
 const CalendarPrestator = lazyPage("./pages/CalendarPrestator.jsx");
 const Plata = lazyPage("./pages/Plata.jsx");
 const PlataSucces = lazyPage("./pages/PlataSucces.jsx");
@@ -73,7 +72,6 @@ const AdminFidelizare = lazyPage("./pages/AdminFidelizare.jsx");
 const AdminAlbume = lazyPage("./pages/AdminAlbume.jsx");
 const AdminProduction = lazyPage("./pages/AdminProduction.jsx");
 const AdminContactMesaje = lazyPage("./pages/AdminContactMesaje.jsx");
-const AdminPanel = lazyPage("./pages/AdminPanel.jsx");
 const AdminAdaugaProdus = lazyPage("./pages/AdminAdaugaProdus.jsx");
 const AdminAddTort = lazyPage("./pages/AdminAddTort.jsx");
 const AdminEditProdus = lazyPage("./pages/AdminEditProdus.jsx");
@@ -171,7 +169,7 @@ export default function App() {
           <Route path="/calendar" element={<CalendarClient />} />
           <Route path="/calendar-legacy" element={<Navigate to="/calendar" replace />} />
           <Route path="/rezervare" element={<Navigate to="/calendar" replace />} />
-          <Route path="/rezervare/client" element={<RezervareClient />} />
+          <Route path="/rezervare/client" element={<Navigate to="/calendar" replace />} />
           <Route path="/plata" element={<Plata />} />
           <Route path="/plata/succes" element={<PlataSucces />} />
           <Route path="/plata/eroare" element={<PlataEroare />} />
@@ -303,7 +301,7 @@ export default function App() {
             path="/admin/panel"
             element={
               <RequireStaff>
-                <AdminPanel />
+                <Navigate to="/admin/torturi" replace />
               </RequireStaff>
             }
           />
