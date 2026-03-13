@@ -47,6 +47,8 @@ mongoose.set("strictQuery", true);
 const server = http.createServer(app);
 const bootAt = Date.now();
 
+app.set("trust proxy", Number(process.env.TRUST_PROXY || 1));
+
 const ORIGIN = process.env.BASE_CLIENT_URL || "http://localhost:5173";
 const CORS_ORIGINS = [ORIGIN, "http://localhost:5173", "http://localhost:5174"];
 
@@ -59,10 +61,27 @@ app.use(
   })
 );
 
-app.use(helmet());
+app.use(
+  helmet({
+    contentSecurityPolicy: false,
+    crossOriginEmbedderPolicy: false,
+    hsts:
+      process.env.NODE_ENV === "production"
+        ? {
+            maxAge: 15552000,
+            includeSubDomains: true,
+            preload: true,
+          }
+        : false,
+    referrerPolicy: {
+      policy: "strict-origin-when-cross-origin",
+    },
+  })
+);
 app.use((req, res, next) => {
   res.setHeader("X-Content-Type-Options", "nosniff");
   res.setHeader("X-Frame-Options", "DENY");
+  res.setHeader("Permissions-Policy", "camera=(), microphone=(), geolocation=()");
   next();
 });
 

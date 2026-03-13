@@ -1,6 +1,7 @@
 const router = require("express").Router();
 const AuditLog = require("../models/AuditLog");
 const { authRequired, roleCheck } = require("../middleware/auth");
+const { adminReadLimiter } = require("../middleware/rateLimiters");
 const { withValidation } = require("../middleware/validate");
 const { readNumber, readString } = require("../utils/validation");
 
@@ -8,6 +9,7 @@ router.get(
   "/",
   authRequired,
   roleCheck("admin"),
+  adminReadLimiter,
   withValidation((req) => ({
     action: readString(req.query?.action, {
       field: "action",

@@ -18,6 +18,7 @@ const {
   withUpload,
 } = require("../utils/multer");
 const { recordAuditLog } = require("../utils/audit");
+const { adminMutationLimiter } = require("../middleware/rateLimiters");
 
 const upload = createUploadMiddleware({
   subdir: "torturi",
@@ -245,6 +246,7 @@ router.post(
   "/",
   authRequired,
   roleCheck("admin", "patiser"),
+  adminMutationLimiter,
   maybeUpload,
   async (req, res) => {
     try {
@@ -312,6 +314,7 @@ router.put(
   "/:id",
   authRequired,
   roleCheck("admin", "patiser"),
+  adminMutationLimiter,
   maybeUpload,
   withValidation((req) => ({
     id: readMongoId(req.params?.id, {
@@ -377,6 +380,7 @@ router.delete(
   "/:id",
   authRequired,
   roleCheck("admin", "patiser"),
+  adminMutationLimiter,
   withValidation((req) => ({
     id: readMongoId(req.params?.id, {
       field: "id",

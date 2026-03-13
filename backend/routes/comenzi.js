@@ -11,6 +11,7 @@ const CalendarPrestator = require("../models/CalendarPrestator");
 const CalendarDayCapacity = require("../models/CalendarDayCapacity");
 const { notifyUser, notifyAdmins } = require("../utils/notifications");
 const { recordAuditLog } = require("../utils/audit");
+const { adminMutationLimiter } = require("../middleware/rateLimiters");
 const Utilizator = require("../models/Utilizator");
 // const Utilizator = require("../models/Utilizator"); // folosește dacă vrei populate
 
@@ -447,7 +448,7 @@ router.get("/admin", authRequired, roleCheck("admin", "patiser"), async (req, re
  * — pentru Comanda: setează direct `status`
  * — pentru Rezervare: mapează la `handoffStatus` + `status`
  */
-router.patch("/:id/status", authRequired, roleCheck("admin", "patiser"), async (req, res) => {
+router.patch("/:id/status", authRequired, roleCheck("admin", "patiser"), adminMutationLimiter, async (req, res) => {
     try {
         const { id } = req.params;
         const nou = req.body?.status;
@@ -541,7 +542,7 @@ router.patch("/:id/status", authRequired, roleCheck("admin", "patiser"), async (
 
 // PATCH /api/comenzi/:id/price
 // Body: { subtotal?, taxaLivrare?, deliveryFee?, total?, totalFinal?, discountTotal?, notesAdmin?, note? }
-router.patch("/:id/price", authRequired, roleCheck("admin", "patiser"), async (req, res) => {
+router.patch("/:id/price", authRequired, roleCheck("admin", "patiser"), adminMutationLimiter, async (req, res) => {
     try {
         const {
             subtotal,
@@ -611,7 +612,7 @@ router.patch("/:id/price", authRequired, roleCheck("admin", "patiser"), async (r
 
 // PATCH /api/comenzi/:id/schedule
 // Body: { dataLivrare, oraLivrare }
-router.patch("/:id/schedule", authRequired, roleCheck("admin", "patiser"), async (req, res) => {
+router.patch("/:id/schedule", authRequired, roleCheck("admin", "patiser"), adminMutationLimiter, async (req, res) => {
     try {
         const { dataLivrare, oraLivrare } = req.body || {};
         if (!dataLivrare || !oraLivrare) {
@@ -699,7 +700,7 @@ router.patch("/:id/schedule", authRequired, roleCheck("admin", "patiser"), async
 
 // PATCH /api/comenzi/:id/refuza
 // Body: { motiv }
-router.patch("/:id/refuza", authRequired, roleCheck("admin", "patiser"), async (req, res) => {
+router.patch("/:id/refuza", authRequired, roleCheck("admin", "patiser"), adminMutationLimiter, async (req, res) => {
     try {
         const { motiv } = req.body || {};
         const comanda = await Comanda.findById(req.params.id);
@@ -734,7 +735,7 @@ router.patch("/:id/refuza", authRequired, roleCheck("admin", "patiser"), async (
 });
 
 // alias compatibil vechiului format
-router.patch("/:comandaId/status", authRequired, roleCheck("admin", "patiser"), async (req, res, next) => {
+router.patch("/:comandaId/status", authRequired, roleCheck("admin", "patiser"), adminMutationLimiter, async (req, res, next) => {
     req.params.id = req.params.comandaId;
     return router.handle(req, res, next);
 });

@@ -6,6 +6,7 @@ const FidelizareConfig = require("../models/FidelizareConfig");
 const Comanda = require("../models/Comanda");
 const { authRequired, roleCheck } = require("../middleware/auth");
 const { recordAuditLog } = require("../utils/audit");
+const { adminMutationLimiter } = require("../middleware/rateLimiters");
 
 async function ensureConfig() {
   let config = await FidelizareConfig.findOne().lean();
@@ -97,6 +98,7 @@ router.put(
   "/admin/config",
   authRequired,
   roleCheck("admin"),
+  adminMutationLimiter,
   async (req, res) => {
     try {
       const update = {};
@@ -160,6 +162,7 @@ router.post(
   "/admin/voucher",
   authRequired,
   roleCheck("admin"),
+  adminMutationLimiter,
   async (req, res) => {
     try {
       const {
@@ -234,7 +237,7 @@ router.post(
  * POST /api/fidelizare/add-points
  * Adaugă puncte după o comandă (folosit de backend sau Stripe webhook)
  */
-router.post("/add-points", authRequired, roleCheck("admin"), async (req, res) => {
+router.post("/add-points", authRequired, roleCheck("admin"), adminMutationLimiter, async (req, res) => {
   try {
     const { utilizatorId, puncte, sursa = "comanda", comandaId } = req.body;
 

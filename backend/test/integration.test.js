@@ -123,7 +123,11 @@ function createRequest(baseUrl) {
       }
     }
 
-    return { status: response.status, data };
+    return {
+      status: response.status,
+      data,
+      headers: Object.fromEntries(response.headers.entries()),
+    };
   };
 }
 
@@ -433,6 +437,21 @@ test("backend integration flows", async (t) => {
       });
       assert.equal(report.status, 202);
       assert.equal(report.data?.ok, true);
+    });
+
+    await t.test("api responses expose hardened security headers", async () => {
+      const health = await harness.request("/health");
+      assert.equal(health.status, 200);
+      assert.equal(health.headers["x-content-type-options"], "nosniff");
+      assert.equal(health.headers["x-frame-options"], "DENY");
+      assert.equal(
+        health.headers["referrer-policy"],
+        "strict-origin-when-cross-origin"
+      );
+      assert.equal(
+        health.headers["permissions-policy"],
+        "camera=(), microphone=(), geolocation=()"
+      );
     });
 
     await t.test("admin actions are persisted in the audit trail", async () => {
