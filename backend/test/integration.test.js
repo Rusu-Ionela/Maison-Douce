@@ -1,10 +1,13 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
+const fs = require("node:fs");
 const net = require("node:net");
 const path = require("node:path");
 const { spawn } = require("node:child_process");
 const mongoose = require("mongoose");
 const Stripe = require("stripe");
+const CalendarSlotEntry = require("../models/CalendarSlotEntry");
+const Utilizator = require("../models/Utilizator");
 
 function wait(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -79,6 +82,16 @@ async function stopChild(child) {
   });
 }
 
+function clearDirectory(dirPath) {
+  if (!fs.existsSync(dirPath)) {
+    return;
+  }
+
+  for (const entry of fs.readdirSync(dirPath)) {
+    fs.rmSync(path.join(dirPath, entry), { recursive: true, force: true });
+  }
+}
+
 function createRequest(baseUrl) {
   return async function request(pathname, options = {}) {
     const headers = { ...(options.headers || {}) };
@@ -128,6 +141,7 @@ function createMongoUri(baseUri) {
 
 async function createHarness(envOverrides = {}) {
   const backendDir = path.join(__dirname, "..");
+  const mailOutboxDir = path.join(backendDir, "uploads", "mail-outbox");
   const port = await getFreePort();
   const mongoUri = createMongoUri(
     envOverrides.MONGODB_URI ||
@@ -186,6 +200,36 @@ async function createHarness(envOverrides = {}) {
     request: createRequest(baseUrl),
     async resetDb() {
       await mongoose.connection.db.dropDatabase();
+      clearDirectory(mailOutboxDir);
+    },
+    clearMailOutbox() {
+      clearDirectory(mailOutboxDir);
+    },
+    readLatestResetToken() {
+      if (!fs.existsSync(mailOutboxDir)) {
+        throw new Error("Mail outbox directory is missing.");
+      }
+
+      const files = fs
+        .readdirSync(mailOutboxDir)
+        .map((name) => ({
+          name,
+          fullPath: path.join(mailOutboxDir, name),
+          mtimeMs: fs.statSync(path.join(mailOutboxDir, name)).mtimeMs,
+        }))
+        .sort((left, right) => right.mtimeMs - left.mtimeMs);
+
+      if (!files.length) {
+        throw new Error("No reset email found in outbox.");
+      }
+
+      const latest = JSON.parse(fs.readFileSync(files[0].fullPath, "utf8"));
+      const match = String(latest.html || "").match(/token=([^"&<]+)/i);
+      if (!match?.[1]) {
+        throw new Error("Reset token not found in outbox email.");
+      }
+
+      return decodeURIComponent(match[1]);
     },
     async stop() {
       await mongoose.connection.close();
@@ -303,6 +347,65 @@ test("backend integration flows", async (t) => {
       });
       assert.equal(me.status, 200);
       assert.equal(me.data?.email, clientRegister.user.email);
+    });
+
+    await t.test("reset password issues a mail token and invalidates the old password", async () => {
+      await harness.resetDb();
+
+      const client = await registerUser("client");
+      assert.equal(client.status, 201);
+      harness.clearMailOutbox();
+
+      const sendReset = await harness.request("/reset-parola/send-reset-email", {
+        method: "POST",
+        body: { email: client.user.email },
+      });
+      assert.equal(sendReset.status, 200);
+      assert.match(sendReset.data?.message || "", /Daca exista un cont/i);
+
+      const rawToken = harness.readLatestResetToken();
+      assert.ok(rawToken);
+
+      const userBeforeReset = await Utilizator.findOne({ email: client.user.email })
+        .select("+resetToken +resetTokenExp +parolaHash +parola")
+        .lean();
+      assert.ok(userBeforeReset?.resetToken);
+      assert.ok(userBeforeReset?.resetTokenExp);
+
+      const resetPassword = await harness.request("/utilizatori/reset-password", {
+        method: "POST",
+        body: {
+          token: rawToken,
+          newPassword: "NewSecret123!",
+        },
+      });
+      assert.equal(resetPassword.status, 200);
+      assert.equal(resetPassword.data?.ok, true);
+
+      const oldLogin = await harness.request("/utilizatori/login", {
+        method: "POST",
+        body: {
+          email: client.user.email,
+          parola: client.password,
+        },
+      });
+      assert.equal(oldLogin.status, 401);
+
+      const newLogin = await harness.request("/utilizatori/login", {
+        method: "POST",
+        body: {
+          email: client.user.email,
+          parola: "NewSecret123!",
+        },
+      });
+      assert.equal(newLogin.status, 200);
+      assert.ok(newLogin.data?.token);
+
+      const userAfterReset = await Utilizator.findOne({ email: client.user.email })
+        .select("+resetToken +resetTokenExp")
+        .lean();
+      assert.equal(userAfterReset?.resetToken || "", "");
+      assert.equal(userAfterReset?.resetTokenExp, undefined);
     });
 
     await t.test("orders and wallets remain owner scoped", async () => {
@@ -516,6 +619,98 @@ test("backend integration flows", async (t) => {
       assert.equal(availability.status, 200);
       assert.equal(availability.data?.slots?.[0]?.used, 1);
       assert.equal(availability.data?.slots?.[0]?.free, 1);
+    });
+
+    await t.test("staff can reschedule an order and owner can cancel it with slot rollback", async () => {
+      await harness.resetDb();
+
+      const staff = await registerUser("patiser");
+      const client = await registerUser("client");
+      assert.equal(staff.status, 201);
+      assert.equal(client.status, 201);
+
+      const firstDate = futureDate(7);
+      const secondDate = futureDate(8);
+
+      const addFirstSlot = await harness.request("/calendar/availability/default", {
+        method: "POST",
+        token: staff.token,
+        body: {
+          slots: [{ date: firstDate, time: "10:00", capacity: 1 }],
+        },
+      });
+      const addSecondSlot = await harness.request("/calendar/availability/default", {
+        method: "POST",
+        token: staff.token,
+        body: {
+          slots: [{ date: secondDate, time: "11:30", capacity: 1 }],
+        },
+      });
+      assert.equal(addFirstSlot.status, 200);
+      assert.equal(addSecondSlot.status, 200);
+
+      await CalendarSlotEntry.updateOne(
+        { prestatorId: "default", date: firstDate, time: "10:00" },
+        { $set: { used: 1 } }
+      );
+
+      const createdOrder = await createOrder(client.token, {
+        prestatorId: "default",
+        dataLivrare: firstDate,
+        oraLivrare: "10:00",
+        items: [
+          {
+            productId: "cake-slot",
+            name: "Tort slot",
+            qty: 1,
+            price: 180,
+          },
+        ],
+      });
+      assert.equal(createdOrder.status, 201);
+      const orderId = createdOrder.data?._id;
+      assert.ok(orderId);
+
+      const reschedule = await harness.request(`/comenzi/${orderId}/schedule`, {
+        method: "PATCH",
+        token: staff.token,
+        body: {
+          dataLivrare: secondDate,
+          oraLivrare: "11:30",
+        },
+      });
+      assert.equal(reschedule.status, 200);
+      assert.equal(reschedule.data?.ok, true);
+
+      const firstAvailability = await harness.request(
+        `/calendar/availability/default?from=${firstDate}&to=${firstDate}`
+      );
+      const secondAvailability = await harness.request(
+        `/calendar/availability/default?from=${secondDate}&to=${secondDate}`
+      );
+      assert.equal(firstAvailability.status, 200);
+      assert.equal(secondAvailability.status, 200);
+      assert.equal(firstAvailability.data?.slots?.[0]?.used, 0);
+      assert.equal(secondAvailability.data?.slots?.[0]?.used, 1);
+
+      const cancelByOwner = await harness.request(`/comenzi/${orderId}/cancel`, {
+        method: "PATCH",
+        token: client.token,
+      });
+      assert.equal(cancelByOwner.status, 200);
+      assert.equal(cancelByOwner.data?.ok, true);
+
+      const canceledOrder = await harness.request(`/comenzi/${orderId}`, {
+        token: client.token,
+      });
+      assert.equal(canceledOrder.status, 200);
+      assert.equal(canceledOrder.data?.status, "anulata");
+
+      const rolledBackAvailability = await harness.request(
+        `/calendar/availability/default?from=${secondDate}&to=${secondDate}`
+      );
+      assert.equal(rolledBackAvailability.status, 200);
+      assert.equal(rolledBackAvailability.data?.slots?.[0]?.used, 0);
     });
 
     await t.test("fallback payment confirmation only works for the owner", async () => {
