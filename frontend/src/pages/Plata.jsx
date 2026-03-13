@@ -13,6 +13,11 @@ import { useAuth } from "../context/AuthContext";
 import api from "/src/lib/api.js";
 import { buttons, cards, containers, inputs } from "/src/lib/tailwindComponents.js";
 import {
+  getStripePublicKey,
+  getStripePublicKeyWarningMessage,
+  hasStripePublicKey,
+} from "../lib/runtimeConfig";
+import {
   fetchOrderDetails,
   fetchStripeStatus,
   fetchWalletDetails,
@@ -20,7 +25,7 @@ import {
   queryKeys,
 } from "../lib/serverState";
 
-const publicKey = import.meta.env.VITE_STRIPE_PK || "";
+const publicKey = getStripePublicKey();
 const stripePromise = publicKey ? loadStripe(publicKey) : null;
 const EMPTY_WALLET = {
   puncteCurent: 0,
@@ -179,7 +184,7 @@ export default function Plata() {
   }, [comanda]);
 
   const canUseStripeCheckout = stripeStatus.enabled;
-  const canUseEmbeddedStripe = canUseStripeCheckout && Boolean(publicKey);
+  const canUseEmbeddedStripe = canUseStripeCheckout && hasStripePublicKey();
   const canUseFallbackPayment =
     !canUseStripeCheckout && stripeStatus.fallbackAvailable;
 
@@ -763,7 +768,8 @@ export default function Plata() {
                 {canUseStripeCheckout && !publicKey && (
                   <StatusBanner
                     type="warning"
-                    message="Checkout redirect este disponibil. Payment Element este indisponibil pana configurezi VITE_STRIPE_PK."
+                    title="Configurare Stripe incompleta"
+                    message={getStripePublicKeyWarningMessage()}
                   />
                 )}
               </div>

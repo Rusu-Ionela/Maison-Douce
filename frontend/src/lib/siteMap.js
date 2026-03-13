@@ -27,8 +27,6 @@ export const SITE_SECTIONS = [
       { label: "Plata", to: "/plata" },
       { label: "Plata succes", to: "/plata/succes", matchPrefix: "/plata/succes" },
       { label: "Plata eroare", to: "/plata/eroare", matchPrefix: "/plata/eroare" },
-      { label: "Plata cancel", to: "/plata/cancel", matchPrefix: "/plata/cancel" },
-      { label: "Succes", to: "/succes" },
       { label: "Partajare publica", to: "/harta-site", matchPrefix: "/partajare/", hidden: true },
       { label: "Contact", to: "/contact" },
       { label: "Despre", to: "/despre" },

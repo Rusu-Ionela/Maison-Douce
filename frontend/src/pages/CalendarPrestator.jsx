@@ -1,6 +1,12 @@
 import { useEffect, useMemo, useState } from "react";
 import api from "/src/lib/api.js";
+import StatusBanner from "../components/StatusBanner";
 import { useAuth } from "../context/AuthContext";
+import {
+  getPrestatorCalendarOwnerId,
+  getPrestatorEnvWarningMessage,
+  isPrestatorCalendarFallback,
+} from "../lib/runtimeConfig";
 
 function toDateStr(d) {
   return d.toISOString().slice(0, 10);
@@ -24,11 +30,7 @@ export default function CalendarPrestator() {
   const [loading, setLoading] = useState(false);
   const [msg, setMsg] = useState("");
 
-  const prestatorId =
-    user?._id ||
-    user?.id ||
-    import.meta.env.VITE_PRESTATOR_ID ||
-    "default";
+  const prestatorId = getPrestatorCalendarOwnerId(user);
 
   const visibleSlots = useMemo(
     () => slots.filter((s) => s.date === date),
@@ -86,6 +88,15 @@ export default function CalendarPrestator() {
           Gestioneaza intervalele disponibile pentru rezervari.
         </p>
       </div>
+      <StatusBanner
+        type="warning"
+        title="Configurare calendar"
+        message={
+          isPrestatorCalendarFallback(user)
+            ? getPrestatorEnvWarningMessage()
+            : ""
+        }
+      />
 
       <div className="bg-white border rounded-lg p-4 space-y-3">
         <div className="grid grid-cols-1 md:grid-cols-3 gap-3">

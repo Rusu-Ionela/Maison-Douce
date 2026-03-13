@@ -6,7 +6,13 @@ import { useNavigate } from "react-router-dom";
 
 import { getAvailability, reserveSlot } from "../api/calendar";
 import SlotPicker from "../components/SlotPicker";
+import StatusBanner from "../components/StatusBanner";
 import { useAuth } from "../context/AuthContext";
+import {
+  getConfiguredPrestatorId,
+  getPrestatorEnvWarningMessage,
+  hasPrestatorEnvConfig,
+} from "../lib/runtimeConfig";
 import { buttons, inputs, cards } from "../lib/tailwindComponents";
 
 function toDateStr(d) {
@@ -34,7 +40,7 @@ export default function CalendarClient() {
   const [err, setErr] = useState("");
   const [success, setSuccess] = useState(null);
 
-  const prestatorId = import.meta.env.VITE_PRESTATOR_ID || "default";
+  const prestatorId = getConfiguredPrestatorId();
   const selectedDate = calendarDate ? toDateStr(calendarDate) : "";
   const leadHours = Number(import.meta.env.VITE_MIN_LEAD_HOURS || 24);
 
@@ -210,6 +216,12 @@ export default function CalendarClient() {
             Alege data, ora si modul de predare pentru desertul tau.
           </p>
         </div>
+        <StatusBanner
+          type="warning"
+          title="Configurare calendar"
+          message={!hasPrestatorEnvConfig() ? getPrestatorEnvWarningMessage() : ""}
+          className="mb-6"
+        />
 
         {err && (
           <div className="mb-6 p-4 bg-red-50 border-l-4 border-red-500 rounded">

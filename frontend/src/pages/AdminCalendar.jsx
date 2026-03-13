@@ -1,6 +1,12 @@
 // frontend/src/pages/AdminCalendar.jsx
 import React, { useEffect, useState } from "react";
+import StatusBanner from "../components/StatusBanner";
 import api from "../lib/api.js";
+import {
+  getConfiguredPrestatorId,
+  getPrestatorEnvWarningMessage,
+  hasPrestatorEnvConfig,
+} from "../lib/runtimeConfig";
 import { buttons, inputs, cards, badges } from "../lib/tailwindComponents";
 
 function extractFilename(contentDisposition, fallback) {
@@ -23,7 +29,7 @@ export default function AdminCalendar() {
   const [dayCapacity, setDayCapacity] = useState("");
   const [savingCapacity, setSavingCapacity] = useState(false);
 
-  const prestatorId = import.meta.env.VITE_PRESTATOR_ID || "default";
+  const prestatorId = getConfiguredPrestatorId();
   const dateStr = selectedDate.toISOString().split("T")[0];
 
   useEffect(() => {
@@ -217,6 +223,12 @@ export default function AdminCalendar() {
             <p className="text-red-600 text-sm">{error}</p>
           </div>
         )}
+        <StatusBanner
+          type="warning"
+          title="Configurare calendar"
+          message={!hasPrestatorEnvConfig() ? getPrestatorEnvWarningMessage() : ""}
+          className="mb-6"
+        />
 
         {loading ? (
           <div className="text-center py-12">

@@ -61,7 +61,7 @@ function AdminEditTort() {
     try {
       await api.put(`/torturi/${id}`, tortActualizat);
       setStatus({ type: "success", text: "Tortul a fost actualizat." });
-      setTimeout(() => navigate("/admin/panel"), 600);
+      setTimeout(() => navigate("/admin/torturi"), 600);
     } catch (err) {
       console.error("Eroare la actualizare:", err);
       setStatus({

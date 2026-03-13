@@ -41,8 +41,6 @@ const CalendarPrestator = lazyPage("./pages/CalendarPrestator.jsx");
 const Plata = lazyPage("./pages/Plata.jsx");
 const PlataSucces = lazyPage("./pages/PlataSucces.jsx");
 const PlataEroare = lazyPage("./pages/PlataEroare.jsx");
-const Cancel = lazyPage("./pages/Cancel.jsx");
-const Succes = lazyPage("./pages/Succes.jsx");
 const Retete = lazyPage("./pages/Retete.jsx");
 
 // Auth
@@ -177,8 +175,6 @@ export default function App() {
           <Route path="/plata" element={<Plata />} />
           <Route path="/plata/succes" element={<PlataSucces />} />
           <Route path="/plata/eroare" element={<PlataEroare />} />
-          <Route path="/plata/cancel" element={<Cancel />} />
-          <Route path="/succes" element={<Succes />} />
           <Route path="/partajare/:linkUnic" element={<VizualizarePartajare />} />
 
           {/* Auth */}

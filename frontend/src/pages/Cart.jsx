@@ -8,6 +8,11 @@ import SlotPicker from "../components/SlotPicker";
 import StatusBanner from "../components/StatusBanner";
 import api from "/src/lib/api.js";
 import { buttons, cards, inputs, containers } from "/src/lib/tailwindComponents.js";
+import {
+  getConfiguredPrestatorId,
+  getPrestatorEnvWarningMessage,
+  hasPrestatorEnvConfig,
+} from "../lib/runtimeConfig";
 
 function buildStatus(type, message, title = "") {
   return { type, message, title };
@@ -35,7 +40,7 @@ export default function Cart() {
   const [checkoutStatus, setCheckoutStatus] = useState(buildStatus("", "", ""));
 
   const LIVRARE_FEE = 100;
-  const prestatorId = import.meta.env.VITE_PRESTATOR_ID || "default";
+  const prestatorId = getConfiguredPrestatorId();
 
   const addressOptions = useMemo(() => {
     const options = [];
@@ -258,6 +263,11 @@ export default function Cart() {
           type={checkoutStatus.type || "info"}
           title={checkoutStatus.title}
           message={checkoutStatus.message}
+        />
+        <StatusBanner
+          type="warning"
+          title="Configurare calendar"
+          message={!hasPrestatorEnvConfig() ? getPrestatorEnvWarningMessage() : ""}
         />
 
         {!items.length && (
