@@ -41,6 +41,34 @@ async function authRequired(req, res, next) {
   }
 }
 
+async function authOptional(req, _res, next) {
+  try {
+    const authHeader = req.headers.authorization || "";
+    if (!authHeader.startsWith("Bearer ")) {
+      return next();
+    }
+
+    const token = authHeader.slice(7).trim();
+    if (!token) {
+      return next();
+    }
+
+    const payload = verifyAuthToken(token);
+    const userId = payload.id || payload.userId || payload._id;
+    const user = await Utilizator.findById(userId).select("-parola -parolaHash");
+
+    if (!user || user.activ === false) {
+      return next();
+    }
+
+    req.user = user;
+    req.auth = payload;
+    return next();
+  } catch {
+    return next();
+  }
+}
+
 function roleCheck(...roles) {
   return (req, res, next) => {
     if (!req.user) {
@@ -64,6 +92,7 @@ function roleCheck(...roles) {
 }
 
 module.exports = {
+  authOptional,
   authRequired,
   roleCheck,
 };

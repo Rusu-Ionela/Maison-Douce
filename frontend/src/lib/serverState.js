@@ -19,6 +19,15 @@ export const queryKeys = {
     filters.search || "",
     filters.status || "",
   ],
+  adminReviews: (filters = {}) => [
+    "admin",
+    "reviews",
+    filters.reviewType || "",
+    filters.moderationStatus || "",
+    String(Boolean(filters.reportedOnly)),
+    filters.search || "",
+    Number(filters.limit || 50),
+  ],
   adminAudit: (filters = {}) => [
     "admin",
     "audit",
@@ -88,6 +97,19 @@ export async function fetchAdminCoupons(filters = {}) {
     params: {
       search: filters.search || "",
       status: filters.status || "",
+    },
+  });
+  return asArray(data?.items);
+}
+
+export async function fetchAdminReviews(filters = {}) {
+  const { data } = await api.get("/recenzii/admin", {
+    params: {
+      reviewType: filters.reviewType || "",
+      moderationStatus: filters.moderationStatus || "",
+      reportedOnly: Boolean(filters.reportedOnly),
+      search: filters.search || "",
+      limit: Number(filters.limit || 50),
     },
   });
   return asArray(data?.items);

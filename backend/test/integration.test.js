@@ -798,11 +798,29 @@ test("backend integration flows", async (t) => {
           comentariu: "Produs excelent pentru test.",
         },
       });
-      assert.equal(productReview.status, 200);
+      assert.equal(productReview.status, 201);
+      assert.equal(productReview.data?.review?.moderationStatus, "pending");
 
       const productReviewList = await harness.request(`/recenzii/produs/${tortId}`);
       assert.equal(productReviewList.status, 200);
-      assert.equal(productReviewList.data.length, 1);
+      assert.equal(productReviewList.data.length, 0);
+
+      const approveProductReview = await harness.request(
+        `/recenzii/admin/produs/${productReview.data?.review?._id}`,
+        {
+          method: "PATCH",
+          token: admin.token,
+          body: {
+            moderationStatus: "approved",
+            moderationNote: "Aprobat in integrare.",
+          },
+        }
+      );
+      assert.equal(approveProductReview.status, 200);
+
+      const approvedProductReviewList = await harness.request(`/recenzii/produs/${tortId}`);
+      assert.equal(approvedProductReviewList.status, 200);
+      assert.equal(approvedProductReviewList.data.length, 1);
 
       const orderReview = await harness.request("/recenzii/comanda", {
         method: "POST",
@@ -813,9 +831,12 @@ test("backend integration flows", async (t) => {
           comentariu: "Comanda a fost impecabila.",
         },
       });
-      assert.equal(orderReview.status, 200);
+      assert.equal(orderReview.status, 201);
+      assert.equal(orderReview.data?.review?.moderationStatus, "pending");
 
-      const orderReviewRead = await harness.request(`/recenzii/comanda/${comandaId}`);
+      const orderReviewRead = await harness.request(`/recenzii/comanda/${comandaId}`, {
+        token: client.token,
+      });
       assert.equal(orderReviewRead.status, 200);
       assert.equal(String(orderReviewRead.data?.comandaId), String(comandaId));
 
@@ -828,13 +849,33 @@ test("backend integration flows", async (t) => {
           comentariu: "Prestator foarte bun.",
         },
       });
-      assert.equal(providerReview.status, 200);
+      assert.equal(providerReview.status, 201);
+      assert.equal(providerReview.data?.review?.moderationStatus, "pending");
 
       const providerReviewList = await harness.request(
         `/recenzii/prestator/${patiser.user?._id}`
       );
       assert.equal(providerReviewList.status, 200);
-      assert.equal(providerReviewList.data.length, 1);
+      assert.equal(providerReviewList.data.length, 0);
+
+      const approveProviderReview = await harness.request(
+        `/recenzii/admin/prestator/${providerReview.data?.review?._id}`,
+        {
+          method: "PATCH",
+          token: admin.token,
+          body: {
+            moderationStatus: "approved",
+            moderationNote: "Prestator validat in integrare.",
+          },
+        }
+      );
+      assert.equal(approveProviderReview.status, 200);
+
+      const approvedProviderReviewList = await harness.request(
+        `/recenzii/prestator/${patiser.user?._id}`
+      );
+      assert.equal(approvedProviderReviewList.status, 200);
+      assert.equal(approvedProviderReviewList.data.length, 1);
 
       const recentReviews = await harness.request("/recenzii/recent?limit=4");
       assert.equal(recentReviews.status, 200);
@@ -886,6 +927,151 @@ test("backend integration flows", async (t) => {
       });
       assert.equal(albumDelete.status, 200);
       assert.equal(albumDelete.data?.ok, true);
+    });
+
+    await t.test("review moderation supports approval reporting hiding and delete flows", async () => {
+      await harness.resetDb();
+
+      const admin = await seedUser("admin");
+      const client = await registerUser("client");
+      const otherClient = await registerUser("client");
+      const patiser = await seedUser("patiser");
+      assert.equal(admin.status, 200);
+      assert.equal(client.status, 201);
+      assert.equal(otherClient.status, 201);
+      assert.equal(patiser.status, 200);
+
+      const tortResponse = await harness.request("/torturi", {
+        method: "POST",
+        token: admin.token,
+        body: {
+          nume: "Tort moderare recenzii",
+          descriere: "Tort pentru testul de moderare recenzii.",
+          pret: 190,
+          imagine: "https://example.com/tort-moderare.jpg",
+          ingrediente: ["ciocolata"],
+          categorie: "torturi",
+          portii: 10,
+          timpPreparareOre: 24,
+          activ: true,
+        },
+      });
+      assert.equal(tortResponse.status, 201);
+      const tortId = tortResponse.data?._id;
+      assert.ok(tortId);
+
+      const createdReview = await harness.request("/recenzii/produs", {
+        method: "POST",
+        token: client.token,
+        body: {
+          tortId,
+          stele: 4,
+          comentariu: "Recenzie pentru moderare si raportare.",
+        },
+      });
+      assert.equal(createdReview.status, 201);
+      const reviewId = createdReview.data?.review?._id;
+      assert.ok(reviewId);
+
+      const publicPendingList = await harness.request(`/recenzii/produs/${tortId}`);
+      assert.equal(publicPendingList.status, 200);
+      assert.equal(publicPendingList.data.length, 0);
+
+      const adminPendingList = await harness.request(
+        "/recenzii/admin?moderationStatus=pending&reviewType=produs",
+        {
+          token: admin.token,
+        }
+      );
+      assert.equal(adminPendingList.status, 200);
+      assert.equal(adminPendingList.data.items.length, 1);
+      assert.equal(adminPendingList.data.items[0]._id, reviewId);
+
+      const approveReview = await harness.request(`/recenzii/admin/produs/${reviewId}`, {
+        method: "PATCH",
+        token: admin.token,
+        body: {
+          moderationStatus: "approved",
+          moderationNote: "Aprobata dupa verificare.",
+        },
+      });
+      assert.equal(approveReview.status, 200);
+      assert.equal(approveReview.data?.review?.moderationStatus, "approved");
+
+      const publicApprovedList = await harness.request(`/recenzii/produs/${tortId}`);
+      assert.equal(publicApprovedList.status, 200);
+      assert.equal(publicApprovedList.data.length, 1);
+      assert.equal(publicApprovedList.data[0].moderationStatus, "approved");
+
+      const reportOwnReview = await harness.request(`/recenzii/produs/${reviewId}/report`, {
+        method: "POST",
+        token: client.token,
+        body: {
+          reason: "Nu ar trebui sa pot raporta propria recenzie",
+        },
+      });
+      assert.equal(reportOwnReview.status, 400);
+
+      const reportReview = await harness.request(`/recenzii/produs/${reviewId}/report`, {
+        method: "POST",
+        token: otherClient.token,
+        body: {
+          reason: "Comentariu ofensator",
+        },
+      });
+      assert.equal(reportReview.status, 202);
+      assert.equal(reportReview.data?.review?.reportCount, 1);
+
+      const duplicateReport = await harness.request(`/recenzii/produs/${reviewId}/report`, {
+        method: "POST",
+        token: otherClient.token,
+        body: {
+          reason: "Raportare duplicata",
+        },
+      });
+      assert.equal(duplicateReport.status, 409);
+
+      const reportedList = await harness.request(
+        "/recenzii/admin?reviewType=produs&reportedOnly=true",
+        {
+          token: admin.token,
+        }
+      );
+      assert.equal(reportedList.status, 200);
+      assert.equal(reportedList.data.items.length, 1);
+      assert.equal(reportedList.data.items[0].reportCount, 1);
+      assert.equal(reportedList.data.items[0].lastReportReason, "Comentariu ofensator");
+
+      const hideReview = await harness.request(`/recenzii/admin/produs/${reviewId}`, {
+        method: "PATCH",
+        token: admin.token,
+        body: {
+          moderationStatus: "hidden",
+          moderationNote: "Ascunsa dupa raportare.",
+        },
+      });
+      assert.equal(hideReview.status, 200);
+      assert.equal(hideReview.data?.review?.moderationStatus, "hidden");
+
+      const publicHiddenList = await harness.request(`/recenzii/produs/${tortId}`);
+      assert.equal(publicHiddenList.status, 200);
+      assert.equal(publicHiddenList.data.length, 0);
+
+      const deleteReview = await harness.request(`/recenzii/admin/produs/${reviewId}`, {
+        method: "DELETE",
+        token: admin.token,
+      });
+      assert.equal(deleteReview.status, 200);
+      assert.equal(deleteReview.data?.ok, true);
+
+      const emptyAdminList = await harness.request(
+        "/recenzii/admin?reviewType=produs&search=moderare",
+        {
+          token: admin.token,
+        }
+      );
+      assert.equal(emptyAdminList.status, 200);
+      assert.equal(emptyAdminList.data.items.length, 0);
     });
 
     await t.test("coupon and fidelizare flows update totals consistently", async () => {

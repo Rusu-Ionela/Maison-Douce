@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import StatusBanner from "../components/StatusBanner";
 import { useParams } from "react-router-dom";
 import api from "/src/lib/api.js";
 import { useAuth } from "../context/AuthContext";
@@ -10,7 +11,8 @@ function RecenziiPrestator() {
   const [stele, setStele] = useState(5);
   const [comentariu, setComentariu] = useState("");
   const [photoFile, setPhotoFile] = useState(null);
-  const [msg, setMsg] = useState("");
+  const [reportingReviewId, setReportingReviewId] = useState("");
+  const [status, setStatus] = useState({ type: "", text: "" });
 
   useEffect(() => {
     if (!prestatorId) return;
@@ -22,14 +24,17 @@ function RecenziiPrestator() {
 
   const adaugaRecenzie = async () => {
     if (!user?._id) {
-      setMsg("Autentifica-te pentru a lasa o recenzie.");
+      setStatus({
+        type: "error",
+        text: "Autentifica-te pentru a lasa o recenzie.",
+      });
       return;
     }
     if (!comentariu.trim()) {
-      setMsg("Adauga un comentariu.");
+      setStatus({ type: "error", text: "Adauga un comentariu." });
       return;
     }
-    setMsg("");
+    setStatus({ type: "", text: "" });
     try {
       let fotoUrl = "";
       if (photoFile) {
@@ -38,18 +43,57 @@ function RecenziiPrestator() {
         const upload = await api.post("/upload", fd);
         fotoUrl = upload.data?.url || "";
       }
-      await api.post("/recenzii/prestator", {
+      const response = await api.post("/recenzii/prestator", {
         prestatorId,
         stele,
         comentariu,
         foto: fotoUrl,
       });
-      const res = await api.get(`/recenzii/prestator/${prestatorId}`);
-      setRecenzii(Array.isArray(res.data) ? res.data : []);
       setComentariu("");
       setPhotoFile(null);
-    } catch (e) {
-      setMsg(e?.response?.data?.message || "Eroare la trimitere recenzie.");
+      setStatus({
+        type: "success",
+        text:
+          response?.data?.message ||
+          "Recenzia a fost trimisa spre moderare si va deveni publica dupa aprobare.",
+      });
+    } catch (error) {
+      setStatus({
+        type: "error",
+        text:
+          error?.response?.data?.message || "Eroare la trimitere recenzie.",
+      });
+    }
+  };
+
+  const reportReview = async (reviewId) => {
+    if (!user?._id) {
+      setStatus({
+        type: "error",
+        text: "Autentifica-te pentru a raporta o recenzie.",
+      });
+      return;
+    }
+
+    setReportingReviewId(reviewId);
+    setStatus({ type: "", text: "" });
+
+    try {
+      const response = await api.post(`/recenzii/prestator/${reviewId}/report`, {
+        reason: "Raportata din pagina prestatorului",
+      });
+      setStatus({
+        type: "success",
+        text: response?.data?.message || "Raportarea a fost inregistrata.",
+      });
+    } catch (error) {
+      setStatus({
+        type: "error",
+        text:
+          error?.response?.data?.message || "Nu am putut raporta recenzia.",
+      });
+    } finally {
+      setReportingReviewId("");
     }
   };
 
@@ -62,11 +106,19 @@ function RecenziiPrestator() {
           <p>{r.comentariu}</p>
           {r.foto && <img src={r.foto} alt="recenzie" className="h-24 mt-2 rounded" />}
           <p className="text-sm text-gray-500">{new Date(r.data).toLocaleString()}</p>
+          <button
+            type="button"
+            onClick={() => reportReview(r._id)}
+            disabled={reportingReviewId === r._id}
+            className="mt-2 rounded border border-rose-200 px-3 py-2 text-sm text-rose-700 disabled:opacity-60"
+          >
+            {reportingReviewId === r._id ? "Se raporteaza..." : "Raporteaza abuz"}
+          </button>
         </div>
       ))}
 
       <h3 className="mt-6 text-xl font-bold">Lasa o recenzie</h3>
-      {msg && <div className="text-rose-700 text-sm mb-2">{msg}</div>}
+      <StatusBanner type={status.type || "info"} message={status.text} className="mb-2" />
       <div className="flex items-center gap-2">
         <input
           type="number"

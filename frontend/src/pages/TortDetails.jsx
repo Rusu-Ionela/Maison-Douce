@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, useParams } from "react-router-dom";
+import StatusBanner from "../components/StatusBanner";
 import { ProductsAPI } from "../api/products";
 import api from "../lib/api";
 import { useCart } from "../context/CartContext";
@@ -19,7 +20,8 @@ export default function TortDetails() {
   const [reviewForm, setReviewForm] = useState({ stele: 5, comentariu: "" });
   const [reviewFile, setReviewFile] = useState(null);
   const [sendingReview, setSendingReview] = useState(false);
-  const [reviewMsg, setReviewMsg] = useState("");
+  const [reportingReviewId, setReportingReviewId] = useState("");
+  const [reviewStatus, setReviewStatus] = useState({ type: "", text: "" });
 
   useEffect(() => {
     let alive = true;
@@ -87,15 +89,18 @@ export default function TortDetails() {
   const sendReview = async (e) => {
     e.preventDefault();
     if (!user?._id) {
-      setReviewMsg("Autentifica-te pentru a lasa o recenzie.");
+      setReviewStatus({
+        type: "error",
+        text: "Autentifica-te pentru a lasa o recenzie.",
+      });
       return;
     }
     if (!reviewForm.comentariu.trim()) {
-      setReviewMsg("Completeaza comentariul.");
+      setReviewStatus({ type: "error", text: "Completeaza comentariul." });
       return;
     }
     setSendingReview(true);
-    setReviewMsg("");
+    setReviewStatus({ type: "", text: "" });
     try {
       let fotoUrl = "";
       if (reviewFile) {
@@ -104,21 +109,59 @@ export default function TortDetails() {
         const upload = await api.post("/upload", fd);
         fotoUrl = upload.data?.url || "";
       }
-      await api.post("/recenzii/produs", {
+      const response = await api.post("/recenzii/produs", {
         tortId: id,
         stele: Number(reviewForm.stele || 5),
         comentariu: reviewForm.comentariu,
         foto: fotoUrl,
       });
-      const res = await api.get(`/recenzii/produs/${id}`);
-      setReviews(Array.isArray(res.data) ? res.data : []);
       setReviewForm({ stele: 5, comentariu: "" });
       setReviewFile(null);
-    } catch (e) {
-      console.error("Review error:", e);
-      setReviewMsg(e?.response?.data?.message || "Nu am putut trimite recenzia.");
+      setReviewStatus({
+        type: "success",
+        text:
+          response?.data?.message ||
+          "Recenzia a fost trimisa spre moderare si va deveni publica dupa aprobare.",
+      });
+    } catch (error) {
+      setReviewStatus({
+        type: "error",
+        text:
+          error?.response?.data?.message || "Nu am putut trimite recenzia.",
+      });
     } finally {
       setSendingReview(false);
+    }
+  };
+
+  const handleReportReview = async (reviewId) => {
+    if (!user?._id) {
+      setReviewStatus({
+        type: "error",
+        text: "Autentifica-te pentru a raporta o recenzie.",
+      });
+      return;
+    }
+
+    setReportingReviewId(reviewId);
+    setReviewStatus({ type: "", text: "" });
+
+    try {
+      const response = await api.post(`/recenzii/produs/${reviewId}/report`, {
+        reason: "Raportata din pagina produsului",
+      });
+      setReviewStatus({
+        type: "success",
+        text: response?.data?.message || "Raportarea a fost inregistrata.",
+      });
+    } catch (error) {
+      setReviewStatus({
+        type: "error",
+        text:
+          error?.response?.data?.message || "Nu am putut raporta recenzia.",
+      });
+    } finally {
+      setReportingReviewId("");
     }
   };
 
@@ -258,11 +301,21 @@ export default function TortDetails() {
               <div className="text-xs text-gray-500 mt-1">
                 {r.data ? new Date(r.data).toLocaleString() : ""}
               </div>
+              <div className="mt-3">
+                <button
+                  type="button"
+                  onClick={() => handleReportReview(r._id)}
+                  disabled={reportingReviewId === r._id}
+                  className="rounded-lg border border-rose-200 px-3 py-2 text-sm text-rose-700 disabled:opacity-60"
+                >
+                  {reportingReviewId === r._id ? "Se raporteaza..." : "Raporteaza abuz"}
+                </button>
+              </div>
             </div>
           ))}
         </div>
 
-        {reviewMsg && <div className="text-rose-700 text-sm">{reviewMsg}</div>}
+        <StatusBanner type={reviewStatus.type || "info"} message={reviewStatus.text} />
         <form onSubmit={sendReview} className="border-t border-rose-100 pt-4 space-y-3">
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             <label className="text-sm font-semibold text-gray-700">

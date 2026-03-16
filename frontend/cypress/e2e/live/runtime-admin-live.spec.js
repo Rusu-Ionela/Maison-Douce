@@ -32,6 +32,7 @@ describe("Admin and staff runtime routes (live backend)", () => {
     "/admin/notificari-foto",
     "/admin/fidelizare",
     "/admin/cupoane",
+    "/admin/recenzii",
     "/admin/audit",
     "/admin/monitoring",
     "/admin/abonamente",

@@ -34,15 +34,20 @@ export default function RecenzieComanda({ comandaId }) {
         const upload = await api.post("/upload", fd);
         fotoUrl = upload.data?.url || "";
       }
-      await api.post("/recenzii/comanda", {
+      const response = await api.post("/recenzii/comanda", {
         comandaId: resolvedId,
         nota,
         comentariu,
         foto: fotoUrl,
       });
-      const res = await api.get(`/recenzii/comanda/${resolvedId}`);
-      setRecenzie(res.data || null);
+      setRecenzie(response?.data?.review || null);
       setPhotoFile(null);
+      setStatus({
+        type: "success",
+        text:
+          response?.data?.message ||
+          "Recenzia a fost trimisa spre moderare.",
+      });
     } catch (err) {
       setStatus({
         type: "error",
@@ -57,6 +62,15 @@ export default function RecenzieComanda({ comandaId }) {
   if (recenzie) {
     return (
       <div className="mt-2 rounded border bg-green-50 p-2">
+        <StatusBanner
+          type={recenzie.moderationStatus === "approved" ? "success" : "warning"}
+          message={
+            recenzie.moderationStatus === "approved"
+              ? "Recenzia este aprobata si vizibila in sistem."
+              : "Recenzia a fost trimisa spre moderare si nu este inca publica."
+          }
+          className="mb-2"
+        />
         <p>Nota: {recenzie.nota}</p>
         <p>Comentariu: {recenzie.comentariu}</p>
         {recenzie.foto && (
