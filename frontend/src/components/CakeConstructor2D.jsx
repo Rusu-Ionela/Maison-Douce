@@ -193,7 +193,7 @@ export default function CakeConstructor2D({ designId: propDesignId }) {
       id,
       name: "Tort personalizat",
       price: total,
-      image: "/images/placeholder.png",
+      image: "/images/placeholder.svg",
       qty: 1,
       options,
       variantKey: JSON.stringify(options),

@@ -103,19 +103,22 @@ export default function Home() {
   return (
     <div className="bg-cream min-h-screen">
       {/* HERO */}
-      <header className="bg-gradient-to-br from-pink-50 via-rose-50 to-purple-50">
+      <header className="bg-[radial-gradient(circle_at_top_left,_rgba(255,255,255,0.95),_rgba(255,244,241,0.92),_rgba(247,230,234,0.84))]">
         <div className="max-w-6xl mx-auto px-4 py-16 md:py-24 flex flex-col md:flex-row items-center gap-10 reveal">
           <div className="flex-1 space-y-4">
             <p className="uppercase tracking-[0.2em] text-sm text-pink-600">Arta delicateselor</p>
-            <h1 className="text-4xl md:text-5xl font-bold text-gray-900 leading-tight">
+            <h1 className="font-serif text-4xl md:text-5xl font-bold text-gray-900 leading-tight">
               DESERTURI<br />PERSONALIZATE
             </h1>
-            <p className="text-gray-600 text-lg">Rafinament pastel si eleganta clasica, create pe gustul tau.</p>
+            <p className="max-w-xl text-lg text-gray-600">
+              Atelier artizanal cu torturi create la comanda, design coerent si
+              livrare organizata pentru evenimente personale sau corporate.
+            </p>
             <div className="flex gap-3">
-              <Link to="/catalog" className="px-4 py-3 rounded-lg bg-pink-500 text-white hover:bg-pink-600 shadow">
+              <Link to="/catalog" className="inline-flex items-center rounded-full bg-pink-600 px-5 py-3 text-sm font-semibold text-white shadow-soft hover:-translate-y-0.5 hover:bg-pink-700">
                 Comanda online
               </Link>
-              <Link to="/constructor" className="px-4 py-3 rounded-lg border border-pink-200 text-pink-600 hover:bg-pink-50">
+              <Link to="/constructor" className="inline-flex items-center rounded-full border border-rose-200 bg-white/85 px-5 py-3 text-sm font-semibold text-pink-700 shadow-soft hover:border-rose-300 hover:bg-rose-50">
                 Creeaza tortul tau
               </Link>
             </div>
@@ -139,11 +142,11 @@ export default function Home() {
       <section className="max-w-6xl mx-auto px-4 py-12 md:py-16">
         <div className="mb-8 reveal show flex items-center justify-between gap-3">
           <div>
-            <p className="text-pink-500 font-semibold uppercase tracking-wide">AI picks</p>
-            <h2 className="text-3xl font-bold text-gray-900">Recomandate pentru tine</h2>
-            <p className="text-gray-600">Combinatie hibrida: trenduri + istoricul tau + preferinte.</p>
+            <p className="text-pink-500 font-semibold uppercase tracking-wide">Selectie asistata</p>
+            <h2 className="font-serif text-3xl font-bold text-gray-900">Recomandate pentru tine</h2>
+            <p className="text-gray-600">Sugestii calculate din preferinte, trenduri si istoricul contului.</p>
           </div>
-          <Link to="/catalog" className="px-4 py-2 rounded-lg border border-pink-200 text-pink-600 hover:bg-pink-50">
+          <Link to="/catalog" className="inline-flex items-center rounded-full border border-rose-200 bg-white px-4 py-2 text-sm font-semibold text-pink-700 shadow-soft hover:border-rose-300 hover:bg-rose-50">
             Vezi catalogul
           </Link>
         </div>
@@ -155,7 +158,7 @@ export default function Home() {
 
           {!loadingRec && recs.length === 0 && (
             <div className="reveal col-span-full bg-white border border-rose-100 rounded-2xl p-6 text-gray-700">
-              Nu avem suficiente date pentru recomandari. Exploreaza catalogul si revin mai multe sugestii dupa primele comenzi.
+              Nu exista inca suficiente date pentru recomandari personalizate. Dupa primele interactiuni, selectia devine mai precisa.
             </div>
           )}
 
@@ -166,7 +169,7 @@ export default function Home() {
                 data-cy="rec-card"
                 className="reveal bg-white rounded-2xl shadow-md overflow-hidden border border-rose-100 hover:shadow-lg transition"
               >
-                <div className="h-44 w-full bg-gradient-to-br from-rose-50 via-pink-50 to-purple-50 flex items-center justify-center">
+                <div className="h-44 w-full bg-[linear-gradient(135deg,_rgba(255,250,242,1),_rgba(251,236,239,1),_rgba(247,230,234,0.9))] flex items-center justify-center">
                   <span className="text-pink-500 font-semibold text-lg">{r.nume}</span>
                 </div>
                 <div className="p-4 space-y-2">
@@ -187,10 +190,10 @@ export default function Home() {
                     </div>
                   ) : null}
                   <div className="pt-2 flex gap-2">
-                    <Link to={`/tort/${r._id}`} className="px-3 py-2 rounded-lg bg-pink-500 text-white text-sm hover:bg-pink-600">
+                    <Link to={`/tort/${r._id}`} className="inline-flex items-center rounded-full bg-pink-600 px-3 py-2 text-sm font-semibold text-white hover:bg-pink-700">
                       Detalii
                     </Link>
-                    <Link to="/constructor" className="px-3 py-2 rounded-lg border border-pink-200 text-pink-600 text-sm hover:bg-pink-50">
+                    <Link to="/constructor" className="inline-flex items-center rounded-full border border-rose-200 bg-white px-3 py-2 text-sm font-semibold text-pink-700 hover:bg-rose-50">
                       Personalizeaza
                     </Link>
                   </div>
@@ -205,12 +208,12 @@ export default function Home() {
         <div className="grid md:grid-cols-2 gap-10 items-center">
           <div className="reveal space-y-3">
             <p className="text-pink-500 font-semibold uppercase tracking-wide">La Maison</p>
-            <h2 className="text-3xl font-bold text-gray-900">Despre mine</h2>
+            <h2 className="font-serif text-3xl font-bold text-gray-900">Despre mine</h2>
             <p className="text-gray-700 leading-relaxed">
               Maison Douce se inspira din rafinamentul secolului XVIII: cutii pastel, panglici aurii si deserturi fine.
               Fiecare tort este creat manual, cu atentie la detalii si ingrediente de top.
             </p>
-            <Link to="/despre" className="inline-block px-4 py-2 rounded-lg border border-pink-200 text-pink-600 hover:bg-pink-50">
+            <Link to="/despre" className="inline-flex items-center rounded-full border border-rose-200 bg-white px-4 py-2 text-sm font-semibold text-pink-700 shadow-soft hover:bg-rose-50">
               Afla povestea
             </Link>
           </div>
@@ -231,7 +234,7 @@ export default function Home() {
       {/* ICONICS */}
       <section className="max-w-6xl mx-auto px-4 py-12 md:py-16">
         <div className="mb-8 reveal">
-          <h2 className="text-3xl font-bold text-gray-900">Iconics</h2>
+          <h2 className="font-serif text-3xl font-bold text-gray-900">Semnaturi Maison</h2>
           <p className="text-gray-600">Selectia noastra de deserturi preferate</p>
         </div>
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
@@ -259,10 +262,10 @@ export default function Home() {
       <section className="max-w-6xl mx-auto px-4 py-12 md:py-16">
         <div className="mb-8 reveal flex items-center justify-between">
           <div>
-            <h2 className="text-3xl font-bold text-gray-900">Cele mai populare</h2>
+            <h2 className="font-serif text-3xl font-bold text-gray-900">Cele mai populare</h2>
             <p className="text-gray-600">Preferatele clientilor Maison Douce</p>
           </div>
-          <Link to="/catalog" className="px-4 py-2 rounded-lg border border-pink-200 text-pink-600 hover:bg-pink-50">
+          <Link to="/catalog" className="inline-flex items-center rounded-full border border-rose-200 bg-white px-4 py-2 text-sm font-semibold text-pink-700 shadow-soft hover:bg-rose-50">
             Vezi tot
           </Link>
         </div>
@@ -271,7 +274,7 @@ export default function Home() {
             <article key={p._id} className="reveal bg-white rounded-2xl shadow-md overflow-hidden border border-rose-100">
               <div className="h-40 w-full overflow-hidden">
                 <img
-                  src={p.imagine || "/images/placeholder.png"}
+                  src={p.imagine || "/images/placeholder.svg"}
                   alt={p.nume}
                   loading="lazy"
                   decoding="async"
@@ -294,10 +297,10 @@ export default function Home() {
       <section className="max-w-6xl mx-auto px-4 py-12 md:py-16">
         <div className="mb-8 reveal flex items-center justify-between">
           <div>
-            <h2 className="text-3xl font-bold text-gray-900">Noutati</h2>
+            <h2 className="font-serif text-3xl font-bold text-gray-900">Noutati</h2>
             <p className="text-gray-600">Selectii recente, cu stiluri noi</p>
           </div>
-          <Link to="/catalog" className="px-4 py-2 rounded-lg border border-pink-200 text-pink-600 hover:bg-pink-50">
+          <Link to="/catalog" className="inline-flex items-center rounded-full border border-rose-200 bg-white px-4 py-2 text-sm font-semibold text-pink-700 shadow-soft hover:bg-rose-50">
             Descopera
           </Link>
         </div>
@@ -306,7 +309,7 @@ export default function Home() {
             <article key={p._id} className="reveal bg-white rounded-2xl shadow-md overflow-hidden border border-rose-100">
               <div className="h-40 w-full overflow-hidden">
                 <img
-                  src={p.imagine || "/images/placeholder.png"}
+                  src={p.imagine || "/images/placeholder.svg"}
                   alt={p.nume}
                   loading="lazy"
                   decoding="async"
@@ -326,10 +329,10 @@ export default function Home() {
       <section className="max-w-6xl mx-auto px-4 py-12 md:py-16">
         <div className="mb-8 reveal flex items-center justify-between">
           <div>
-            <h2 className="text-3xl font-bold text-gray-900">Promotii</h2>
+            <h2 className="font-serif text-3xl font-bold text-gray-900">Promotii</h2>
             <p className="text-gray-600">Preturi speciale pentru selectii sezoniere</p>
           </div>
-          <Link to="/catalog" className="px-4 py-2 rounded-lg border border-pink-200 text-pink-600 hover:bg-pink-50">
+          <Link to="/catalog" className="inline-flex items-center rounded-full border border-rose-200 bg-white px-4 py-2 text-sm font-semibold text-pink-700 shadow-soft hover:bg-rose-50">
             Vezi promotii
           </Link>
         </div>
@@ -343,7 +346,7 @@ export default function Home() {
             <article key={p._id} className="reveal bg-white rounded-2xl shadow-md overflow-hidden border border-rose-100">
               <div className="h-40 w-full overflow-hidden">
                 <img
-                  src={p.imagine || "/images/placeholder.png"}
+                  src={p.imagine || "/images/placeholder.svg"}
                   alt={p.nume}
                   loading="lazy"
                   decoding="async"
@@ -367,15 +370,15 @@ export default function Home() {
         <div className="grid md:grid-cols-2 gap-10 items-center">
           <div className="reveal space-y-3">
             <p className="text-pink-500 font-semibold uppercase tracking-wide">Cutia lunara</p>
-            <h2 className="text-3xl font-bold text-gray-900">Abonamentul Maison Douce</h2>
+            <h2 className="font-serif text-3xl font-bold text-gray-900">Abonamentul Maison Douce</h2>
             <p className="text-gray-700 leading-relaxed">
               Primesti lunar o selectie curatoriata de deserturi artizanale si surprize de sezon.
             </p>
             <div className="flex gap-3">
-              <Link to="/abonament" className="px-4 py-3 rounded-lg bg-pink-500 text-white hover:bg-pink-600 shadow">
+              <Link to="/abonament" className="inline-flex items-center rounded-full bg-pink-600 px-5 py-3 text-sm font-semibold text-white shadow-soft hover:-translate-y-0.5 hover:bg-pink-700">
                 Vezi planuri
               </Link>
-              <Link to="/abonament?plan=basic" className="px-4 py-3 rounded-lg border border-pink-200 text-pink-600 hover:bg-pink-50">
+              <Link to="/abonament?plan=basic" className="inline-flex items-center rounded-full border border-rose-200 bg-white px-5 py-3 text-sm font-semibold text-pink-700 shadow-soft hover:bg-rose-50">
                 Aboneaza-te
               </Link>
             </div>
@@ -397,7 +400,7 @@ export default function Home() {
       {/* RECENZII */}
       <section className="max-w-6xl mx-auto px-4 py-12 md:py-16">
         <div className="mb-8 reveal">
-          <h2 className="text-3xl font-bold text-gray-900">Recenzii & rating-uri</h2>
+          <h2 className="font-serif text-3xl font-bold text-gray-900">Recenzii si rating-uri</h2>
           <p className="text-gray-600">Parerile clientilor nostri</p>
         </div>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -419,7 +422,7 @@ export default function Home() {
       </section>
 
       {/* CONTACT RAPID */}
-      <section className="bg-rose-50 border-t border-rose-100">
+      <section className="border-y border-rose-100 bg-[linear-gradient(180deg,_rgba(255,245,242,0.95),_rgba(247,230,234,0.88))]">
         <div className="max-w-6xl mx-auto px-4 py-10 grid grid-cols-1 md:grid-cols-3 gap-6 text-gray-700">
           <div>
             <h4 className="font-semibold mb-2">Contact rapid</h4>
@@ -457,17 +460,17 @@ export default function Home() {
             </div>
           </div>
           <div className="reveal space-y-3">
-            <p className="text-pink-500 font-semibold uppercase tracking-wide">Art of gifting</p>
-            <h2 className="text-3xl font-bold text-gray-900">Idei de cadou personalizate</h2>
+            <p className="text-pink-500 font-semibold uppercase tracking-wide">Arta cadourilor</p>
+            <h2 className="font-serif text-3xl font-bold text-gray-900">Idei de cadou personalizate</h2>
             <p className="text-gray-700 leading-relaxed">
               O colectie jucausa si poetica: cutii gourmet, deserturi fine si personalizare completa. Perfecte pentru multumiri,
               aniversari sau evenimente speciale.
             </p>
             <div className="flex gap-3">
-              <Link to="/constructor" className="px-4 py-3 rounded-lg bg-pink-500 text-white hover:bg-pink-600 shadow">
+              <Link to="/constructor" className="inline-flex items-center rounded-full bg-pink-600 px-5 py-3 text-sm font-semibold text-white shadow-soft hover:-translate-y-0.5 hover:bg-pink-700">
                 Personalizeaza
               </Link>
-              <Link to="/catalog" className="px-4 py-3 rounded-lg border border-pink-200 text-pink-600 hover:bg-pink-50">
+              <Link to="/catalog" className="inline-flex items-center rounded-full border border-rose-200 bg-white px-5 py-3 text-sm font-semibold text-pink-700 shadow-soft hover:bg-rose-50">
                 Descopera colectia
               </Link>
             </div>
@@ -478,8 +481,8 @@ export default function Home() {
       {/* Tailor-made */}
       <section className="max-w-6xl mx-auto px-4 py-12 md:py-16">
         <div className="mb-8 reveal">
-          <p className="text-pink-500 font-semibold uppercase tracking-wide">Tailor-made box</p>
-          <h2 className="text-3xl font-bold text-gray-900">Creeaza desertul tau</h2>
+          <p className="text-pink-500 font-semibold uppercase tracking-wide">Selectie personalizata</p>
+          <h2 className="font-serif text-3xl font-bold text-gray-900">Creeaza desertul tau</h2>
         </div>
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
           {tailor.map((p, i) => (
@@ -496,7 +499,7 @@ export default function Home() {
               <div className="p-4 flex items-center justify-between">
                 <h3 className="font-semibold text-gray-900">{p.title}</h3>
                 <Link to="/constructor" className="text-pink-600 hover:text-pink-700 font-semibold text-sm">
-                  Add to box
+                  Alege aroma
                 </Link>
               </div>
             </article>
@@ -508,11 +511,11 @@ export default function Home() {
       <footer className="bg-white border-t border-rose-100">
         <div className="max-w-6xl mx-auto px-4 py-10 grid grid-cols-2 sm:grid-cols-4 gap-6 text-gray-700">
           <div>
-            <h4 className="font-semibold mb-2">IONELA CAKE</h4>
-            <Link to="/catalog" className="block hover:text-pink-600">Cakes</Link>
+            <h4 className="font-semibold mb-2">Maison-Douce</h4>
+            <Link to="/catalog" className="block hover:text-pink-600">Torturi</Link>
             <Link to="/catalog" className="block hover:text-pink-600">Macarons</Link>
-            <Link to="/catalog" className="block hover:text-pink-600">Chocolates</Link>
-            <Link to="/catalog" className="block hover:text-pink-600">Eclairs</Link>
+            <Link to="/catalog" className="block hover:text-pink-600">Ciocolata</Link>
+            <Link to="/catalog" className="block hover:text-pink-600">Eclere</Link>
           </div>
           <div>
             <h4 className="font-semibold mb-2">Informatii</h4>

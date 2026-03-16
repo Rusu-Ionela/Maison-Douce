@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 480" role="img" aria-labelledby="title desc">
+  <title id="title">Imagine indisponibila</title>
+  <desc id="desc">Placeholder pentru produsele fara fotografie incarcata.</desc>
+  <defs>
+    <linearGradient id="bg" x1="0%" x2="100%" y1="0%" y2="100%">
+      <stop offset="0%" stop-color="#fff4f0" />
+      <stop offset="100%" stop-color="#f6e8df" />
+    </linearGradient>
+  </defs>
+  <rect width="640" height="480" fill="url(#bg)" />
+  <g fill="none" stroke="#d8b7a4" stroke-width="10">
+    <rect x="88" y="84" width="464" height="312" rx="24" />
+    <path d="M156 320l94-92 74 62 78-84 82 114" />
+    <circle cx="232" cy="172" r="30" />
+  </g>
+  <text
+    x="320"
+    y="426"
+    fill="#9c6f60"
+    font-family="Georgia, 'Times New Roman', serif"
+    font-size="26"
+    text-anchor="middle"
+  >
+    Maison-Douce
+  </text>
+</svg>

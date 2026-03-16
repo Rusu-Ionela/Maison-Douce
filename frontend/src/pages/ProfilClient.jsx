@@ -1,6 +1,6 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useNavigate } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import StatusBanner from "../components/StatusBanner";
 import { useAuth } from "../context/AuthContext";
 import api from "/src/lib/api.js";
@@ -11,8 +11,11 @@ import {
   getApiErrorMessage,
   queryKeys,
 } from "../lib/serverState";
+import { getConfiguredPrestatorId } from "../lib/runtimeConfig";
 import { getPushSubscription, subscribePush, unsubscribePush } from "/src/lib/push.js";
 import RecenzieComanda from "./RecenzieComanda";
+
+const MONGO_ID_PATTERN = /^[a-f\d]{24}$/i;
 
 const emptyProfile = {
   nume: "",
@@ -348,9 +351,21 @@ export default function ProfilClient() {
     });
   };
 
-  const orders = ordersQuery.data || [];
+  const orders = useMemo(() => ordersQuery.data || [], [ordersQuery.data]);
   const notifs = notificationsQuery.data || [];
   const photoNotifs = photoNotificationsQuery.data || [];
+  const reviewPrestatorId = useMemo(() => {
+    const orderPrestatorId = orders.find((item) =>
+      MONGO_ID_PATTERN.test(String(item?.prestatorId || ""))
+    )?.prestatorId;
+
+    if (MONGO_ID_PATTERN.test(String(orderPrestatorId || ""))) {
+      return String(orderPrestatorId);
+    }
+
+    const configuredPrestatorId = getConfiguredPrestatorId();
+    return MONGO_ID_PATTERN.test(configuredPrestatorId) ? configuredPrestatorId : "";
+  }, [orders]);
   const profileDataError =
     ordersQuery.error || notificationsQuery.error || photoNotificationsQuery.error;
 
@@ -363,13 +378,19 @@ export default function ProfilClient() {
             Gestioneaza datele personale, preferintele si istoricul.
           </p>
           <div className="mt-2">
-            <a
-              className="text-pink-600 underline"
-              href="/recenzii/prestator/default"
-            >
-              Lasa recenzie pentru patiser
-            </a>
-          </div>
+            {reviewPrestatorId ? (
+              <Link
+                className="text-pink-600 underline"
+                to={`/recenzii/prestator/${reviewPrestatorId}`}
+              >
+                Lasa recenzie pentru patiser
+              </Link>
+            ) : (
+              <span className="text-sm text-gray-500">
+                Recenzia pentru patiser devine disponibila dupa prima comanda cu un prestator configurat.
+              </span>
+            )}
+y          </div>
         </header>
 
         <StatusBanner type={status.type || "info"} message={status.message} />

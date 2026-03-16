@@ -11,7 +11,7 @@ const ALERGENI = ["nuci", "alune", "lactoza", "gluten", "oua"];
 function RatingBadge({ value = 0, count = 0 }) {
   const rounded = Math.round(Number(value || 0) * 10) / 10;
   return (
-    <span className="text-xs px-2 py-1 rounded-full bg-rose-50 text-pink-700 font-semibold">
+    <span className="rounded-full bg-rose-50 px-2 py-1 text-xs font-semibold text-pink-700">
       {rounded > 0 ? `Rating: ${rounded} (${count || 0})` : "Fara rating"}
     </span>
   );
@@ -31,6 +31,28 @@ export default function Catalog() {
   const [portiiMax, setPortiiMax] = useState("");
   const [excludeAlergeni, setExcludeAlergeni] = useState([]);
   const [sort, setSort] = useState("rating");
+  const hasActiveFilters = Boolean(
+    query ||
+      ocazii.length ||
+      stil ||
+      marime ||
+      pretMin ||
+      pretMax ||
+      portiiMin ||
+      portiiMax ||
+      excludeAlergeni.length ||
+      sort !== "rating"
+  );
+  const activeFilterCount = [
+    query,
+    ocazii.length,
+    stil,
+    marime,
+    pretMin || pretMax,
+    portiiMin || portiiMax,
+    excludeAlergeni.length,
+    sort !== "rating" ? sort : "",
+  ].filter(Boolean).length;
 
   useEffect(() => {
     document.title = "Catalog torturi - Maison-Douce";
@@ -86,26 +108,56 @@ export default function Catalog() {
     setter(list.includes(value) ? list.filter((v) => v !== value) : [...list, value]);
   };
 
+  const resetFilters = () => {
+    setQuery("");
+    setOcazii([]);
+    setStil("");
+    setMarime("");
+    setPretMin("");
+    setPretMax("");
+    setPortiiMin("");
+    setPortiiMax("");
+    setExcludeAlergeni([]);
+    setSort("rating");
+  };
+
   return (
     <div className="min-h-screen bg-cream">
       <div className="max-w-6xl mx-auto px-4 py-10">
-        <header className="flex flex-col gap-3 mb-8">
+        <header className="mb-8 rounded-[32px] border border-rose-100 bg-white/80 p-6 shadow-card backdrop-blur">
           <div className="uppercase tracking-[0.2em] text-xs text-pink-600">Catalog</div>
-          <h1 className="text-3xl md:text-4xl font-bold text-gray-900">Torturi artizanale</h1>
+          <h1 className="mt-3 font-serif text-3xl md:text-4xl font-bold text-gray-900">Torturi artizanale</h1>
           <p className="text-gray-600">
             Filtreaza dupa ocazie, marime sau ingrediente si gaseste tortul perfect.
           </p>
+          <div className="mt-4 flex flex-wrap items-center gap-3 text-sm">
+            <span className="rounded-full bg-rose-50 px-3 py-1.5 font-semibold text-pink-700">
+              {loading ? "Actualizam selectia..." : `${items.length} rezultate`}
+            </span>
+            <span className="rounded-full bg-white px-3 py-1.5 text-gray-600 shadow-soft">
+              {hasActiveFilters ? `${activeFilterCount} filtre active` : "Fara filtre active"}
+            </span>
+            {hasActiveFilters ? (
+              <button
+                type="button"
+                onClick={resetFilters}
+                className="rounded-full border border-rose-200 bg-white px-4 py-1.5 font-semibold text-pink-700 shadow-soft hover:bg-rose-50"
+              >
+                Reseteaza filtrele
+              </button>
+            ) : null}
+          </div>
         </header>
 
         <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
-          <aside className="lg:col-span-1 space-y-5">
+          <aside className="space-y-5 lg:col-span-1 lg:sticky lg:top-28 lg:self-start">
             <div className="bg-white rounded-2xl border border-rose-100 p-4 shadow-sm">
               <label className="text-sm font-semibold text-gray-800">Cauta</label>
               <input
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
                 placeholder="Cauta tort..."
-                className="mt-2 w-full rounded-lg border border-rose-200 px-3 py-2 focus:outline-none focus:border-pink-400"
+                className="mt-2 w-full rounded-2xl border border-rose-200 bg-white px-3 py-2.5 focus:outline-none focus:border-pink-400 focus:ring-4 focus:ring-rose-100"
               />
             </div>
 
@@ -117,7 +169,9 @@ export default function Catalog() {
                     key={o}
                     type="button"
                     className={`px-3 py-1 rounded-full text-xs font-semibold border ${
-                      ocazii.includes(o) ? "bg-pink-500 text-white border-pink-500" : "border-rose-200 text-gray-700"
+                      ocazii.includes(o)
+                        ? "border-pink-600 bg-pink-600 text-white"
+                        : "border-rose-200 bg-white text-gray-700 hover:bg-rose-50"
                     }`}
                     onClick={() => toggleList(ocazii, o, setOcazii)}
                   >
@@ -136,7 +190,7 @@ export default function Catalog() {
                   value={pretMin}
                   onChange={(e) => setPretMin(e.target.value)}
                   placeholder="Min"
-                  className="w-full rounded-lg border border-rose-200 px-3 py-2"
+                  className="w-full rounded-2xl border border-rose-200 bg-white px-3 py-2.5 focus:outline-none focus:border-pink-400 focus:ring-4 focus:ring-rose-100"
                 />
                 <input
                   type="number"
@@ -144,7 +198,7 @@ export default function Catalog() {
                   value={pretMax}
                   onChange={(e) => setPretMax(e.target.value)}
                   placeholder="Max"
-                  className="w-full rounded-lg border border-rose-200 px-3 py-2"
+                  className="w-full rounded-2xl border border-rose-200 bg-white px-3 py-2.5 focus:outline-none focus:border-pink-400 focus:ring-4 focus:ring-rose-100"
                 />
               </div>
             </div>
@@ -158,7 +212,7 @@ export default function Catalog() {
                   value={portiiMin}
                   onChange={(e) => setPortiiMin(e.target.value)}
                   placeholder="Min"
-                  className="w-full rounded-lg border border-rose-200 px-3 py-2"
+                  className="w-full rounded-2xl border border-rose-200 bg-white px-3 py-2.5 focus:outline-none focus:border-pink-400 focus:ring-4 focus:ring-rose-100"
                 />
                 <input
                   type="number"
@@ -166,7 +220,7 @@ export default function Catalog() {
                   value={portiiMax}
                   onChange={(e) => setPortiiMax(e.target.value)}
                   placeholder="Max"
-                  className="w-full rounded-lg border border-rose-200 px-3 py-2"
+                  className="w-full rounded-2xl border border-rose-200 bg-white px-3 py-2.5 focus:outline-none focus:border-pink-400 focus:ring-4 focus:ring-rose-100"
                 />
               </div>
             </div>
@@ -176,7 +230,7 @@ export default function Catalog() {
               <select
                 value={stil}
                 onChange={(e) => setStil(e.target.value)}
-                className="w-full rounded-lg border border-rose-200 px-3 py-2"
+                className="w-full rounded-2xl border border-rose-200 bg-white px-3 py-2.5 focus:outline-none focus:border-pink-400 focus:ring-4 focus:ring-rose-100"
               >
                 <option value="">Toate</option>
                 {STILURI.map((s) => (
@@ -192,7 +246,7 @@ export default function Catalog() {
               <select
                 value={marime}
                 onChange={(e) => setMarime(e.target.value)}
-                className="w-full rounded-lg border border-rose-200 px-3 py-2"
+                className="w-full rounded-2xl border border-rose-200 bg-white px-3 py-2.5 focus:outline-none focus:border-pink-400 focus:ring-4 focus:ring-rose-100"
               >
                 <option value="">Toate</option>
                 {MARIMI.map((m) => (
@@ -211,7 +265,9 @@ export default function Catalog() {
                     key={a}
                     type="button"
                     className={`px-3 py-1 rounded-full text-xs font-semibold border ${
-                      excludeAlergeni.includes(a) ? "bg-rose-600 text-white border-rose-600" : "border-rose-200 text-gray-700"
+                      excludeAlergeni.includes(a)
+                        ? "border-rose-600 bg-rose-600 text-white"
+                        : "border-rose-200 bg-white text-gray-700 hover:bg-rose-50"
                     }`}
                     onClick={() => toggleList(excludeAlergeni, a, setExcludeAlergeni)}
                   >
@@ -226,7 +282,7 @@ export default function Catalog() {
               <select
                 value={sort}
                 onChange={(e) => setSort(e.target.value)}
-                className="w-full rounded-lg border border-rose-200 px-3 py-2"
+                className="w-full rounded-2xl border border-rose-200 bg-white px-3 py-2.5 focus:outline-none focus:border-pink-400 focus:ring-4 focus:ring-rose-100"
               >
                 <option value="rating">Cele mai apreciate</option>
                 <option value="popular">Populare</option>
@@ -237,24 +293,52 @@ export default function Catalog() {
           </aside>
 
           <section className="lg:col-span-3">
-            {loading && <div className="text-gray-600">Se incarca...</div>}
+            <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <div className="text-sm font-semibold text-gray-900">Selectie actuala</div>
+                <div className="text-sm text-gray-600">Rezultate ordonate dupa criteriul selectat.</div>
+              </div>
+              <div className="rounded-full border border-rose-100 bg-white px-4 py-2 text-sm text-gray-600 shadow-soft">
+                Sortare:{" "}
+                <span className="font-semibold text-gray-900">
+                  {sort === "rating"
+                    ? "Cele mai apreciate"
+                    : sort === "popular"
+                      ? "Populare"
+                      : sort === "price_asc"
+                        ? "Pret crescator"
+                        : "Pret descrescator"}
+                </span>
+              </div>
+            </div>
+
+            {loading && (
+              <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3">
+                {Array.from({ length: 6 }).map((_, index) => (
+                  <div
+                    key={index}
+                    className="h-[320px] animate-pulse rounded-[28px] border border-rose-100 bg-white/80 shadow-sm"
+                  />
+                ))}
+              </div>
+            )}
 
             {!loading && items.length === 0 && (
-              <div className="bg-white border border-rose-100 rounded-2xl p-6 text-gray-700">
+              <div className="rounded-[28px] border border-rose-100 bg-white p-6 text-gray-700 shadow-soft">
                 Nu am gasit produse pentru filtrele selectate.
               </div>
             )}
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+            {!loading && <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3">
               {items.map((p) => (
-                <article key={p._id} className="bg-white rounded-2xl border border-rose-100 shadow-sm overflow-hidden">
+                <article key={p._id} className="overflow-hidden rounded-[28px] border border-rose-100 bg-white shadow-soft transition duration-300 hover:-translate-y-1 hover:shadow-card">
                   <div className="h-44 bg-rose-50 overflow-hidden">
                     <img
-                      src={p.imagine || "/images/placeholder.png"}
+                      src={p.imagine || "/images/placeholder.svg"}
                       alt={p.nume}
                       loading="lazy"
                       decoding="async"
-                      className="h-full w-full object-cover"
+                      className="h-full w-full object-cover transition duration-500 hover:scale-105"
                     />
                   </div>
                   <div className="p-4 space-y-2">
@@ -269,12 +353,12 @@ export default function Catalog() {
                     <div className="flex gap-2 pt-2">
                       <Link
                         to={`/tort/${p._id}`}
-                        className="px-3 py-2 rounded-lg border border-rose-200 text-pink-600 text-sm hover:bg-rose-50"
+                        className="inline-flex items-center rounded-full border border-rose-200 bg-white px-3 py-2 text-sm font-semibold text-pink-700 hover:bg-rose-50"
                       >
                         Detalii
                       </Link>
                       <button
-                        className="px-3 py-2 rounded-lg bg-pink-500 text-white text-sm hover:bg-pink-600"
+                        className="inline-flex items-center rounded-full bg-pink-600 px-3 py-2 text-sm font-semibold text-white shadow-soft hover:bg-pink-700"
                         onClick={() =>
                           add({
                             id: p._id,
@@ -292,7 +376,7 @@ export default function Catalog() {
                   </div>
                 </article>
               ))}
-            </div>
+            </div>}
           </section>
         </div>
       </div>

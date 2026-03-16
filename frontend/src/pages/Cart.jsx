@@ -289,7 +289,7 @@ export default function Cart() {
                 >
                   <div className="flex h-16 w-16 items-center justify-center overflow-hidden rounded-xl bg-rose-50">
                     <img
-                      src={it.image || "/images/placeholder.png"}
+                      src={it.image || "/images/placeholder.svg"}
                       alt={it.name}
                       className="h-full w-full object-cover"
                     />

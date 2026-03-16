@@ -411,12 +411,14 @@ router.get("/client/:clientId", authRequired, async (req, res) => {
         const comenzi = await Comanda.find({ clientId }).sort({ createdAt: -1 });
         res.json(comenzi.map((c) => ({
             _id: c._id,
+            prestatorId: c.prestatorId || "",
             dataLivrare: c.dataLivrare,
             oraLivrare: c.oraLivrare,
             items: c.items,
             metodaLivrare: c.metodaLivrare,
             adresaLivrare: c.adresaLivrare,
             status: c.status,
+            paymentStatus: c.paymentStatus || c.statusPlata || "",
             subtotal: c.subtotal,
             taxaLivrare: c.taxaLivrare,
             total: c.total,

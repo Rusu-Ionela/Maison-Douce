@@ -1,56 +1,64 @@
-// frontend/src/lib/tailwindComponents.js
-/**
- * Reusable Tailwind component classes and helper functions
- * for consistent styling across the app.
- */
-
 export const colors = {
-    primary: 'bg-pink-500 hover:bg-pink-600',
-    secondary: 'bg-purple-500 hover:bg-purple-600',
-    danger: 'bg-red-500 hover:bg-red-600',
-    success: 'bg-green-500 hover:bg-green-600',
-    neutral: 'bg-gray-500 hover:bg-gray-600',
+  primary: "bg-pink-600 hover:bg-pink-700",
+  secondary: "bg-sage text-ink hover:bg-sage-deep",
+  danger: "bg-red-600 hover:bg-red-700",
+  success: "bg-emerald-600 hover:bg-emerald-700",
+  neutral: "bg-stone-600 hover:bg-stone-700",
 };
 
 export const buttons = {
-    primary: `px-4 py-2 rounded-lg font-semibold text-white ${colors.primary} transition-all duration-200 shadow-md hover:shadow-lg disabled:opacity-50 disabled:cursor-not-allowed`,
-    secondary: `px-4 py-2 rounded-lg font-semibold text-white ${colors.secondary} transition-all duration-200 shadow-md hover:shadow-lg disabled:opacity-50`,
-    success: `px-4 py-2 rounded-lg font-semibold text-white ${colors.success} transition-all duration-200 shadow-md hover:shadow-lg disabled:opacity-50`,
-    outline: `px-4 py-2 rounded-lg font-semibold border-2 border-pink-500 text-pink-500 hover:bg-pink-50 transition-all duration-200 disabled:opacity-50`,
-    small: `px-3 py-1 rounded text-sm font-semibold text-white ${colors.primary} transition-all`,
-}; export const cards = {
-    default: `bg-white rounded-lg shadow-md p-6 hover:shadow-lg transition-shadow duration-200`,
-    bordered: `bg-white rounded-lg border-2 border-pink-200 p-6 hover:border-pink-400 transition-colors`,
-    elevated: `bg-white rounded-lg shadow-lg p-6`,
+  primary:
+    `inline-flex items-center justify-center gap-2 rounded-full px-4 py-2.5 text-sm font-semibold text-white ${colors.primary} shadow-soft disabled:cursor-not-allowed disabled:opacity-50`,
+  secondary:
+    `inline-flex items-center justify-center gap-2 rounded-full px-4 py-2.5 text-sm font-semibold ${colors.secondary} shadow-soft disabled:cursor-not-allowed disabled:opacity-50`,
+  success:
+    `inline-flex items-center justify-center gap-2 rounded-full px-4 py-2.5 text-sm font-semibold text-white ${colors.success} shadow-soft disabled:cursor-not-allowed disabled:opacity-50`,
+  outline:
+    "inline-flex items-center justify-center gap-2 rounded-full border border-rose-200 bg-white px-4 py-2.5 text-sm font-semibold text-pink-700 shadow-soft hover:border-rose-300 hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-50",
+  small:
+    `inline-flex items-center justify-center gap-2 rounded-full px-3 py-1.5 text-xs font-semibold text-white ${colors.primary} shadow-soft`,
+};
+
+export const cards = {
+  default:
+    "rounded-[24px] border border-rose-100 bg-white/90 p-6 shadow-soft backdrop-blur-sm",
+  bordered: "rounded-[24px] border border-rose-200 bg-white p-6 shadow-soft",
+  elevated: "rounded-[28px] border border-rose-100 bg-white p-6 shadow-card",
 };
 
 export const inputs = {
-    default: `w-full px-4 py-2 border-2 border-gray-300 rounded-lg focus:outline-none focus:border-pink-500 transition-colors`,
-    error: `w-full px-4 py-2 border-2 border-red-500 rounded-lg focus:outline-none focus:border-red-600 transition-colors`,
+  default:
+    "w-full rounded-2xl border border-rose-200 bg-white px-4 py-2.5 text-gray-800 outline-none focus:border-pink-400 focus:ring-4 focus:ring-rose-100",
+  error:
+    "w-full rounded-2xl border border-red-300 bg-white px-4 py-2.5 text-gray-800 outline-none focus:border-red-500 focus:ring-4 focus:ring-red-100",
 };
 
 export const containers = {
-    pageMax: `max-w-7xl mx-auto px-4 py-8`,
-    section: `py-8 px-4`,
+  pageMax: "mx-auto max-w-6xl px-4 py-8 md:px-6",
+  section: "px-4 py-8 md:px-6",
 };
 
 export const typography = {
-    h1: `text-4xl font-bold text-gray-900 mb-4`,
-    h2: `text-3xl font-bold text-gray-900 mb-3`,
-    h3: `text-2xl font-semibold text-gray-800 mb-2`,
-    body: `text-gray-700 leading-relaxed`,
-    small: `text-sm text-gray-600`,
+  h1: "mb-4 font-serif text-4xl font-bold text-ink",
+  h2: "mb-3 font-serif text-3xl font-bold text-ink",
+  h3: "mb-2 text-2xl font-semibold text-gray-800",
+  body: "leading-relaxed text-gray-700",
+  small: "text-sm text-gray-500",
 };
 
 export const grids = {
-    columns2: `grid grid-cols-1 md:grid-cols-2 gap-6`,
-    columns3: `grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6`,
-    columns4: `grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4`,
+  columns2: "grid grid-cols-1 gap-6 md:grid-cols-2",
+  columns3: "grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-3",
+  columns4: "grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-4",
 };
 
 export const badges = {
-    success: `inline-block px-3 py-1 rounded-full bg-green-100 text-green-800 text-sm font-semibold`,
-    warning: `inline-block px-3 py-1 rounded-full bg-yellow-100 text-yellow-800 text-sm font-semibold`,
-    error: `inline-block px-3 py-1 rounded-full bg-red-100 text-red-800 text-sm font-semibold`,
-    info: `inline-block px-3 py-1 rounded-full bg-blue-100 text-blue-800 text-sm font-semibold`,
+  success:
+    "inline-flex items-center rounded-full bg-emerald-50 px-3 py-1 text-sm font-semibold text-emerald-700",
+  warning:
+    "inline-flex items-center rounded-full bg-amber-50 px-3 py-1 text-sm font-semibold text-amber-700",
+  error:
+    "inline-flex items-center rounded-full bg-red-50 px-3 py-1 text-sm font-semibold text-red-700",
+  info:
+    "inline-flex items-center rounded-full bg-rose-50 px-3 py-1 text-sm font-semibold text-pink-700",
 };

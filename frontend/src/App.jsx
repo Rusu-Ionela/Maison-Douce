@@ -5,7 +5,15 @@ import RouteContextBar from "./components/RouteContextBar";
 import QuickNavigator from "./components/QuickNavigator";
 import { useAuth } from "./context/AuthContext";
 
-const lazyPage = (path) => React.lazy(() => import(path));
+const pageModules = import.meta.glob("./pages/*.jsx");
+
+const lazyPage = (path) => {
+  const loader = pageModules[path];
+  if (!loader) {
+    throw new Error(`Pagina nu exista in configuratia lazy: ${path}`);
+  }
+  return React.lazy(loader);
+};
 
 // Public pages
 const Home = lazyPage("./pages/Home.jsx");
@@ -68,6 +76,7 @@ const AdminStats = lazyPage("./pages/AdminStats.jsx");
 const AdminNotificari = lazyPage("./pages/AdminNotificari.jsx");
 const AdminFidelizare = lazyPage("./pages/AdminFidelizare.jsx");
 const AdminCupoane = lazyPage("./pages/AdminCupoane.jsx");
+const AdminRecenzii = lazyPage("./pages/AdminRecenzii.jsx");
 const AdminAbonamente = lazyPage("./pages/AdminAbonamente.jsx");
 const AdminAudit = lazyPage("./pages/AdminAudit.jsx");
 const AdminMonitoring = lazyPage("./pages/AdminMonitoring.jsx");
@@ -167,7 +176,6 @@ export default function App() {
           <Route path="/comanda" element={<ComandaClient />} />
           <Route path="/comanda-demo" element={<Navigate to="/comanda" replace />} />
           <Route path="/recenzii/prestator/:prestatorId" element={<RecenziiPrestator />} />
-          <Route path="/recenzii/comanda/:comandaId" element={<RecenzieComanda />} />
           <Route path="/calendar" element={<CalendarClient />} />
           <Route path="/calendar-legacy" element={<Navigate to="/calendar" replace />} />
           <Route path="/rezervare" element={<Navigate to="/calendar" replace />} />
@@ -254,6 +262,14 @@ export default function App() {
             element={
               <RequireAuth>
                 <MesajChat />
+              </RequireAuth>
+            }
+          />
+          <Route
+            path="/recenzii/comanda/:comandaId"
+            element={
+              <RequireAuth>
+                <RecenzieComanda />
               </RequireAuth>
             }
           />
@@ -432,6 +448,14 @@ export default function App() {
             element={
               <RequireAdmin>
                 <AdminCupoane />
+              </RequireAdmin>
+            }
+          />
+          <Route
+            path="/admin/recenzii"
+            element={
+              <RequireAdmin>
+                <AdminRecenzii />
               </RequireAdmin>
             }
           />
