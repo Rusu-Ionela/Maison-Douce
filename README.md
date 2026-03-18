@@ -189,6 +189,22 @@ Ghidul complet este in:
 - [deploy/staging/staging.env.example](deploy/staging/staging.env.example)
 - [deploy/staging/docker-compose.staging.yml](deploy/staging/docker-compose.staging.yml)
 
+Generator local pentru configurare:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\prepare-staging-config.ps1 `
+  -StagingHost staging.example.com `
+  -StagingUser deploy `
+  -StagingPath /opt/maison-douce `
+  -BaseClientUrl https://staging.example.com
+```
+
+Scriptul genereaza fisiere locale in `deploy/staging/generated/` pentru:
+
+- `STAGING_ENV_FILE`
+- repository vars pentru frontend si staging
+- checklist-ul pentru secretele ramase de completat
+
 ## Backup si restore Mongo
 
 Backup:

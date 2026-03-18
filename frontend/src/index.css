@@ -81,3 +81,62 @@ select {
   background: rgba(247, 198, 210, 0.55);
   color: var(--ink);
 }
+
+.calendar-shell.react-calendar {
+  width: 100%;
+  border: 0;
+  background: transparent;
+  font-family: var(--font-sans);
+}
+
+.calendar-shell .react-calendar__navigation {
+  display: flex;
+  gap: 10px;
+  margin-bottom: 14px;
+}
+
+.calendar-shell .react-calendar__navigation button {
+  min-width: 44px;
+  border: 0;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.9);
+  color: var(--ink);
+  font-weight: 600;
+}
+
+.calendar-shell .react-calendar__navigation button:disabled {
+  opacity: 0.45;
+}
+
+.calendar-shell .react-calendar__month-view__weekdays {
+  margin-bottom: 8px;
+  text-transform: uppercase;
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  color: #8c6a74;
+}
+
+.calendar-shell .react-calendar__month-view__weekdays__weekday abbr {
+  text-decoration: none;
+}
+
+.calendar-shell .react-calendar__tile {
+  margin: 3px 0;
+  min-height: 54px;
+  border: 0;
+  background: transparent;
+  color: var(--ink);
+}
+
+.calendar-shell .react-calendar__tile:enabled:hover,
+.calendar-shell .react-calendar__tile:enabled:focus {
+  background: rgba(252, 228, 234, 0.85);
+}
+
+.calendar-shell .react-calendar__tile--now {
+  box-shadow: inset 0 0 0 1px rgba(219, 93, 137, 0.22);
+}
+
+.calendar-shell .react-calendar__tile--active {
+  background: transparent;
+}

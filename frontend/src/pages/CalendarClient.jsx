@@ -1,9 +1,8 @@
-// frontend/src/pages/CalendarClient.jsx
-import React, { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { useMutation, useQuery } from "@tanstack/react-query";
 import Calendar from "react-calendar";
 import "react-calendar/dist/Calendar.css";
 import { useNavigate } from "react-router-dom";
-
 import { getAvailability, reserveSlot } from "../api/calendar";
 import SlotPicker from "../components/SlotPicker";
 import StatusBanner from "../components/StatusBanner";
@@ -13,61 +12,117 @@ import {
   getPrestatorEnvWarningMessage,
   hasPrestatorEnvConfig,
 } from "../lib/runtimeConfig";
-import { buttons, inputs, cards } from "../lib/tailwindComponents";
+import { buttons, cards, containers, inputs } from "../lib/tailwindComponents";
+import { getApiErrorMessage } from "../lib/serverState";
 
-function toDateStr(d) {
-  return d.toISOString().slice(0, 10);
+const DELIVERY_FEE = 100;
+const AVAILABILITY_DAYS_AHEAD = 60;
+
+function toDateStr(date) {
+  return date.toISOString().slice(0, 10);
+}
+
+function readCalendarValue(value) {
+  return Array.isArray(value) ? value[0] : value;
+}
+
+function toSafeDate(value) {
+  const next = readCalendarValue(value);
+  if (!(next instanceof Date) || Number.isNaN(next.getTime())) {
+    return null;
+  }
+
+  const normalized = new Date(next);
+  normalized.setHours(12, 0, 0, 0);
+  return normalized;
+}
+
+function formatLongDate(value) {
+  if (!value) return "Neselectata";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "Neselectata";
+
+  return date.toLocaleDateString("ro-RO", {
+    weekday: "long",
+    day: "numeric",
+    month: "long",
+  });
+}
+
+function buildDeliveryWindow(windowStart, windowEnd) {
+  if (!windowStart && !windowEnd) return "";
+  if (windowStart && windowEnd) return `${windowStart}-${windowEnd}`;
+  return windowStart || windowEnd || "";
+}
+
+function getSlotSummary(slots) {
+  const total = Array.isArray(slots) ? slots.length : 0;
+  const available = (slots || []).filter((slot) => Number(slot?.free ?? 0) > 0).length;
+  return { total, available };
 }
 
 export default function CalendarClient() {
   const { user } = useAuth() || {};
   const navigate = useNavigate();
 
-  const [calendarDate, setCalendarDate] = useState(new Date());
+  const [calendarDate, setCalendarDate] = useState(() => {
+    const today = new Date();
+    today.setHours(12, 0, 0, 0);
+    return today;
+  });
   const [time, setTime] = useState("");
   const [metoda, setMetoda] = useState("ridicare");
   const [adresa, setAdresa] = useState("");
   const [addressMode, setAddressMode] = useState("saved");
   const [selectedAddressIdx, setSelectedAddressIdx] = useState("");
-  const [slots, setSlots] = useState([]);
-  const [subtotal, setSubtotal] = useState(0);
+  const [subtotal, setSubtotal] = useState("");
   const [descriere, setDescriere] = useState("");
   const [notes, setNotes] = useState("");
   const [deliveryInstructions, setDeliveryInstructions] = useState("");
   const [windowStart, setWindowStart] = useState("");
   const [windowEnd, setWindowEnd] = useState("");
-  const [loading, setLoading] = useState(false);
-  const [err, setErr] = useState("");
+  const [status, setStatus] = useState({ type: "", message: "" });
   const [success, setSuccess] = useState(null);
 
   const prestatorId = getConfiguredPrestatorId();
   const selectedDate = calendarDate ? toDateStr(calendarDate) : "";
   const leadHours = Number(import.meta.env.VITE_MIN_LEAD_HOURS || 24);
 
+  const availabilityRange = useMemo(() => {
+    const from = new Date();
+    const to = new Date(Date.now() + AVAILABILITY_DAYS_AHEAD * 24 * 60 * 60 * 1000);
+    return {
+      from: toDateStr(from),
+      to: toDateStr(to),
+    };
+  }, []);
+
   const addressOptions = useMemo(() => {
     const options = [];
     if (user?.adresa) {
-      const hasDefault = (user?.adreseSalvate || []).some((a) => a?.isDefault);
+      const hasDefault = (user?.adreseSalvate || []).some((item) => item?.isDefault);
       options.push({
         label: "Adresa principala",
         address: user.adresa,
         isDefault: !hasDefault,
       });
     }
-    (user?.adreseSalvate || []).forEach((a, idx) => {
-      if (!a?.address) return;
+
+    (user?.adreseSalvate || []).forEach((item, index) => {
+      if (!item?.address) return;
       options.push({
-        label: a.label || `Adresa ${idx + 1}`,
-        address: a.address,
-        isDefault: !!a.isDefault,
+        label: item.label || `Adresa ${index + 1}`,
+        address: item.address,
+        isDefault: Boolean(item.isDefault),
       });
     });
+
     return options;
   }, [user]);
 
   const defaultAddressIdx = useMemo(() => {
-    const idx = addressOptions.findIndex((a) => a.isDefault);
-    if (idx >= 0) return String(idx);
+    const index = addressOptions.findIndex((item) => item.isDefault);
+    if (index >= 0) return String(index);
     return addressOptions.length ? "0" : "";
   }, [addressOptions]);
 
@@ -80,395 +135,588 @@ export default function CalendarClient() {
     if (!selectedAddressIdx) {
       setSelectedAddressIdx(defaultAddressIdx);
     }
-  }, [metoda, addressOptions, defaultAddressIdx, selectedAddressIdx]);
+  }, [addressOptions, defaultAddressIdx, metoda, selectedAddressIdx]);
 
   useEffect(() => {
     if (addressMode !== "saved") return;
-    const idx = Number(selectedAddressIdx);
-    if (Number.isNaN(idx) || !addressOptions[idx]) return;
-    setAdresa(addressOptions[idx].address);
-  }, [addressMode, selectedAddressIdx, addressOptions]);
+    const index = Number(selectedAddressIdx);
+    if (Number.isNaN(index) || !addressOptions[index]) return;
+    setAdresa(addressOptions[index].address);
+  }, [addressMode, addressOptions, selectedAddressIdx]);
 
   const minDateTime = useMemo(() => {
-    const d = new Date();
-    d.setHours(d.getHours() + leadHours);
-    return d;
+    const next = new Date();
+    next.setHours(next.getHours() + leadHours);
+    return next;
   }, [leadHours]);
 
-  useEffect(() => {
-    const from = new Date();
-    const to = new Date(Date.now() + 60 * 24 * 60 * 60 * 1000);
-    (async () => {
-      try {
-        setLoading(true);
-        const data = await getAvailability(prestatorId, {
-          from: toDateStr(from),
-          to: toDateStr(to),
-          hideFull: false,
-        });
-        setSlots(Array.isArray(data?.slots) ? data.slots : []);
-      } catch (e) {
-        console.error("getAvailability error", e);
-        setErr(e?.response?.data?.message || "Nu s-au putut incarca intervalele.");
-      } finally {
-        setLoading(false);
-      }
-    })();
-  }, [prestatorId]);
+  const availabilityQuery = useQuery({
+    queryKey: [
+      "calendar-availability",
+      prestatorId,
+      availabilityRange.from,
+      availabilityRange.to,
+    ],
+    queryFn: () =>
+      getAvailability(prestatorId, {
+        from: availabilityRange.from,
+        to: availabilityRange.to,
+        hideFull: false,
+      }),
+  });
+
+  const reserveMutation = useMutation({
+    mutationFn: reserveSlot,
+    onSuccess: (data) => {
+      setSuccess({
+        comandaId: data?.comandaId || "",
+        rezervareId: data?.rezervareId || "",
+      });
+      setStatus({
+        type: "success",
+        message: "Rezervarea a fost inregistrata. Poti continua direct la plata.",
+      });
+    },
+    onError: (error) => {
+      setStatus({
+        type: "error",
+        message: getApiErrorMessage(error, "Rezervarea a esuat."),
+      });
+    },
+  });
+
+  const slots = useMemo(
+    () => (Array.isArray(availabilityQuery.data?.slots) ? availabilityQuery.data.slots : []),
+    [availabilityQuery.data]
+  );
 
   const daySlots = useMemo(() => {
     if (!selectedDate) return [];
-    let filtered = (slots || []).filter((s) => s.date === selectedDate);
+
+    let filtered = slots.filter((slot) => slot.date === selectedDate);
     const minDateStr = toDateStr(minDateTime);
+
     if (selectedDate === minDateStr) {
       const minTime = minDateTime.toTimeString().slice(0, 5);
-      filtered = filtered.filter((s) => String(s.time || "") >= minTime);
+      filtered = filtered.filter((slot) => String(slot.time || "") >= minTime);
     }
-    return filtered.sort((a, b) => String(a.time || "").localeCompare(String(b.time || "")));
-  }, [slots, selectedDate, minDateTime]);
+
+    return filtered.sort((left, right) =>
+      String(left.time || "").localeCompare(String(right.time || ""))
+    );
+  }, [minDateTime, selectedDate, slots]);
 
   const availableDates = useMemo(() => {
-    const map = new Map();
-    (slots || []).forEach((s) => {
-      const free = Number(s.free ?? 0);
-      if (free > 0) map.set(s.date, true);
+    const result = new Map();
+    slots.forEach((slot) => {
+      if (Number(slot?.free ?? 0) > 0) {
+        result.set(slot.date, true);
+      }
     });
-    return map;
+    return result;
   }, [slots]);
+
+  const availableSummary = useMemo(() => getSlotSummary(daySlots), [daySlots]);
+  const selectedSlot = useMemo(
+    () => daySlots.find((slot) => String(slot.time || "") === String(time || "")) || null,
+    [daySlots, time]
+  );
+
+  const subtotalValue = Number(subtotal || 0);
+  const deliveryFee = metoda === "livrare" ? DELIVERY_FEE : 0;
+  const total = subtotalValue + deliveryFee;
+
+  const selectCalendarDate = (value) => {
+    const next = toSafeDate(value);
+    if (!next) return;
+    setCalendarDate(next);
+    setTime("");
+    setSuccess(null);
+  };
 
   const tileDisabled = ({ date, view }) => {
     if (view !== "month") return false;
+
     const minDay = new Date(minDateTime);
     minDay.setHours(0, 0, 0, 0);
     if (date < minDay) return true;
+
+    return !availableDates.has(toDateStr(date));
+  };
+
+  const tileClassName = ({ date, view }) => {
+    if (view !== "month") return null;
+
     const dateStr = toDateStr(date);
-    return !availableDates.has(dateStr);
+    if (dateStr === selectedDate) {
+      return "rounded-2xl bg-pink-600 text-white";
+    }
+    if (availableDates.has(dateStr)) {
+      return "rounded-2xl bg-rose-50 font-semibold text-pink-700";
+    }
+    return "rounded-2xl text-gray-400";
   };
 
-  const slotIsValid = () => {
+  const isSelectedSlotValid = () => {
     if (!selectedDate || !time) return false;
-    const [h, m] = String(time).split(":").map(Number);
-    const dt = new Date(selectedDate);
-    dt.setHours(h || 0, m || 0, 0, 0);
-    return dt >= minDateTime;
+    const [hours, minutes] = String(time).split(":").map(Number);
+    const next = new Date(selectedDate);
+    next.setHours(hours || 0, minutes || 0, 0, 0);
+    return next >= minDateTime;
   };
 
-  const buildDeliveryWindow = () => {
-    if (!windowStart && !windowEnd) return "";
-    if (windowStart && windowEnd) return `${windowStart}-${windowEnd}`;
-    return windowStart || windowEnd || "";
-  };
-
-  async function handleReserve(e) {
-    e.preventDefault();
-    setErr("");
+  const handleReserve = (event) => {
+    event.preventDefault();
     setSuccess(null);
+    setStatus({ type: "", message: "" });
 
     if (!user?._id) {
-      setErr("Trebuie sa fii autentificat pentru a face o rezervare.");
+      setStatus({
+        type: "warning",
+        message: "Trebuie sa fii autentificat pentru a face o rezervare.",
+      });
       return;
     }
+
     if (!selectedDate || !time) {
-      setErr("Selecteaza data si ora.");
-      return;
-    }
-    if (!slotIsValid()) {
-      setErr(`Alege un slot cu minim ${leadHours}h inainte.`);
+      setStatus({ type: "warning", message: "Selecteaza data si ora rezervarii." });
       return;
     }
 
-    try {
-      setLoading(true);
-      const payload = {
-        clientId: user._id,
-        prestatorId,
-        date: selectedDate,
-        time,
-        metoda,
-        adresaLivrare: metoda === "livrare" ? adresa : "",
-        deliveryInstructions: metoda === "livrare" ? deliveryInstructions.trim() : "",
-        deliveryWindow: metoda === "livrare" ? buildDeliveryWindow() : "",
-        subtotal: Number(subtotal || 0),
-        descriere: descriere || undefined,
-        notes: notes || undefined,
-      };
-
-      const data = await reserveSlot(payload);
-      setSuccess({ comandaId: data?.comandaId, rezervareId: data?.rezervareId });
-    } catch (e) {
-      console.error("reserveSlot error", e);
-      setErr(e?.response?.data?.message || "Rezervarea a esuat.");
-    } finally {
-      setLoading(false);
+    if (!isSelectedSlotValid()) {
+      setStatus({
+        type: "warning",
+        message: `Alege un slot cu minim ${leadHours} ore inainte.`,
+      });
+      return;
     }
-  }
 
-  const total = Number(subtotal || 0) + (metoda === "livrare" ? 100 : 0);
+    if (metoda === "livrare" && !adresa.trim()) {
+      setStatus({
+        type: "warning",
+        message: "Completeaza adresa de livrare pentru a continua.",
+      });
+      return;
+    }
+
+    reserveMutation.mutate({
+      clientId: user._id,
+      prestatorId,
+      date: selectedDate,
+      time,
+      metoda,
+      adresaLivrare: metoda === "livrare" ? adresa.trim() : "",
+      deliveryInstructions:
+        metoda === "livrare" ? deliveryInstructions.trim() : "",
+      deliveryWindow:
+        metoda === "livrare" ? buildDeliveryWindow(windowStart, windowEnd) : "",
+      subtotal: subtotalValue,
+      descriere: descriere.trim() || undefined,
+      notes: notes.trim() || undefined,
+    });
+  };
+
+  const reservationBusy = reserveMutation.isPending;
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-pink-50 to-rose-50 py-12 px-4 sm:px-6 lg:px-8">
-      <div className="max-w-4xl mx-auto">
-        <div className="text-center mb-8">
-          <h1 className="text-4xl md:text-5xl font-bold text-gray-900 mb-2">
-            Rezerva un interval
-          </h1>
-          <p className="text-gray-600 text-lg">
-            Alege data, ora si modul de predare pentru desertul tau.
-          </p>
-        </div>
+    <div className="min-h-screen bg-gradient-to-br from-rose-50 via-pink-50 to-white">
+      <div className={`${containers.pageMax} max-w-7xl space-y-6`}>
+        <header className="rounded-[32px] border border-rose-100 bg-white/88 p-6 shadow-card backdrop-blur">
+          <div className="flex flex-col gap-5 xl:flex-row xl:items-end xl:justify-between">
+            <div className="max-w-3xl space-y-3">
+              <p className="text-xs font-semibold uppercase tracking-[0.24em] text-pink-500">
+                Calendar rezervari
+              </p>
+              <h1 className="font-serif text-3xl font-semibold text-gray-900 md:text-4xl">
+                Alege data, intervalul si modul de predare
+              </h1>
+              <p className="max-w-2xl text-base leading-7 text-gray-600">
+                Fluxul este gandit pentru rezervare rapida: selectezi slotul, setezi
+                livrarea si mergi direct spre plata comenzii.
+              </p>
+            </div>
+            <div className="grid gap-3 sm:grid-cols-3">
+              <div className="rounded-[24px] border border-rose-100 bg-rose-50/80 px-4 py-3">
+                <div className="text-xs font-semibold uppercase tracking-[0.16em] text-pink-500">
+                  Disponibil azi
+                </div>
+                <div className="mt-2 text-2xl font-semibold text-gray-900">
+                  {availableSummary.available}
+                </div>
+                <div className="text-sm text-gray-600">sloturi libere pentru ziua selectata</div>
+              </div>
+              <div className="rounded-[24px] border border-rose-100 bg-white px-4 py-3">
+                <div className="text-xs font-semibold uppercase tracking-[0.16em] text-pink-500">
+                  Lead time
+                </div>
+                <div className="mt-2 text-2xl font-semibold text-gray-900">{leadHours}h</div>
+                <div className="text-sm text-gray-600">timp minim de pregatire</div>
+              </div>
+              <div className="rounded-[24px] border border-rose-100 bg-white px-4 py-3">
+                <div className="text-xs font-semibold uppercase tracking-[0.16em] text-pink-500">
+                  Adrese salvate
+                </div>
+                <div className="mt-2 text-2xl font-semibold text-gray-900">
+                  {addressOptions.length}
+                </div>
+                <div className="text-sm text-gray-600">gata de reutilizat</div>
+              </div>
+            </div>
+          </div>
+        </header>
+
         <StatusBanner
           type="warning"
           title="Configurare calendar"
           message={!hasPrestatorEnvConfig() ? getPrestatorEnvWarningMessage() : ""}
-          className="mb-6"
+        />
+        <StatusBanner
+          type={status.type || "info"}
+          message={status.message}
+        />
+        <StatusBanner
+          type="error"
+          message={
+            availabilityQuery.error
+              ? getApiErrorMessage(
+                  availabilityQuery.error,
+                  "Nu am putut incarca disponibilitatea calendarului."
+                )
+              : ""
+          }
         />
 
-        {err && (
-          <div className="mb-6 p-4 bg-red-50 border-l-4 border-red-500 rounded">
-            <p className="text-red-700 font-semibold">Eroare</p>
-            <p className="text-red-600 text-sm">{err}</p>
-          </div>
-        )}
-        {success && (
-          <div className="mb-6 p-4 bg-green-50 border-l-4 border-green-500 rounded">
-            <p className="text-green-700 font-semibold">Rezervare creata</p>
-            <p className="text-green-600 text-sm">Rezervarea a fost inregistrata.</p>
-            {success.comandaId && (
-              <button
-                type="button"
-                className="mt-2 underline text-green-700"
-                onClick={() => navigate(`/plata?comandaId=${success.comandaId}`)}
-              >
-                Continua la plata
-              </button>
-            )}
-          </div>
-        )}
-
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          <div className={cards.elevated}>
-            <h2 className="text-xl font-semibold mb-4">Calendar disponibilitate</h2>
-            <Calendar
-              value={calendarDate}
-              onChange={(d) => {
-                setCalendarDate(d);
-                setTime("");
-              }}
-              minDate={new Date()}
-              tileDisabled={tileDisabled}
-              className="w-full"
-            />
-            <div className="mt-3 text-sm text-gray-600">
-              Zilele cu sloturi disponibile sunt active in calendar.
-            </div>
-          </div>
-
-          <div className={cards.elevated}>
-            <form onSubmit={handleReserve} className="space-y-5">
+        <div className="grid grid-cols-1 gap-6 xl:grid-cols-[0.92fr_1.08fr]">
+          <section className={`${cards.elevated} space-y-5`}>
+            <div className="flex flex-wrap items-start justify-between gap-3">
               <div>
-                <label className="block text-sm font-semibold text-gray-700 mb-2">
-                  Data selectata
-                </label>
-                <input
-                  type="date"
-                  value={selectedDate}
-                  min={toDateStr(minDateTime)}
-                  onChange={(e) => {
-                    const value = e.target.value;
-                    if (!value) return;
-                    const next = new Date(`${value}T12:00:00`);
-                    if (Number.isNaN(next.getTime())) return;
-                    setCalendarDate(next);
-                    setTime("");
-                  }}
-                  className={inputs.default}
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-semibold text-gray-700 mb-2">
-                  Ora
-                </label>
-                {loading && !slots.length && (
-                  <div className="text-center py-4 text-gray-500">
-                    <p>Se incarca intervalele...</p>
-                  </div>
-                )}
-                <SlotPicker slots={daySlots} date={selectedDate} value={time} onChange={setTime} />
-                <p className="text-xs text-gray-500 mt-2">
-                  Timp minim de pregatire: {leadHours}h.
+                <h2 className="text-xl font-semibold text-gray-900">Disponibilitate</h2>
+                <p className="text-sm text-gray-600">
+                  Zilele active au sloturi disponibile si pot fi selectate direct.
                 </p>
               </div>
+              <div className="rounded-full border border-rose-200 bg-rose-50 px-3 py-1 text-xs font-semibold text-pink-700">
+                {formatLongDate(calendarDate)}
+              </div>
+            </div>
 
+            <div className="rounded-[28px] border border-rose-100 bg-[linear-gradient(180deg,_rgba(255,255,255,0.98),_rgba(252,244,246,0.96))] p-4 shadow-soft">
+              <Calendar
+                value={calendarDate}
+                onChange={selectCalendarDate}
+                minDate={minDateTime}
+                tileDisabled={tileDisabled}
+                tileClassName={tileClassName}
+                className="calendar-shell"
+              />
+            </div>
+
+            <div className="grid gap-4 md:grid-cols-2">
+              <div className="rounded-[24px] border border-rose-100 bg-white px-4 py-4">
+                <div className="text-sm font-semibold text-gray-900">Intervale in ziua selectata</div>
+                <div className="mt-2 text-3xl font-semibold text-pink-600">
+                  {availableSummary.total}
+                </div>
+                <div className="text-sm text-gray-600">
+                  dintre care {availableSummary.available} disponibile pentru rezervare
+                </div>
+              </div>
+              <div className="rounded-[24px] border border-rose-100 bg-white px-4 py-4">
+                <div className="text-sm font-semibold text-gray-900">Slot selectat</div>
+                <div className="mt-2 text-2xl font-semibold text-gray-900">
+                  {selectedSlot?.time || "--:--"}
+                </div>
+                <div className="text-sm text-gray-600">
+                  {selectedSlot
+                    ? `${selectedSlot.free} locuri raman disponibile`
+                    : "Alege un interval pentru a continua"}
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <section className={`${cards.elevated} space-y-5`}>
+            <div className="flex flex-wrap items-start justify-between gap-3">
               <div>
-                <label className="block text-sm font-semibold text-gray-700 mb-3">
-                  Mod de preluare
+                <h2 className="text-xl font-semibold text-gray-900">Rezervarea ta</h2>
+                <p className="text-sm text-gray-600">
+                  Completeaza detaliile utile pentru livrare si productie.
+                </p>
+              </div>
+              {success?.comandaId ? (
+                <button
+                  type="button"
+                  className={buttons.success}
+                  onClick={() => navigate(`/plata?comandaId=${success.comandaId}`)}
+                >
+                  Continua la plata
+                </button>
+              ) : null}
+            </div>
+
+            <form onSubmit={handleReserve} className="space-y-5">
+              <div className="grid gap-4 md:grid-cols-2">
+                <label className="text-sm font-semibold text-gray-700">
+                  Data selectata
+                  <input
+                    type="date"
+                    value={selectedDate}
+                    min={toDateStr(minDateTime)}
+                    onChange={(event) => selectCalendarDate(new Date(`${event.target.value}T12:00:00`))}
+                    className={`mt-2 ${inputs.default}`}
+                  />
                 </label>
-                <div className="space-y-3">
-                  <label className="flex items-center p-3 border-2 border-gray-300 rounded-lg cursor-pointer hover:border-pink-500 transition-colors">
-                    <input
-                      type="radio"
-                      value="ridicare"
-                      checked={metoda === "ridicare"}
-                      onChange={(e) => setMetoda(e.target.value)}
-                      className="mr-3 w-4 h-4"
+
+                <div>
+                  <div className="text-sm font-semibold text-gray-700">Interval orar</div>
+                  <div className="mt-2">
+                    <SlotPicker
+                      slots={daySlots}
+                      date={selectedDate}
+                      value={time}
+                      onChange={(nextTime) => {
+                        setTime(nextTime);
+                        setSuccess(null);
+                      }}
                     />
-                    <span className="font-medium text-gray-700">Ridicare de la patiserie</span>
-                  </label>
-                  <label className="flex items-center p-3 border-2 border-gray-300 rounded-lg cursor-pointer hover:border-pink-500 transition-colors">
-                    <input
-                      type="radio"
-                      value="livrare"
-                      checked={metoda === "livrare"}
-                      onChange={(e) => setMetoda(e.target.value)}
-                      className="mr-3 w-4 h-4"
-                    />
-                    <div>
-                      <span className="font-medium text-gray-700">Livrare</span>
-                      <p className="text-sm text-gray-500">+100 MDL</p>
+                  </div>
+                  {availabilityQuery.isLoading || availabilityQuery.isFetching ? (
+                    <div className="mt-3 text-sm text-gray-500">
+                      Se sincronizeaza disponibilitatea calendarului...
                     </div>
-                  </label>
+                  ) : null}
                 </div>
               </div>
 
-              {metoda === "livrare" && (
-                <div className="p-4 bg-blue-50 rounded-lg border-l-4 border-blue-500 space-y-3">
-                  <div>
-                    <label className="block text-sm font-semibold text-gray-700 mb-2">
-                      Adresa livrare
-                    </label>
-                    {addressOptions.length > 0 && (
-                      <div className="flex flex-wrap gap-2 mb-2">
-                        <select
-                          value={addressMode}
-                          onChange={(e) => setAddressMode(e.target.value)}
-                          className={`${inputs.default} flex-1`}
-                        >
-                          <option value="saved">Adrese salvate</option>
-                          <option value="custom">Adresa noua</option>
-                        </select>
-                        {addressMode === "saved" && (
-                          <select
-                            value={selectedAddressIdx}
-                            onChange={(e) => setSelectedAddressIdx(e.target.value)}
-                            className={`${inputs.default} flex-1`}
-                          >
-                            {addressOptions.map((opt, idx) => (
-                              <option key={`${opt.label}_${idx}`} value={String(idx)}>
-                                {opt.label}
-                              </option>
-                            ))}
-                          </select>
-                        )}
-                      </div>
-                    )}
-                    {addressMode === "saved" && selectedAddressIdx !== "" ? (
-                      <div className="text-sm text-gray-600 border rounded-lg p-2 bg-white">
-                        {adresa || "Selecteaza o adresa salvata."}
-                      </div>
-                    ) : (
-                      <input
-                        type="text"
-                        value={adresa}
-                        onChange={(e) => setAdresa(e.target.value)}
-                        className={inputs.default}
-                        placeholder="Strada, numar, bloc, apartament..."
-                      />
-                    )}
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-semibold text-gray-700 mb-2">
-                      Fereastra livrare (optional)
-                    </label>
-                    <div className="grid grid-cols-2 gap-2">
-                      <input
-                        type="time"
-                        value={windowStart}
-                        onChange={(e) => setWindowStart(e.target.value)}
-                        className={inputs.default}
-                      />
-                      <input
-                        type="time"
-                        value={windowEnd}
-                        onChange={(e) => setWindowEnd(e.target.value)}
-                        className={inputs.default}
-                      />
+              <div className="grid gap-4 lg:grid-cols-[1fr_0.9fr]">
+                <div className="space-y-4">
+                  <div className="rounded-[26px] border border-rose-100 bg-rose-50/70 p-4">
+                    <div className="text-sm font-semibold text-gray-900">Mod de predare</div>
+                    <div className="mt-3 grid gap-3 md:grid-cols-2">
+                      <button
+                        type="button"
+                        className={`rounded-[24px] border px-4 py-4 text-left ${
+                          metoda === "ridicare"
+                            ? "border-pink-400 bg-white text-pink-700 shadow-soft"
+                            : "border-rose-200 bg-white/80 text-gray-700"
+                        }`}
+                        onClick={() => setMetoda("ridicare")}
+                      >
+                        <div className="font-semibold">Ridicare</div>
+                        <div className="mt-1 text-sm text-gray-600">
+                          Clientul vine direct la patiserie.
+                        </div>
+                      </button>
+                      <button
+                        type="button"
+                        className={`rounded-[24px] border px-4 py-4 text-left ${
+                          metoda === "livrare"
+                            ? "border-pink-400 bg-white text-pink-700 shadow-soft"
+                            : "border-rose-200 bg-white/80 text-gray-700"
+                        }`}
+                        onClick={() => setMetoda("livrare")}
+                      >
+                        <div className="font-semibold">Livrare</div>
+                        <div className="mt-1 text-sm text-gray-600">
+                          Include taxa fixa de {DELIVERY_FEE} MDL.
+                        </div>
+                      </button>
                     </div>
                   </div>
 
-                  <div>
-                    <label className="block text-sm font-semibold text-gray-700 mb-2">
-                      Instructiuni curier
-                    </label>
+                  {metoda === "livrare" ? (
+                    <div className="rounded-[26px] border border-rose-100 bg-white p-4 space-y-4">
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <div>
+                          <h3 className="text-base font-semibold text-gray-900">
+                            Detalii livrare
+                          </h3>
+                          <p className="text-sm text-gray-600">
+                            Poti reutiliza rapid adresele salvate sau poti introduce una noua.
+                          </p>
+                        </div>
+                      </div>
+
+                      {addressOptions.length > 0 ? (
+                        <div className="grid gap-3 md:grid-cols-2">
+                          <label className="text-sm font-semibold text-gray-700">
+                            Sursa adresei
+                            <select
+                              value={addressMode}
+                              onChange={(event) => setAddressMode(event.target.value)}
+                              className={`mt-2 ${inputs.default}`}
+                            >
+                              <option value="saved">Adrese salvate</option>
+                              <option value="custom">Adresa noua</option>
+                            </select>
+                          </label>
+                          {addressMode === "saved" ? (
+                            <label className="text-sm font-semibold text-gray-700">
+                              Alege adresa
+                              <select
+                                value={selectedAddressIdx}
+                                onChange={(event) => setSelectedAddressIdx(event.target.value)}
+                                className={`mt-2 ${inputs.default}`}
+                              >
+                                {addressOptions.map((item, index) => (
+                                  <option key={`${item.label}_${index}`} value={String(index)}>
+                                    {item.label}
+                                  </option>
+                                ))}
+                              </select>
+                            </label>
+                          ) : null}
+                        </div>
+                      ) : null}
+
+                      {addressMode === "saved" && selectedAddressIdx !== "" ? (
+                        <div className="rounded-2xl border border-rose-100 bg-rose-50 px-4 py-3 text-sm text-gray-700">
+                          {adresa || "Selecteaza o adresa salvata."}
+                        </div>
+                      ) : (
+                        <label className="text-sm font-semibold text-gray-700">
+                          Adresa completa
+                          <input
+                            type="text"
+                            value={adresa}
+                            onChange={(event) => setAdresa(event.target.value)}
+                            className={`mt-2 ${inputs.default}`}
+                            placeholder="Strada, numar, bloc, apartament"
+                          />
+                        </label>
+                      )}
+
+                      <div className="grid gap-3 md:grid-cols-2">
+                        <label className="text-sm font-semibold text-gray-700">
+                          Livrare de la
+                          <input
+                            type="time"
+                            value={windowStart}
+                            onChange={(event) => setWindowStart(event.target.value)}
+                            className={`mt-2 ${inputs.default}`}
+                          />
+                        </label>
+                        <label className="text-sm font-semibold text-gray-700">
+                          Livrare pana la
+                          <input
+                            type="time"
+                            value={windowEnd}
+                            onChange={(event) => setWindowEnd(event.target.value)}
+                            className={`mt-2 ${inputs.default}`}
+                          />
+                        </label>
+                      </div>
+
+                      <label className="text-sm font-semibold text-gray-700">
+                        Instructiuni pentru curier
+                        <textarea
+                          value={deliveryInstructions}
+                          onChange={(event) => setDeliveryInstructions(event.target.value)}
+                          className={`mt-2 min-h-[96px] ${inputs.default}`}
+                          placeholder="Interfon, etaj, punct de reper, observatii utile"
+                        />
+                      </label>
+                    </div>
+                  ) : null}
+
+                  <label className="text-sm font-semibold text-gray-700">
+                    Subtotal estimat (MDL)
+                    <input
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      value={subtotal}
+                      onChange={(event) => setSubtotal(event.target.value)}
+                      className={`mt-2 ${inputs.default}`}
+                      placeholder="0"
+                    />
+                  </label>
+
+                  <label className="text-sm font-semibold text-gray-700">
+                    Descriere produs / cerinte
                     <textarea
-                      value={deliveryInstructions}
-                      onChange={(e) => setDeliveryInstructions(e.target.value)}
-                      className={`${inputs.default} min-h-[80px]`}
-                      placeholder="Etaj, interfon, indicatii speciale..."
+                      value={descriere}
+                      onChange={(event) => setDescriere(event.target.value)}
+                      className={`mt-2 min-h-[112px] ${inputs.default}`}
+                      placeholder="Ex: tort aniversar, 8-10 portii, mesaj, aroma, restrictii"
                     />
+                  </label>
+
+                  <label className="text-sm font-semibold text-gray-700">
+                    Note suplimentare
+                    <textarea
+                      value={notes}
+                      onChange={(event) => setNotes(event.target.value)}
+                      className={`mt-2 min-h-[88px] ${inputs.default}`}
+                      placeholder="Detalii extra pentru echipa de productie"
+                    />
+                  </label>
+                </div>
+
+                <aside className="space-y-4">
+                  <div className="rounded-[26px] border border-rose-100 bg-[linear-gradient(180deg,_rgba(255,255,255,0.98),_rgba(253,244,246,0.92))] p-5 shadow-soft">
+                    <div className="text-xs font-semibold uppercase tracking-[0.2em] text-pink-500">
+                      Rezumat
+                    </div>
+                    <div className="mt-3 space-y-3 text-sm text-gray-700">
+                      <div className="flex items-start justify-between gap-3">
+                        <span>Data</span>
+                        <span className="text-right font-semibold text-gray-900">
+                          {formatLongDate(calendarDate)}
+                        </span>
+                      </div>
+                      <div className="flex items-start justify-between gap-3">
+                        <span>Ora</span>
+                        <span className="font-semibold text-gray-900">
+                          {time || "Nealeasa"}
+                        </span>
+                      </div>
+                      <div className="flex items-start justify-between gap-3">
+                        <span>Predare</span>
+                        <span className="font-semibold text-gray-900">
+                          {metoda === "livrare" ? "Livrare" : "Ridicare"}
+                        </span>
+                      </div>
+                      <div className="flex items-start justify-between gap-3">
+                        <span>Disponibilitate slot</span>
+                        <span className="font-semibold text-gray-900">
+                          {selectedSlot ? `${selectedSlot.free} libere` : "Selecteaza un slot"}
+                        </span>
+                      </div>
+                      <div className="border-t border-rose-100 pt-3 space-y-2">
+                        <div className="flex items-center justify-between">
+                          <span>Subtotal</span>
+                          <span className="font-semibold text-gray-900">
+                            {subtotalValue.toFixed(2)} MDL
+                          </span>
+                        </div>
+                        <div className="flex items-center justify-between">
+                          <span>Taxa livrare</span>
+                          <span className="font-semibold text-gray-900">
+                            {deliveryFee.toFixed(2)} MDL
+                          </span>
+                        </div>
+                        <div className="flex items-center justify-between text-base">
+                          <span className="font-semibold text-gray-900">Total</span>
+                          <span className="text-2xl font-semibold text-pink-600">
+                            {total.toFixed(2)} MDL
+                          </span>
+                        </div>
+                      </div>
+                    </div>
                   </div>
-                </div>
-              )}
 
-              <div>
-                <label className="block text-sm font-semibold text-gray-700 mb-2">
-                  Subtotal (MDL)
-                </label>
-                <input
-                  type="number"
-                  min="0"
-                  step="0.01"
-                  value={subtotal}
-                  onChange={(e) => setSubtotal(e.target.value)}
-                  className={inputs.default}
-                  placeholder="0"
-                />
+                  <button
+                    type="submit"
+                    disabled={reservationBusy || !selectedDate || !time}
+                    className={`w-full ${buttons.primary}`}
+                  >
+                    {reservationBusy ? "Se confirma rezervarea..." : "Confirma rezervarea"}
+                  </button>
+                </aside>
               </div>
-
-              <div>
-                <label className="block text-sm font-semibold text-gray-700 mb-2">
-                  Descriere desert / cerinte
-                </label>
-                <textarea
-                  value={descriere}
-                  onChange={(e) => setDescriere(e.target.value)}
-                  className={`${inputs.default} min-h-[90px]`}
-                  placeholder="Ex: Tort ciocolata 1kg, 8 persoane, mesaj: La multi ani!"
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-semibold text-gray-700 mb-2">
-                  Note suplimentare
-                </label>
-                <textarea
-                  value={notes}
-                  onChange={(e) => setNotes(e.target.value)}
-                  className={`${inputs.default} min-h-[80px]`}
-                  placeholder="Detalii extra pentru patiser..."
-                />
-              </div>
-
-              <div className="p-4 bg-pink-50 rounded-lg border-2 border-pink-200">
-                <div className="flex justify-between items-center">
-                  <span className="text-gray-700 font-semibold">Total:</span>
-                  <span className="text-2xl font-bold text-pink-600">{total.toFixed(2)} MDL</span>
-                </div>
-                {metoda === "livrare" && (
-                  <p className="text-sm text-gray-600 mt-2">Include taxa livrare 100 MDL</p>
-                )}
-              </div>
-
-              <button
-                type="submit"
-                disabled={loading || !selectedDate || !time}
-                className={`w-full ${buttons.primary} py-3 text-lg`}
-              >
-                {loading ? "Se proceseaza..." : "Confirma rezervarea"}
-              </button>
             </form>
-          </div>
+          </section>
         </div>
       </div>
     </div>

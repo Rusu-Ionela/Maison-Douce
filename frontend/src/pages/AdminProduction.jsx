@@ -1,5 +1,11 @@
 ﻿import { useEffect, useMemo, useState } from "react";
+import AdminShell, {
+  AdminMetricGrid,
+  AdminPanel,
+} from "../components/AdminShell";
+import StatusBanner from "../components/StatusBanner";
 import api from "/src/lib/api.js";
+import { buttons, inputs } from "../lib/tailwindComponents";
 
 function defaultIngredientRow() {
   return { ingredient: "", qty: 0, unit: "g", note: "" };
@@ -15,6 +21,10 @@ function defaultNewRecipe() {
     ocazii: "",
     ingredients: [defaultIngredientRow()],
   };
+}
+
+function formatCurrency(value) {
+  return `${Number(value || 0).toFixed(2)} MDL`;
 }
 
 export default function AdminProduction() {
@@ -265,27 +275,109 @@ export default function AdminProduction() {
     }
   };
 
+  const refreshAll = async () => {
+    setMsg("");
+    setLoadingRecipes(true);
+    setLoadingBoard(true);
+    setLoadingNotifications(true);
+
+    try {
+      const [recipesResponse, boardResponse, notificationsResponse] = await Promise.all([
+        api.get("/admin/production/recipes"),
+        api.get("/admin/production/board", { params: { date } }),
+        api.get("/notificari"),
+      ]);
+
+      const recipeList = Array.isArray(recipesResponse.data) ? recipesResponse.data : [];
+      const boardList = boardResponse.data?.board || [];
+      const notificationsList = Array.isArray(notificationsResponse.data)
+        ? notificationsResponse.data.slice(0, 5)
+        : [];
+
+      setRecipes(recipeList);
+      setBoard(boardList);
+      setNotifications(notificationsList);
+      if (recipeList.length) {
+        setSelectedTort((current) =>
+          current && recipeList.some((item) => String(item._id) === String(current))
+            ? current
+            : recipeList[0]._id
+        );
+      }
+    } catch {
+      setMsg("Nu am putut reincarca datele de productie.");
+    } finally {
+      setLoadingRecipes(false);
+      setLoadingBoard(false);
+      setLoadingNotifications(false);
+    }
+  };
+
+  const metrics = useMemo(() => {
+    const plannedKg = board.reduce((sum, order) => sum + Number(order.weightKg || 0), 0);
+    const boardValue = board.reduce(
+      (sum, order) => sum + Number(order.total || order.totalFinal || 0),
+      0
+    );
+
+    return [
+      {
+        label: "Retete active",
+        value: recipes.length,
+        hint: "Catalogul disponibil pentru productie.",
+        tone: "rose",
+      },
+      {
+        label: "Comenzi in board",
+        value: board.length,
+        hint: `Planificare pentru ${date}.`,
+        tone: "sage",
+      },
+      {
+        label: "Kg planificate",
+        value: `${plannedKg.toFixed(1)} kg`,
+        hint: `Valoare cumulata: ${formatCurrency(boardValue)}.`,
+        tone: "gold",
+      },
+      {
+        label: "Notificari recente",
+        value: notifications.length,
+        hint: "Ultimele semnale operationale disponibile.",
+        tone: "slate",
+      },
+    ];
+  }, [board, date, notifications.length, recipes.length]);
+
   return (
-    <div className="min-h-screen bg-rose-50 py-8 px-4 sm:px-6">
-      <div className="max-w-6xl mx-auto space-y-8">
-        <header className="space-y-2">
-          <h1 className="text-3xl font-bold text-gray-900">Calculator productie</h1>
-          <p className="text-gray-600">
-            Selecteaza un tort si ajusteaza cate kilograme trebuie sa produci;
-            ingredientele se scaleaza automat.
-          </p>
-        </header>
+    <AdminShell
+      title="Productie si retete"
+      description="Scaleaza retetele in functie de volum, verifica board-ul zilei si gestioneaza rapid catalogul tehnic folosit de laborator."
+      actions={
+        <button
+          type="button"
+          onClick={refreshAll}
+          className={buttons.outline}
+          disabled={loadingRecipes || loadingBoard || loadingNotifications}
+        >
+          Reincarca datele
+        </button>
+      }
+    >
+      <StatusBanner type="error" message={msg} />
+      <AdminMetricGrid items={metrics} />
 
-        {msg && <div className="text-sm text-rose-700">{msg}</div>}
-
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          <div className="bg-white border border-rose-100 rounded-2xl p-6 space-y-6 shadow-sm">
+      <div className="grid grid-cols-1 gap-6 xl:grid-cols-[0.95fr,1.35fr]">
+        <AdminPanel
+          title="Scalare retete"
+          description="Selecteaza reteta, seteaza cantitatea tinta si actualizeaza ingredientele fara sa iesi din acelasi modul."
+          className="space-y-6"
+        >
             <div className="space-y-3">
               <label className="text-sm font-semibold text-gray-700 block">Tort</label>
               <select
                 value={selectedTort}
                 onChange={(event) => setSelectedTort(event.target.value)}
-                className="w-full border rounded-lg p-2"
+                className={inputs.default}
               >
                 {recipes.map((tort) => (
                   <option key={tort._id} value={tort._id}>
@@ -302,7 +394,7 @@ export default function AdminProduction() {
                 step="0.1"
                 value={targetKg}
                 onChange={(event) => setTargetKg(Number(event.target.value || 0))}
-                className="w-full border rounded-lg p-2"
+                className={inputs.default}
               />
               <div className="text-sm text-gray-500">
                 {recipe
@@ -350,7 +442,7 @@ export default function AdminProduction() {
                   type="button"
                   onClick={saveRecipe}
                   disabled={!recipe || savingRecipe}
-                  className="px-4 py-2 rounded-lg bg-rose-600 text-white text-sm font-semibold disabled:opacity-60 disabled:cursor-not-allowed hover:bg-rose-700"
+                  className={buttons.primary}
                 >
                   {savingRecipe ? "Salvez..." : "Salveaza reteta"}
                 </button>
@@ -365,7 +457,7 @@ export default function AdminProduction() {
                     step="0.1"
                     value={baseKgInput}
                     onChange={(event) => setBaseKgInput(Number(event.target.value || 0))}
-                    className="mt-1 w-full border rounded-lg p-2"
+                    className={`mt-1 ${inputs.default}`}
                   />
                 </label>
                 <div className="text-sm text-gray-500">
@@ -378,7 +470,7 @@ export default function AdminProduction() {
                   <div key={`${ingredient.ingredient}-${idx}`} className="border rounded-lg p-3 bg-rose-50">
                     <div className="grid gap-2 sm:grid-cols-12">
                       <input
-                        className="sm:col-span-5 border rounded-lg p-2"
+                        className={`sm:col-span-5 ${inputs.default}`}
                         type="text"
                         placeholder="Ingrediente"
                         value={ingredient.ingredient}
@@ -387,7 +479,7 @@ export default function AdminProduction() {
                         }
                       />
                       <input
-                        className="sm:col-span-2 border rounded-lg p-2"
+                        className={`sm:col-span-2 ${inputs.default}`}
                         type="number"
                         min="0"
                         step="0.1"
@@ -398,14 +490,14 @@ export default function AdminProduction() {
                         }
                       />
                       <input
-                        className="sm:col-span-2 border rounded-lg p-2"
+                        className={`sm:col-span-2 ${inputs.default}`}
                         type="text"
                         placeholder="Unitate"
                         value={ingredient.unit}
                         onChange={(event) => updateIngredient(idx, "unit", event.target.value)}
                       />
                       <input
-                        className="sm:col-span-3 border rounded-lg p-2"
+                        className={`sm:col-span-3 ${inputs.default}`}
                         type="text"
                         placeholder="Note"
                         value={ingredient.note}
@@ -435,9 +527,13 @@ export default function AdminProduction() {
                 {recipeNotice && <span className="text-rose-700">{recipeNotice}</span>}
               </div>
             </div>
-          </div>
+        </AdminPanel>
 
-          <div className="lg:col-span-2 bg-white border border-rose-100 rounded-2xl p-4 shadow-sm space-y-4">
+        <AdminPanel
+          title="Board productie"
+          description="Vezi comenzile planificate pentru ziua selectata, impreuna cu statusul, plata si compozitia estimata."
+          className="space-y-4"
+        >
             <div className="flex flex-col md:flex-row md:items-end md:justify-between gap-3">
               <div>
                 <h2 className="text-xl font-semibold text-gray-900">Program productie</h2>
@@ -449,7 +545,7 @@ export default function AdminProduction() {
                 type="date"
                 value={date}
                 onChange={(event) => setDate(event.target.value)}
-                className="border rounded-lg p-2"
+                className={inputs.default}
               />
             </div>
 
@@ -523,30 +619,25 @@ export default function AdminProduction() {
                 })}
               </div>
             )}
-          </div>
-        </div>
+        </AdminPanel>
+      </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          <div className="bg-white border border-rose-100 rounded-2xl p-4 space-y-4 shadow-sm">
-            <div className="flex items-center justify-between gap-3">
-              <div>
-                <p className="text-xs uppercase tracking-[0.2em] text-rose-600">Reteta noua</p>
-                <h2 className="text-xl font-semibold text-gray-900">
-                  Adauga o reteta / batch nou
-                </h2>
-                <p className="text-xs text-gray-500">
-                  Se salveaza direct in catalogul torturilor active.
-                </p>
-              </div>
-              <button
-                type="button"
-                onClick={createRecipe}
-                disabled={newRecipeSaving}
-                className="px-4 py-2 rounded-lg bg-rose-600 text-white text-sm font-semibold disabled:opacity-60 disabled:cursor-not-allowed hover:bg-rose-700"
-              >
-                {newRecipeSaving ? "Salvez..." : "Salveaza reteta"}
-              </button>
-            </div>
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+        <AdminPanel
+          title="Reteta noua"
+          description="Adauga rapid o reteta sau un batch nou direct in catalogul tehnic activ."
+          className="space-y-4"
+          action={
+            <button
+              type="button"
+              onClick={createRecipe}
+              disabled={newRecipeSaving}
+              className={buttons.primary}
+            >
+              {newRecipeSaving ? "Salvez..." : "Salveaza reteta"}
+            </button>
+          }
+        >
 
             <div className="grid gap-3">
               <input
@@ -554,13 +645,13 @@ export default function AdminProduction() {
                 placeholder="Numele tortului"
                 value={newRecipeForm.nume}
                 onChange={(event) => updateNewRecipeField("nume", event.target.value)}
-                className="border rounded-lg p-2"
+                className={inputs.default}
               />
               <textarea
                 placeholder="Descriere scurta"
                 value={newRecipeForm.descriere}
                 onChange={(event) => updateNewRecipeField("descriere", event.target.value)}
-                className="border rounded-lg p-2 h-24"
+                className={`${inputs.default} h-24`}
               />
               <div className="grid grid-cols-2 gap-3">
                 <input
@@ -569,14 +660,14 @@ export default function AdminProduction() {
                   placeholder="Pret (MDL)"
                   value={newRecipeForm.pret}
                   onChange={(event) => updateNewRecipeField("pret", event.target.value)}
-                  className="border rounded-lg p-2"
+                  className={inputs.default}
                 />
                 <input
                   type="text"
                   placeholder="URL imagine (optional)"
                   value={newRecipeForm.imagine}
                   onChange={(event) => updateNewRecipeField("imagine", event.target.value)}
-                  className="border rounded-lg p-2"
+                  className={inputs.default}
                 />
               </div>
               <div className="grid grid-cols-2 gap-3">
@@ -589,14 +680,14 @@ export default function AdminProduction() {
                   onChange={(event) =>
                     updateNewRecipeField("retetaBaseKg", Number(event.target.value || 0))
                   }
-                  className="border rounded-lg p-2"
+                  className={inputs.default}
                 />
                 <input
                   type="text"
                   placeholder="Ocazii (separate prin virgula)"
                   value={newRecipeForm.ocazii}
                   onChange={(event) => updateNewRecipeField("ocazii", event.target.value)}
-                  className="border rounded-lg p-2"
+                  className={inputs.default}
                 />
               </div>
             </div>
@@ -606,7 +697,7 @@ export default function AdminProduction() {
                 <div key={`${ingredient.ingredient}-${idx}`} className="border rounded-lg p-3 bg-rose-50">
                   <div className="grid gap-2 sm:grid-cols-12">
                     <input
-                      className="sm:col-span-5 border rounded-lg p-2"
+                      className={`sm:col-span-5 ${inputs.default}`}
                       type="text"
                       placeholder="Ingredient"
                       value={ingredient.ingredient}
@@ -615,7 +706,7 @@ export default function AdminProduction() {
                       }
                     />
                     <input
-                      className="sm:col-span-2 border rounded-lg p-2"
+                      className={`sm:col-span-2 ${inputs.default}`}
                       type="number"
                       min="0"
                       step="0.1"
@@ -626,14 +717,14 @@ export default function AdminProduction() {
                       }
                     />
                     <input
-                      className="sm:col-span-2 border rounded-lg p-2"
+                      className={`sm:col-span-2 ${inputs.default}`}
                       type="text"
                       placeholder="Unitate"
                       value={ingredient.unit}
                       onChange={(event) => updateNewIngredient(idx, "unit", event.target.value)}
                     />
                     <input
-                      className="sm:col-span-3 border rounded-lg p-2"
+                      className={`sm:col-span-3 ${inputs.default}`}
                       type="text"
                       placeholder="Note"
                       value={ingredient.note}
@@ -662,22 +753,18 @@ export default function AdminProduction() {
               </button>
               {newRecipeMsg && <span className="text-rose-700">{newRecipeMsg}</span>}
             </div>
-          </div>
+        </AdminPanel>
 
-          <div className="bg-white border border-rose-100 rounded-2xl p-4 space-y-4 shadow-sm">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-xs uppercase tracking-[0.2em] text-rose-600">Notificari</p>
-                <h2 className="text-xl font-semibold text-gray-900">Ultimele notificari</h2>
-              </div>
-              <button
-                type="button"
-                onClick={fetchNotifications}
-                className="text-rose-600 text-sm font-semibold hover:underline"
-              >
-                Reincarca
-              </button>
-            </div>
+        <AdminPanel
+          title="Notificari operationale"
+          description="Ultimele semnale utile pentru productie si coordonarea comenzilor."
+          className="space-y-4"
+          action={
+            <button type="button" onClick={fetchNotifications} className={buttons.outline}>
+              Reincarca
+            </button>
+          }
+        >
             {loadingNotifications ? (
               <div className="text-sm text-gray-500">Se incarca notificari...</div>
             ) : notifications.length === 0 ? (
@@ -707,9 +794,8 @@ export default function AdminProduction() {
                 ))}
               </div>
             )}
-          </div>
-        </div>
+        </AdminPanel>
       </div>
-    </div>
+    </AdminShell>
   );
 }

@@ -33,6 +33,24 @@ Recomandare:
 
 ## Variabile GitHub
 
+Generator local recomandat:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\prepare-staging-config.ps1 `
+  -StagingHost staging.example.com `
+  -StagingUser deploy `
+  -StagingPath /opt/maison-douce `
+  -BaseClientUrl https://staging.example.com
+```
+
+Scriptul citeste `backend/.env`, `frontend/.env.local` si exemplele din repo, apoi genereaza:
+
+- `deploy/staging/generated/staging.generated.env`
+- `deploy/staging/generated/github-vars.generated.env`
+- `deploy/staging/generated/github-secrets-guide.md`
+
+Fisierele generate sunt ignorate de Git.
+
 Repository variables recomandate:
 
 - `FRONTEND_PRESTATOR_ID`
@@ -71,6 +89,7 @@ Secretul trebuie sa contina continutul fisierului de env pentru server.
 Poti porni de la:
 
 - `deploy/staging/staging.env.example`
+- sau direct din `deploy/staging/generated/staging.generated.env`
 
 Nu include in secret:
 
@@ -111,6 +130,13 @@ Workflow-ul:
 4. ruleaza `docker compose pull`
 5. ruleaza `docker compose up -d --remove-orphans`
 6. verifica raspunsul frontend pe portul local configurat
+
+Generatorul local afiseaza si avertismente daca folosesti inca placeholder-e precum:
+
+- `JWT_SECRET=change_me_before_staging`
+- `BASE_CLIENT_URL=https://staging.example.com`
+- chei Stripe lipsa
+- configuratie SMTP lipsa
 
 ## Checklist inainte de deploy
 
