@@ -1,0 +1,128 @@
+name: Release Images
+
+on:
+  workflow_run:
+    workflows:
+      - Quality
+    types:
+      - completed
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+concurrency:
+  group: release-images-${{ github.event.workflow_run.head_branch || github.ref_name }}
+  cancel-in-progress: true
+
+jobs:
+  prepare:
+    if: >
+      (github.event_name == 'workflow_dispatch' && github.ref_name == 'main') ||
+      (
+        github.event.workflow_run.conclusion == 'success' &&
+        github.event.workflow_run.event == 'push' &&
+        github.event.workflow_run.head_branch == 'main'
+      )
+    runs-on: ubuntu-latest
+    outputs:
+      owner_lc: ${{ steps.names.outputs.owner_lc }}
+      repo_lc: ${{ steps.names.outputs.repo_lc }}
+      ref_sha: ${{ steps.names.outputs.ref_sha }}
+    steps:
+      - id: names
+        shell: bash
+        run: |
+          repo="${GITHUB_REPOSITORY#*/}"
+          echo "owner_lc=${GITHUB_REPOSITORY_OWNER,,}" >> "$GITHUB_OUTPUT"
+          echo "repo_lc=${repo,,}" >> "$GITHUB_OUTPUT"
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "ref_sha=${GITHUB_SHA}" >> "$GITHUB_OUTPUT"
+          else
+            echo "ref_sha=${{ github.event.workflow_run.head_sha }}" >> "$GITHUB_OUTPUT"
+          fi
+
+  backend:
+    needs: prepare
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.prepare.outputs.ref_sha }}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Docker metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/${{ needs.prepare.outputs.owner_lc }}/${{ needs.prepare.outputs.repo_lc }}-backend
+          tags: |
+            type=raw,value=latest
+            type=sha,prefix=sha-
+
+      - name: Build and push backend image
+        uses: docker/build-push-action@v6
+        with:
+          context: backend
+          file: backend/Dockerfile
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  frontend:
+    needs: prepare
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.prepare.outputs.ref_sha }}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Docker metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/${{ needs.prepare.outputs.owner_lc }}/${{ needs.prepare.outputs.repo_lc }}-frontend
+          tags: |
+            type=raw,value=latest
+            type=sha,prefix=sha-
+
+      - name: Build and push frontend image
+        uses: docker/build-push-action@v6
+        with:
+          context: frontend
+          file: frontend/Dockerfile
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          build-args: |
+            VITE_API_URL=/api
+            VITE_PRESTATOR_ID=${{ vars.FRONTEND_PRESTATOR_ID || 'default' }}
+            VITE_STRIPE_PK=${{ vars.FRONTEND_STRIPE_PK || '' }}
+            VITE_MIN_LEAD_HOURS=${{ vars.FRONTEND_MIN_LEAD_HOURS || '24' }}
+            VITE_APP_VERSION=${{ needs.prepare.outputs.ref_sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max

@@ -15,6 +15,9 @@ Platforma full-stack pentru comenzi, rezervari, plata si administrare de produse
 - `backend/routes`: API routes
 - `backend/test`: util tests + integration tests
 - `.github/workflows/quality.yml`: quality gates CI
+- `.github/workflows/release-images.yml`: release Docker images in GHCR
+- `.github/workflows/deploy-staging.yml`: deploy manual pe staging
+- `docs/STAGING-DEPLOY.md`: ghid complet de staging, deploy si rollback
 
 ## Environment
 
@@ -103,6 +106,12 @@ Repo-ul ruleaza acum:
 - Cypress CI suite
 - live Cypress suite separata
 
+Workflow-urile de pipeline:
+
+- `Quality`: validare continua pentru backend, frontend si E2E
+- `Release Images`: publica imaginile Docker dupa un `Quality` verde pe `main`
+- `Deploy Staging`: deploy manual pe serverul de staging din imaginile GHCR
+
 ## Observabilitate
 
 Backend:
@@ -162,22 +171,23 @@ stripe listen --forward-to localhost:5000/api/stripe/webhook
 stripe trigger checkout.session.completed
 ```
 
-## Deploy Checklist
+## Deploy si staging
 
-1. Configureaza `backend/.env` si `frontend/.env.local` cu valorile reale
-2. Verifica `BASE_CLIENT_URL` si `VITE_API_URL`
-3. Porneste MongoDB si verifica `/api/health`
-4. Configureaza Stripe webhook in dashboard spre `/api/stripe/webhook`
-5. Ruleaza:
+Checklist-ul scurt:
 
-```powershell
-npm run quality
-npm run test:backend:integration
-npm run test:frontend:e2e:ci
-```
+1. Ruleaza `npm run quality`
+2. Ruleaza `npm run test:backend:integration`
+3. Ruleaza `npm run test:frontend:e2e:ci`
+4. Verifica workflow-ul `Release Images`
+5. Ruleaza manual `Deploy Staging` cu tag-ul dorit
+6. Verifica `/api/health`, login, comenzi, rezervari si admin
+7. Fa rollback la un `sha-<commit>` daca smoke-test-ul pica
 
-6. Deploy frontend si backend doar dupa ce quality gates sunt verzi
-7. Fa un backup Mongo inainte de deploy daca actualizezi schema sau rulezi migratii
+Ghidul complet este in:
+
+- [docs/STAGING-DEPLOY.md](docs/STAGING-DEPLOY.md)
+- [deploy/staging/staging.env.example](deploy/staging/staging.env.example)
+- [deploy/staging/docker-compose.staging.yml](deploy/staging/docker-compose.staging.yml)
 
 ## Backup si restore Mongo
 

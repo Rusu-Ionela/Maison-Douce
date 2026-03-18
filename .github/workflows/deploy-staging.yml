@@ -1,0 +1,101 @@
+name: Deploy Staging
+
+on:
+  workflow_dispatch:
+    inputs:
+      image_tag:
+        description: "Tag-ul imaginii din GHCR: latest sau sha-<commit>"
+        required: true
+        default: latest
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-staging
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: staging
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Compute image names
+        id: names
+        shell: bash
+        run: |
+          repo="${GITHUB_REPOSITORY#*/}"
+          owner_lc="${GITHUB_REPOSITORY_OWNER,,}"
+          repo_lc="${repo,,}"
+          echo "backend_image=ghcr.io/${owner_lc}/${repo_lc}-backend:${{ github.event.inputs.image_tag }}" >> "$GITHUB_OUTPUT"
+          echo "frontend_image=ghcr.io/${owner_lc}/${repo_lc}-frontend:${{ github.event.inputs.image_tag }}" >> "$GITHUB_OUTPUT"
+
+      - name: Validate staging secrets and vars
+        env:
+          STAGING_HOST: ${{ vars.STAGING_HOST }}
+          STAGING_USER: ${{ vars.STAGING_USER }}
+          STAGING_PATH: ${{ vars.STAGING_PATH }}
+          STAGING_ENV_FILE: ${{ secrets.STAGING_ENV_FILE }}
+          STAGING_SSH_KEY: ${{ secrets.STAGING_SSH_KEY }}
+          STAGING_GHCR_USERNAME: ${{ secrets.STAGING_GHCR_USERNAME }}
+          STAGING_GHCR_TOKEN: ${{ secrets.STAGING_GHCR_TOKEN }}
+        shell: bash
+        run: |
+          test -n "$STAGING_HOST" || { echo "Missing STAGING_HOST variable"; exit 1; }
+          test -n "$STAGING_USER" || { echo "Missing STAGING_USER variable"; exit 1; }
+          test -n "$STAGING_PATH" || { echo "Missing STAGING_PATH variable"; exit 1; }
+          test -n "$STAGING_ENV_FILE" || { echo "Missing STAGING_ENV_FILE secret"; exit 1; }
+          test -n "$STAGING_SSH_KEY" || { echo "Missing STAGING_SSH_KEY secret"; exit 1; }
+          test -n "$STAGING_GHCR_USERNAME" || { echo "Missing STAGING_GHCR_USERNAME secret"; exit 1; }
+          test -n "$STAGING_GHCR_TOKEN" || { echo "Missing STAGING_GHCR_TOKEN secret"; exit 1; }
+
+      - name: Prepare staging bundle
+        shell: bash
+        run: |
+          mkdir -p .deploy-staging
+          cp deploy/staging/docker-compose.staging.yml .deploy-staging/docker-compose.staging.yml
+          cat > .deploy-staging/staging.env <<'EOF'
+          APP_STACK=${{ vars.STAGING_STACK_NAME || 'maison-douce-staging' }}
+          BACKEND_IMAGE=${{ steps.names.outputs.backend_image }}
+          FRONTEND_IMAGE=${{ steps.names.outputs.frontend_image }}
+          ${{ secrets.STAGING_ENV_FILE }}
+          EOF
+
+      - name: Upload staging bundle
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ vars.STAGING_HOST }}
+          username: ${{ vars.STAGING_USER }}
+          key: ${{ secrets.STAGING_SSH_KEY }}
+          port: ${{ vars.STAGING_PORT || 22 }}
+          source: .deploy-staging
+          target: ${{ vars.STAGING_PATH }}
+          overwrite: true
+
+      - name: Deploy over SSH
+        uses: appleboy/ssh-action@v1.2.0
+        env:
+          STAGING_GHCR_USERNAME: ${{ secrets.STAGING_GHCR_USERNAME }}
+          STAGING_GHCR_TOKEN: ${{ secrets.STAGING_GHCR_TOKEN }}
+        with:
+          host: ${{ vars.STAGING_HOST }}
+          username: ${{ vars.STAGING_USER }}
+          key: ${{ secrets.STAGING_SSH_KEY }}
+          port: ${{ vars.STAGING_PORT || 22 }}
+          envs: STAGING_GHCR_USERNAME,STAGING_GHCR_TOKEN
+          script: |
+            set -e
+            cd "${{ vars.STAGING_PATH }}/.deploy-staging"
+            STACK_NAME=$(awk -F= '/^APP_STACK=/{print $2}' staging.env)
+            STACK_NAME=${STACK_NAME:-maison-douce-staging}
+            FRONTEND_PORT=$(awk -F= '/^FRONTEND_PORT=/{print $2}' staging.env)
+            FRONTEND_PORT=${FRONTEND_PORT:-8080}
+            echo "$STAGING_GHCR_TOKEN" | docker login ghcr.io -u "$STAGING_GHCR_USERNAME" --password-stdin
+            docker compose -p "$STACK_NAME" --env-file staging.env -f docker-compose.staging.yml pull
+            docker compose -p "$STACK_NAME" --env-file staging.env -f docker-compose.staging.yml up -d --remove-orphans
+            docker compose -p "$STACK_NAME" --env-file staging.env -f docker-compose.staging.yml ps
+            curl -fsS "http://127.0.0.1:${FRONTEND_PORT}/" >/dev/null
+            docker image prune -af --filter "until=168h" || true
