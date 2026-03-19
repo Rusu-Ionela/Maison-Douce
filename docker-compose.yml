@@ -25,8 +25,9 @@ services:
       BASE_CLIENT_URL: ${BASE_CLIENT_URL:-http://localhost:8080}
       BODY_LIMIT: ${BODY_LIMIT:-10mb}
       MONGODB_URI: ${MONGODB_URI:-mongodb://mongo:27017/torturi}
-      JWT_SECRET: ${JWT_SECRET:-change_me_before_prod}
+      JWT_SECRET: ${JWT_SECRET:-}
       JWT_EXPIRES: ${JWT_EXPIRES:-7d}
+      PATISER_INVITE_CODE: ${PATISER_INVITE_CODE:-}
       STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY:-}
       STRIPE_WEBHOOK_SECRET: ${STRIPE_WEBHOOK_SECRET:-}
       STRIPE_CURRENCY: ${STRIPE_CURRENCY:-mdl}
@@ -64,14 +65,16 @@ services:
       context: ./frontend
       args:
         VITE_API_URL: /api
-        VITE_PRESTATOR_ID: ${VITE_PRESTATOR_ID:-default}
-        VITE_STRIPE_PK: ${VITE_STRIPE_PK:-}
-        VITE_MIN_LEAD_HOURS: ${VITE_MIN_LEAD_HOURS:-24}
         VITE_APP_VERSION: ${VITE_APP_VERSION:-docker}
     restart: unless-stopped
     depends_on:
       backend:
         condition: service_healthy
+    environment:
+      VITE_API_URL: ${VITE_API_URL:-/api}
+      VITE_PRESTATOR_ID: ${VITE_PRESTATOR_ID:-}
+      VITE_STRIPE_PK: ${VITE_STRIPE_PK:-}
+      VITE_MIN_LEAD_HOURS: ${VITE_MIN_LEAD_HOURS:-24}
     ports:
       - "8080:80"
 

@@ -9,6 +9,11 @@ const Rezervare = require("../models/Rezervare");
 const Comanda = require("../models/Comanda");
 const { authRequired, roleCheck } = require("../middleware/auth");
 const { notifyUser, notifyAdmins } = require("../utils/notifications");
+const {
+  applyScopedPrestatorFilter,
+  getScopedPrestatorId,
+  hasScopedPrestatorAccess,
+} = require("../utils/providerScope");
 
 let Utilizator = null;
 try {
@@ -16,9 +21,32 @@ try {
 } catch { }
 
 const MIN_LEAD_HOURS = Number(process.env.MIN_LEAD_HOURS || 24);
+const GENERIC_SERVER_MESSAGE = "Eroare server.";
 
 function isStaffRole(role) {
   return ["admin", "patiser", "prestator"].includes(String(role || ""));
+}
+
+function normalizePrestatorId(value) {
+  return String(value || "").trim();
+}
+
+function rejectOutsidePrestatorScope(req, res, prestatorId) {
+  if (!hasScopedPrestatorAccess(req, prestatorId)) {
+    res.status(403).json({ message: "Acces interzis pentru acest prestator." });
+    return true;
+  }
+  return false;
+}
+
+function isValidDeliveryWindow(value) {
+  const clean = String(value || "").trim();
+  if (!clean) return true;
+
+  const match = clean.match(/^(\d{2}:\d{2})(?:-(\d{2}:\d{2}))?$/);
+  if (!match) return false;
+  if (!match[2]) return true;
+  return match[2] > match[1];
 }
 
 function isBeforeMinLead(dateStr, timeStr) {
@@ -65,8 +93,11 @@ async function isDayCapacityFull(prestatorId, dateStr) {
 */
 async function availabilityHandler(req, res) {
   try {
-    const { prestatorId } = req.params;
+    const prestatorId = normalizePrestatorId(req.params?.prestatorId);
     const { from, to, hideFull } = req.query;
+    if (!prestatorId) {
+      return res.status(400).json({ message: "prestatorId este obligatoriu" });
+    }
 
     // Query CalendarSlotEntry (after migration, this is the single source of truth)
     const query = { prestatorId };
@@ -108,7 +139,7 @@ async function availabilityHandler(req, res) {
     res.json({ slots: mapped });
   } catch (e) {
     console.error(e);
-    res.status(500).json({ message: e.message });
+    res.status(500).json({ message: GENERIC_SERVER_MESSAGE });
   }
 }
 
@@ -125,6 +156,9 @@ router.get(
   async (req, res) => {
     try {
       const { prestatorId } = req.params;
+      if (rejectOutsidePrestatorScope(req, res, prestatorId)) {
+        return;
+      }
       const { from, to } = req.query;
       const q = { prestatorId };
       if (from && to) q.date = { $gte: from, $lte: to };
@@ -146,6 +180,9 @@ router.post(
   async (req, res) => {
     try {
       const { prestatorId } = req.params;
+      if (rejectOutsidePrestatorScope(req, res, prestatorId)) {
+        return;
+      }
       const { date, capacity } = req.body || {};
       if (!date) {
         return res.status(400).json({ message: "date este obligatoriu" });
@@ -176,6 +213,9 @@ router.post(
   async (req, res) => {
   try {
     const { prestatorId } = req.params;
+    if (rejectOutsidePrestatorScope(req, res, prestatorId)) {
+      return;
+    }
     const { slots } = req.body;
 
     if (!Array.isArray(slots)) {
@@ -227,7 +267,7 @@ router.post("/reserve", authRequired, async (req, res) => {
   try {
     const {
       clientId: requestedClientId,
-      prestatorId = "default",
+      prestatorId: rawPrestatorId,
       date,
       time,
       metoda = "ridicare",
@@ -241,6 +281,7 @@ router.post("/reserve", authRequired, async (req, res) => {
       tortId,
       customDetails,
     } = req.body;
+    const prestatorId = normalizePrestatorId(rawPrestatorId);
 
     const role = req.user?.rol || req.user?.role;
     const isStaff = isStaffRole(role);
@@ -253,6 +294,30 @@ router.post("/reserve", authRequired, async (req, res) => {
     }
     if (!isStaff && requestedClientId && String(requestedClientId) !== authUserId) {
       return res.status(403).json({ message: "Nu poti face rezervari pentru alt client" });
+    }
+    if (!prestatorId) {
+      return res.status(400).json({
+        message: "prestatorId este obligatoriu pentru rezervari.",
+      });
+    }
+    if (getScopedPrestatorId(req) && rejectOutsidePrestatorScope(req, res, prestatorId)) {
+      return;
+    }
+    if (!["ridicare", "livrare"].includes(String(metoda || "").trim())) {
+      return res.status(400).json({
+        message: "metoda trebuie sa fie ridicare sau livrare.",
+      });
+    }
+    if (metoda === "livrare" && !String(adresaLivrare || "").trim()) {
+      return res.status(400).json({
+        message: "Adresa de livrare este obligatorie pentru aceasta rezervare.",
+      });
+    }
+    if (!isValidDeliveryWindow(deliveryWindow)) {
+      return res.status(400).json({
+        message:
+          "Intervalul de livrare este invalid. Foloseste formatul HH:mm sau HH:mm-HH:mm.",
+      });
     }
     if (!date || !time) {
       return res
@@ -271,19 +336,60 @@ router.post("/reserve", authRequired, async (req, res) => {
       });
     }
 
-    const LIVRARE_FEE = 100;
-    const deliveryFee = metoda === "livrare" ? LIVRARE_FEE : 0;
-    const sb = Number(subtotal || 0);
-    const total = sb + deliveryFee;
+    const estimatedBudget = Math.max(
+      0,
+      Number((req.body?.clientBudget ?? subtotal) || 0)
+    );
+    const pricingPendingNote =
+      "Pretul final va fi confirmat de echipa dupa analiza cererii.";
+    const safeRequestedItems = Array.isArray(items)
+      ? items
+        .filter((item) => item && typeof item === "object")
+        .map((item) => {
+          const qty = Math.max(1, Number(item.qty || item.cantitate || 1));
+          const name = String(item.name || item.nume || "Produs").trim() || "Produs";
+          return {
+            productId: item.productId || undefined,
+            tortId: item.tortId || item.productId || undefined,
+            name,
+            nume: name,
+            qty,
+            cantitate: qty,
+            personalizari:
+              item.personalizari && typeof item.personalizari === "object"
+                ? item.personalizari
+                : undefined,
+            price: 0,
+            pret: 0,
+            lineTotal: 0,
+          };
+        })
+      : [];
+    const customRequestDetails =
+      customDetails && typeof customDetails === "object"
+        ? {
+          ...customDetails,
+          descriere: descriere || customDetails.descriere || undefined,
+          clientBudget: estimatedBudget || undefined,
+          requiresManualPricing: true,
+        }
+        : {
+          descriere: descriere || undefined,
+          clientBudget: estimatedBudget || undefined,
+          requiresManualPricing: true,
+        };
+    const total = 0;
 
     // 1️⃣ Atomic reservation using CalendarSlotEntry (required after migration)
     const slotEntry = await CalendarSlotEntry.findOne({ prestatorId, date, time });
     if (!slotEntry) {
-      return res.status(404).json({ message: 'Slot not found. Ensure calendar is set up for this prestator.' });
+      return res.status(404).json({
+        message: "Slot indisponibil. Calendarul nu este configurat pentru acest prestator.",
+      });
     }
 
     if (slotEntry.used >= slotEntry.capacity) {
-      return res.status(409).json({ message: 'Slot is full' });
+      return res.status(409).json({ message: "Slotul selectat este ocupat." });
     }
 
     // Atomic increment with condition: only if used < capacity
@@ -293,7 +399,9 @@ router.post("/reserve", authRequired, async (req, res) => {
     );
 
     if (!upd || upd.modifiedCount === 0) {
-      return res.status(409).json({ message: 'Slot unavailable or occupied' });
+      return res.status(409).json({
+        message: "Slotul selectat nu mai este disponibil.",
+      });
     }
 
     const incremented = { type: 'entry', id: slotEntry._id };
@@ -307,23 +415,34 @@ router.post("/reserve", authRequired, async (req, res) => {
     // 2️⃣ Creăm COMANDA
     const comandaPayload = {
       clientId: effectiveClientId,
-      items: Array.isArray(items) ? items : [],
-      subtotal: sb,
-      deliveryFee,
+      prestatorId,
+      items: safeRequestedItems,
+      subtotal: 0,
+      taxaLivrare: 0,
+      deliveryFee: 0,
       total,
+      totalFinal: total,
       tip: "rezervare-calendar",
       statusPlata: "unpaid",
+      status: "in_asteptare",
       statusComanda: "inregistrata",
       metodaLivrare: metoda,
       adresaLivrare: metoda === "livrare" ? adresaLivrare : "",
       deliveryInstructions: deliveryInstructions || "",
       deliveryWindow: deliveryWindow || "",
       notesClient: notes || "",
+      notesAdmin: pricingPendingNote,
       dataRezervare: date,
       oraRezervare: time,
       tortId: tortId || null,
-      customDetails: customDetails || (descriere ? { descriere } : null),
+      customDetails: customRequestDetails,
       preferinte: descriere || undefined,
+      statusHistory: [
+        {
+          status: "in_asteptare",
+          note: "Rezervare creata - pret in asteptare",
+        },
+      ],
     };
 
     let comanda;
@@ -337,20 +456,20 @@ router.post("/reserve", authRequired, async (req, res) => {
         prestatorId,
         comandaId: comanda._id,
         tortId: tortId || undefined,
-        customDetails: customDetails || (descriere ? { descriere } : undefined),
+        customDetails: customRequestDetails,
         date,
         timeSlot,
         handoffMethod: metoda === "livrare" ? "delivery" : "pickup",
-        deliveryFee,
+        deliveryFee: 0,
         deliveryAddress: metoda === "livrare" ? adresaLivrare : undefined,
         deliveryInstructions: deliveryInstructions || "",
         deliveryWindow: deliveryWindow || "",
-        subtotal: sb,
+        subtotal: 0,
         total,
         paymentStatus: "unpaid",
         status: "pending",
         handoffStatus: "scheduled",
-        notes: notes || "",
+        notes: notes || pricingPendingNote,
       });
     } catch (e) {
       // dacă crearea comenzii sau rezervării eșuează, revenim (decrementăm used)
@@ -359,7 +478,7 @@ router.post("/reserve", authRequired, async (req, res) => {
           { _id: incremented.id, used: { $gt: 0 } },
           { $inc: { used: -1 } }
         );
-        console.log('[reserve rollback] ✓ Rolled back slot increment');
+        console.warn("[reserve rollback] slot increment reverted");
       } catch (re) {
         console.error("Rollback failed for slot used decrement:", re);
       }
@@ -376,9 +495,9 @@ router.post("/reserve", authRequired, async (req, res) => {
 
     await notifyUser(effectiveClientId, {
       titlu: "Rezervare creata",
-      mesaj: `Rezervarea ta pentru ${date} ${time} a fost inregistrata.`,
+      mesaj: `Rezervarea ta pentru ${date} ${time} a fost inregistrata. Pretul final va fi confirmat separat.`,
       tip: "rezervare",
-      link: `/plata?comandaId=${comanda._id}`,
+      link: "/profil",
     });
     await notifyAdmins({
       titlu: "Rezervare noua",
@@ -392,12 +511,14 @@ router.post("/reserve", authRequired, async (req, res) => {
       rezervareId: doc._id,
       comandaId: comanda._id,
       slot: slotInfo,
-      fees: { delivery: deliveryFee },
+      fees: { delivery: 0 },
       total,
+      clientBudget: estimatedBudget,
+      requiresPriceConfirmation: true,
     });
   } catch (e) {
     console.error(e);
-    res.status(500).json({ message: e.message });
+    res.status(500).json({ message: GENERIC_SERVER_MESSAGE });
   }
 });
 
@@ -417,10 +538,15 @@ router.get(
     }
 
     const [rezervari, comenzi] = await Promise.all([
-      Rezervare.find({ date }).sort({ timeSlot: 1 }).populate("comandaId").lean(),
-      Comanda.find({
-        $or: [{ dataLivrare: date }, { dataRezervare: date }],
-      }).lean(),
+      Rezervare.find(applyScopedPrestatorFilter(req, { date }))
+        .sort({ timeSlot: 1 })
+        .populate("comandaId")
+        .lean(),
+      Comanda.find(
+        applyScopedPrestatorFilter(req, {
+          $or: [{ dataLivrare: date }, { dataRezervare: date }],
+        })
+      ).lean(),
     ]);
 
     // map users if model disponibil
@@ -540,7 +666,7 @@ router.get(
     res.json({ rezervari: combinat });
   } catch (e) {
     console.error(e);
-    res.status(500).json({ message: e.message });
+    res.status(500).json({ message: GENERIC_SERVER_MESSAGE });
   }
 }
 );
@@ -556,7 +682,7 @@ router.get(
   async (req, res) => {
   try {
     const { date } = req.params;
-    const rezervari = await Rezervare.find({ date })
+    const rezervari = await Rezervare.find(applyScopedPrestatorFilter(req, { date }))
       .sort({ timeSlot: 1 })
       .lean();
 
@@ -603,7 +729,7 @@ router.get(
     res.send(csv);
   } catch (e) {
     console.error(e);
-    res.status(500).json({ message: e.message });
+    res.status(500).json({ message: GENERIC_SERVER_MESSAGE });
   }
   }
 );

@@ -71,7 +71,7 @@ export default function TortDetails() {
   }, [tort]);
 
   const addToCart = () => {
-    if (!tort) return;
+    if (!tort || Number(tort.pret || 0) <= 0) return;
     const options = { aroma, marime, portii };
     const variantKey = JSON.stringify(options || {});
     add({
@@ -269,12 +269,21 @@ export default function TortDetails() {
           </div>
 
           <div className="flex gap-3">
-            <button
-              className="px-4 py-2 rounded-lg bg-pink-500 text-white hover:bg-pink-600"
-              onClick={addToCart}
-            >
-              Adauga in cos
-            </button>
+            {Number(tort.pret || 0) > 0 ? (
+              <button
+                className="px-4 py-2 rounded-lg bg-pink-500 text-white hover:bg-pink-600"
+                onClick={addToCart}
+              >
+                Adauga in cos
+              </button>
+            ) : (
+              <Link
+                to="/calendar"
+                className="px-4 py-2 rounded-lg bg-amber-100 text-amber-800 hover:bg-amber-200"
+              >
+                Cere oferta
+              </Link>
+            )}
             <Link
               to={`/constructor?from=${tort._id}`}
               className="px-4 py-2 rounded-lg border border-rose-200 text-pink-600 hover:bg-rose-50"

@@ -4,6 +4,50 @@ const Tort = require("../models/Tort");
 const Comanda = require("../models/Comanda");
 const ComandaPersonalizata = require("../models/ComandaPersonalizata");
 const { authRequired, roleCheck } = require("../middleware/auth");
+const { applyScopedPrestatorFilter, getScopedPrestatorId } = require("../utils/providerScope");
+
+function pad2(value) {
+  return String(value).padStart(2, "0");
+}
+
+function formatLocalDateInput(value) {
+  const date = value instanceof Date ? new Date(value) : new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return "";
+  }
+
+  return `${date.getFullYear()}-${pad2(date.getMonth() + 1)}-${pad2(
+    date.getDate()
+  )}`;
+}
+
+function formatLocalTimeInput(value) {
+  const date = value instanceof Date ? new Date(value) : new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return "";
+  }
+
+  return `${pad2(date.getHours())}:${pad2(date.getMinutes())}`;
+}
+
+function buildLocalDayRange(dateValue) {
+  const [year, month, day] = String(dateValue || "")
+    .split("-")
+    .map(Number);
+
+  if (
+    !Number.isInteger(year) ||
+    !Number.isInteger(month) ||
+    !Number.isInteger(day)
+  ) {
+    return null;
+  }
+
+  return {
+    start: new Date(year, month - 1, day, 0, 0, 0, 0),
+    end: new Date(year, month - 1, day, 23, 59, 59, 999),
+  };
+}
 
 router.get(
   "/recipes",
@@ -107,20 +151,24 @@ router.get(
   roleCheck("admin", "patiser"),
   async (req, res) => {
     try {
-      const date =
-        req.query.date || new Date().toISOString().slice(0, 10);
+      const date = req.query.date || formatLocalDateInput(new Date());
       const conditions = [
         { dataLivrare: date },
         { dataRezervare: date },
       ];
-      const orders = await Comanda.find({ $or: conditions })
+      const orders = await Comanda.find(
+        applyScopedPrestatorFilter(req, { $or: conditions })
+      )
         .sort({ oraLivrare: 1, oraRezervare: 1 })
         .lean();
-      const startOfDay = new Date(`${date}T00:00:00Z`);
-      const endOfDay = new Date(`${date}T23:59:59.999Z`);
-      const customOrders = await ComandaPersonalizata.find({
-        data: { $gte: startOfDay, $lt: endOfDay },
-      }).lean();
+      const dayRange = buildLocalDayRange(date);
+      const startOfDay = dayRange?.start || new Date(`${date}T00:00:00`);
+      const endOfDay = dayRange?.end || new Date(`${date}T23:59:59.999`);
+      const customOrders = getScopedPrestatorId(req)
+        ? []
+        : await ComandaPersonalizata.find({
+            data: { $gte: startOfDay, $lt: endOfDay },
+          }).lean();
 
       const mappedOrders = orders.map((order) => {
         const time =
@@ -166,8 +214,8 @@ router.get(
 
       const customBoard = customOrders.map((order) => {
         const orderDate = order.data ? new Date(order.data) : startOfDay;
-        const formattedDate = orderDate.toISOString().slice(0, 10);
-        const formattedTime = orderDate.toISOString().slice(11, 16);
+        const formattedDate = formatLocalDateInput(orderDate);
+        const formattedTime = formatLocalTimeInput(orderDate);
         const weightFromOptions =
           Number(order.options?.kg || order.options?.cantitate || order.options?.greutate || 0) || 0;
         return {

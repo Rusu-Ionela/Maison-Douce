@@ -6,6 +6,14 @@ function isAdmin(req) {
   return role === "admin" || role === "patiser";
 }
 
+function getDisplayName(req) {
+  return (
+    [req.user?.nume, req.user?.prenume].filter(Boolean).join(" ").trim() ||
+    req.user?.email ||
+    "Utilizator"
+  );
+}
+
 function assertRoomAccess(req, room) {
   if (!room) return true;
   if (isAdmin(req)) return true;
@@ -16,9 +24,12 @@ function assertRoomAccess(req, room) {
 
 exports.sendMessage = async (req, res) => {
   try {
-    const { text, room, fileUrl, fileName, utilizator, rol } = req.body || {};
+    const { text, room, fileUrl, fileName } = req.body || {};
     if (!text && !fileUrl) {
       return res.status(400).json({ message: "Text sau fisier este obligatoriu" });
+    }
+    if (!room) {
+      return res.status(400).json({ message: "Room este obligatoriu." });
     }
 
     if (!assertRoomAccess(req, room)) {
@@ -28,11 +39,11 @@ exports.sendMessage = async (req, res) => {
     const payload = {
       text: String(text || "").trim() || "Fisier atasat",
       data: new Date(),
-      utilizator: utilizator || req.user?.nume || req.user?.name || "client",
-      rol: req.user?.rol || req.user?.role || rol || "",
+      utilizator: getDisplayName(req),
+      rol: req.user?.rol || req.user?.role || "",
       authorId: String(req.user?._id || req.user?.id || ""),
     };
-    if (room) payload.room = String(room);
+    payload.room = String(room);
     if (fileUrl) payload.fileUrl = fileUrl;
     if (fileName) payload.fileName = fileName;
 

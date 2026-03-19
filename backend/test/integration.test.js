@@ -7,6 +7,7 @@ const { spawn } = require("node:child_process");
 const mongoose = require("mongoose");
 const Stripe = require("stripe");
 const CalendarSlotEntry = require("../models/CalendarSlotEntry");
+const Tort = require("../models/Tort");
 const Utilizator = require("../models/Utilizator");
 
 function wait(ms) {
@@ -145,7 +146,7 @@ function createMongoUri(baseUri) {
 
 async function createHarness(envOverrides = {}) {
   const backendDir = path.join(__dirname, "..");
-  const mailOutboxDir = path.join(backendDir, "uploads", "mail-outbox");
+  const mailOutboxDir = path.join(backendDir, ".runtime", "mail-outbox");
   const port = await getFreePort();
   const mongoUri = createMongoUri(
     envOverrides.MONGODB_URI ||
@@ -274,23 +275,60 @@ test("backend integration flows", async (t) => {
   }
 
   async function createOrder(token, overrides = {}) {
-    return harness.request("/comenzi", {
-      method: "POST",
-      token,
-      body: {
-        items: [
+    const hasExplicitItems = Object.prototype.hasOwnProperty.call(overrides, "items");
+    const rawItems = hasExplicitItems
+      ? overrides.items
+      : [
           {
             productId: "cake-1",
             name: "Tort test",
             qty: 1,
             price: 150,
           },
-        ],
+        ];
+    const items = Array.isArray(rawItems)
+      ? await Promise.all(
+          rawItems.map(async (item, index) => {
+            const rawProductId = String(item?.productId || item?.tortId || "").trim();
+            let tort = null;
+
+            if (mongoose.Types.ObjectId.isValid(rawProductId)) {
+              tort = await Tort.findById(rawProductId);
+            }
+
+            if (!tort) {
+              tort = await Tort.create({
+                nume: item?.name || item?.nume || `Tort test ${index + 1}`,
+                descriere: "Produs de integrare pentru comenzi",
+                pret: Number(item?.price || item?.pret || 150),
+                activ: true,
+                timpPreparareOre: Number(
+                  item?.prepHours || item?.timpPreparareOre || 24
+                ),
+              });
+            }
+
+            const qty = Math.max(1, Number(item?.qty || item?.cantitate || 1));
+            return {
+              productId: String(tort._id),
+              name: tort.nume,
+              qty,
+              price: Number(tort.pret || 0),
+            };
+          })
+        )
+      : [];
+
+    return harness.request("/comenzi", {
+      method: "POST",
+      token,
+      body: {
         metodaLivrare: "ridicare",
         prestatorId: "default",
         dataLivrare: futureDate(4),
         oraLivrare: "12:00",
         ...overrides,
+        items,
       },
     });
   }
@@ -1598,11 +1636,13 @@ test("backend integration flows", async (t) => {
 
       const staff = await registerUser("patiser");
       const client = await registerUser("client");
+      const providerId = staff.user?.id;
       assert.equal(staff.status, 201);
       assert.equal(client.status, 201);
+      assert.ok(providerId);
 
       const date = futureDate(5);
-      const addSlot = await harness.request("/calendar/availability/default", {
+      const addSlot = await harness.request(`/calendar/availability/${providerId}`, {
         method: "POST",
         token: staff.token,
         body: {
@@ -1616,7 +1656,7 @@ test("backend integration flows", async (t) => {
         method: "POST",
         token: client.token,
         body: {
-          prestatorId: "default",
+          prestatorId: providerId,
           date,
           time: "14:00",
           metoda: "ridicare",
@@ -1633,10 +1673,12 @@ test("backend integration flows", async (t) => {
         token: client.token,
       });
       assert.equal(order.status, 200);
-      assert.equal(order.data?.total, 120);
+      assert.equal(order.data?.total, 0);
+      assert.equal(order.data?.customDetails?.clientBudget, 120);
+      assert.equal(reserve.data?.requiresPriceConfirmation, true);
 
       const availability = await harness.request(
-        `/calendar/availability/default?from=${date}&to=${date}`
+        `/calendar/availability/${providerId}?from=${date}&to=${date}`
       );
       assert.equal(availability.status, 200);
       assert.equal(availability.data?.slots?.[0]?.used, 1);
@@ -1648,20 +1690,22 @@ test("backend integration flows", async (t) => {
 
       const staff = await registerUser("patiser");
       const client = await registerUser("client");
+      const providerId = staff.user?.id;
       assert.equal(staff.status, 201);
       assert.equal(client.status, 201);
+      assert.ok(providerId);
 
       const firstDate = futureDate(7);
       const secondDate = futureDate(8);
 
-      const addFirstSlot = await harness.request("/calendar/availability/default", {
+      const addFirstSlot = await harness.request(`/calendar/availability/${providerId}`, {
         method: "POST",
         token: staff.token,
         body: {
           slots: [{ date: firstDate, time: "10:00", capacity: 1 }],
         },
       });
-      const addSecondSlot = await harness.request("/calendar/availability/default", {
+      const addSecondSlot = await harness.request(`/calendar/availability/${providerId}`, {
         method: "POST",
         token: staff.token,
         body: {
@@ -1672,12 +1716,12 @@ test("backend integration flows", async (t) => {
       assert.equal(addSecondSlot.status, 200);
 
       await CalendarSlotEntry.updateOne(
-        { prestatorId: "default", date: firstDate, time: "10:00" },
+        { prestatorId: providerId, date: firstDate, time: "10:00" },
         { $set: { used: 1 } }
       );
 
       const createdOrder = await createOrder(client.token, {
-        prestatorId: "default",
+        prestatorId: providerId,
         dataLivrare: firstDate,
         oraLivrare: "10:00",
         items: [
@@ -1705,10 +1749,10 @@ test("backend integration flows", async (t) => {
       assert.equal(reschedule.data?.ok, true);
 
       const firstAvailability = await harness.request(
-        `/calendar/availability/default?from=${firstDate}&to=${firstDate}`
+        `/calendar/availability/${providerId}?from=${firstDate}&to=${firstDate}`
       );
       const secondAvailability = await harness.request(
-        `/calendar/availability/default?from=${secondDate}&to=${secondDate}`
+        `/calendar/availability/${providerId}?from=${secondDate}&to=${secondDate}`
       );
       assert.equal(firstAvailability.status, 200);
       assert.equal(secondAvailability.status, 200);
@@ -1729,7 +1773,7 @@ test("backend integration flows", async (t) => {
       assert.equal(canceledOrder.data?.status, "anulata");
 
       const rolledBackAvailability = await harness.request(
-        `/calendar/availability/default?from=${secondDate}&to=${secondDate}`
+        `/calendar/availability/${providerId}?from=${secondDate}&to=${secondDate}`
       );
       assert.equal(rolledBackAvailability.status, 200);
       assert.equal(rolledBackAvailability.data?.slots?.[0]?.used, 0);
@@ -1806,16 +1850,24 @@ test("stripe webhook integration awards payment state and fidelizare once", asyn
     const client = await registerClient();
     assert.equal(client.status, 201);
 
+    const webhookCake = await Tort.create({
+      nume: "Tort webhook",
+      descriere: "Produs pentru testul de webhook",
+      pret: 150,
+      activ: true,
+      timpPreparareOre: 24,
+    });
+
     const order = await harness.request("/comenzi", {
       method: "POST",
       token: client.token,
       body: {
         items: [
           {
-            productId: "cake-webhook",
-            name: "Tort webhook",
+            productId: String(webhookCake._id),
+            name: webhookCake.nume,
             qty: 1,
-            price: 150,
+            price: webhookCake.pret,
           },
         ],
         metodaLivrare: "ridicare",

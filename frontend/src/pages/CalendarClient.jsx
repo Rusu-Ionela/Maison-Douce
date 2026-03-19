@@ -9,9 +9,11 @@ import StatusBanner from "../components/StatusBanner";
 import { useAuth } from "../context/AuthContext";
 import {
   getConfiguredPrestatorId,
+  getMinLeadHours,
   getPrestatorEnvWarningMessage,
   hasPrestatorEnvConfig,
 } from "../lib/runtimeConfig";
+import { addDays, formatDateInput, parseDateInput } from "../lib/date";
 import { buttons, cards, containers, inputs } from "../lib/tailwindComponents";
 import { getApiErrorMessage } from "../lib/serverState";
 
@@ -19,7 +21,7 @@ const DELIVERY_FEE = 100;
 const AVAILABILITY_DAYS_AHEAD = 60;
 
 function toDateStr(date) {
-  return date.toISOString().slice(0, 10);
+  return formatDateInput(date);
 }
 
 function readCalendarValue(value) {
@@ -86,11 +88,11 @@ export default function CalendarClient() {
 
   const prestatorId = getConfiguredPrestatorId();
   const selectedDate = calendarDate ? toDateStr(calendarDate) : "";
-  const leadHours = Number(import.meta.env.VITE_MIN_LEAD_HOURS || 24);
+  const leadHours = getMinLeadHours();
 
   const availabilityRange = useMemo(() => {
     const from = new Date();
-    const to = new Date(Date.now() + AVAILABILITY_DAYS_AHEAD * 24 * 60 * 60 * 1000);
+    const to = addDays(from, AVAILABILITY_DAYS_AHEAD) || from;
     return {
       from: toDateStr(from),
       to: toDateStr(to),
@@ -163,6 +165,7 @@ export default function CalendarClient() {
         to: availabilityRange.to,
         hideFull: false,
       }),
+    enabled: Boolean(prestatorId),
   });
 
   const reserveMutation = useMutation({
@@ -171,10 +174,14 @@ export default function CalendarClient() {
       setSuccess({
         comandaId: data?.comandaId || "",
         rezervareId: data?.rezervareId || "",
+        requiresPriceConfirmation: data?.requiresPriceConfirmation !== false,
       });
       setStatus({
         type: "success",
-        message: "Rezervarea a fost inregistrata. Poti continua direct la plata.",
+        message:
+          data?.requiresPriceConfirmation !== false
+            ? "Rezervarea a fost trimisa. Pretul final va fi confirmat de echipa inainte de plata."
+            : "Rezervare creata. Poti continua direct la plata.",
       });
     },
     onError: (error) => {
@@ -223,8 +230,6 @@ export default function CalendarClient() {
   );
 
   const subtotalValue = Number(subtotal || 0);
-  const deliveryFee = metoda === "livrare" ? DELIVERY_FEE : 0;
-  const total = subtotalValue + deliveryFee;
 
   const selectCalendarDate = (value) => {
     const next = toSafeDate(value);
@@ -260,9 +265,11 @@ export default function CalendarClient() {
   const isSelectedSlotValid = () => {
     if (!selectedDate || !time) return false;
     const [hours, minutes] = String(time).split(":").map(Number);
-    const next = new Date(selectedDate);
-    next.setHours(hours || 0, minutes || 0, 0, 0);
-    return next >= minDateTime;
+    const next = parseDateInput(selectedDate, {
+      hours: hours || 0,
+      minutes: minutes || 0,
+    });
+    return next ? next >= minDateTime : false;
   };
 
   const handleReserve = (event) => {
@@ -274,6 +281,14 @@ export default function CalendarClient() {
       setStatus({
         type: "warning",
         message: "Trebuie sa fii autentificat pentru a face o rezervare.",
+      });
+      return;
+    }
+
+    if (!prestatorId) {
+      setStatus({
+        type: "error",
+        message: getPrestatorEnvWarningMessage(),
       });
       return;
     }
@@ -299,6 +314,14 @@ export default function CalendarClient() {
       return;
     }
 
+    if (metoda === "livrare" && windowStart && windowEnd && windowEnd <= windowStart) {
+      setStatus({
+        type: "warning",
+        message: "Intervalul de livrare este invalid. Ora de final trebuie sa fie dupa ora de inceput.",
+      });
+      return;
+    }
+
     reserveMutation.mutate({
       clientId: user._id,
       prestatorId,
@@ -310,7 +333,8 @@ export default function CalendarClient() {
         metoda === "livrare" ? deliveryInstructions.trim() : "",
       deliveryWindow:
         metoda === "livrare" ? buildDeliveryWindow(windowStart, windowEnd) : "",
-      subtotal: subtotalValue,
+      clientBudget: subtotalValue || 0,
+      subtotal: subtotalValue || 0,
       descriere: descriere.trim() || undefined,
       notes: notes.trim() || undefined,
     });
@@ -331,8 +355,8 @@ export default function CalendarClient() {
                 Alege data, intervalul si modul de predare
               </h1>
               <p className="max-w-2xl text-base leading-7 text-gray-600">
-                Fluxul este gandit pentru rezervare rapida: selectezi slotul, setezi
-                livrarea si mergi direct spre plata comenzii.
+                Rezerva un interval, transmite cerintele comenzii si asteapta
+                confirmarea finala a pretului din partea echipei.
               </p>
             </div>
             <div className="grid gap-3 sm:grid-cols-3">
@@ -447,9 +471,17 @@ export default function CalendarClient() {
                 <button
                   type="button"
                   className={buttons.success}
-                  onClick={() => navigate(`/plata?comandaId=${success.comandaId}`)}
+                  onClick={() =>
+                    navigate(
+                      success?.requiresPriceConfirmation
+                        ? "/profil"
+                        : `/plata?comandaId=${success.comandaId}`
+                    )
+                  }
                 >
-                  Continua la plata
+                  {success?.requiresPriceConfirmation
+                    ? "Vezi in profil"
+                    : "Continua la plata"}
                 </button>
               ) : null}
             </div>
@@ -462,7 +494,12 @@ export default function CalendarClient() {
                     type="date"
                     value={selectedDate}
                     min={toDateStr(minDateTime)}
-                    onChange={(event) => selectCalendarDate(new Date(`${event.target.value}T12:00:00`))}
+                    onChange={(event) => {
+                      const nextDate = parseDateInput(event.target.value);
+                      if (nextDate) {
+                        selectCalendarDate(nextDate);
+                      }
+                    }}
                     className={`mt-2 ${inputs.default}`}
                   />
                 </label>
@@ -518,7 +555,8 @@ export default function CalendarClient() {
                       >
                         <div className="font-semibold">Livrare</div>
                         <div className="mt-1 text-sm text-gray-600">
-                          Include taxa fixa de {DELIVERY_FEE} MDL.
+                          Taxa de livrare porneste de la {DELIVERY_FEE} MDL si
+                          se confirma dupa analiza cererii.
                         </div>
                       </button>
                     </div>
@@ -620,7 +658,7 @@ export default function CalendarClient() {
                   ) : null}
 
                   <label className="text-sm font-semibold text-gray-700">
-                    Subtotal estimat (MDL)
+                    Buget orientativ (optional, MDL)
                     <input
                       type="number"
                       min="0"
@@ -685,7 +723,7 @@ export default function CalendarClient() {
                       </div>
                       <div className="border-t border-rose-100 pt-3 space-y-2">
                         <div className="flex items-center justify-between">
-                          <span>Subtotal</span>
+                          <span>Buget orientativ</span>
                           <span className="font-semibold text-gray-900">
                             {subtotalValue.toFixed(2)} MDL
                           </span>
@@ -693,14 +731,12 @@ export default function CalendarClient() {
                         <div className="flex items-center justify-between">
                           <span>Taxa livrare</span>
                           <span className="font-semibold text-gray-900">
-                            {deliveryFee.toFixed(2)} MDL
+                            Se confirma dupa analiza
                           </span>
                         </div>
-                        <div className="flex items-center justify-between text-base">
-                          <span className="font-semibold text-gray-900">Total</span>
-                          <span className="text-2xl font-semibold text-pink-600">
-                            {total.toFixed(2)} MDL
-                          </span>
+                        <div className="rounded-2xl bg-rose-50 px-3 py-3 text-sm text-gray-700">
+                          Pretul final si disponibilitatea pentru livrare vor fi
+                          confirmate de echipa dupa analiza cererii.
                         </div>
                       </div>
                     </div>
@@ -708,7 +744,7 @@ export default function CalendarClient() {
 
                   <button
                     type="submit"
-                    disabled={reservationBusy || !selectedDate || !time}
+                    disabled={reservationBusy || !selectedDate || !time || !prestatorId}
                     className={`w-full ${buttons.primary}`}
                   >
                     {reservationBusy ? "Se confirma rezervarea..." : "Confirma rezervarea"}

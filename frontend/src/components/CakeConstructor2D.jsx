@@ -2,7 +2,6 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Circle, Layer, Rect, Stage, Text } from "react-konva";
 import api from "/src/lib/api.js";
 import StatusBanner from "../components/StatusBanner";
-import { useCart } from "../context/CartContext";
 import { useAuth } from "../context/AuthContext";
 import { buttons, cards, inputs } from "../lib/tailwindComponents";
 
@@ -160,7 +159,6 @@ function SummaryRow({ label, value, emphasize = false }) {
 export default function CakeConstructor2D({ designId: propDesignId }) {
   const stageRef = useRef(null);
   const previewRef = useRef(null);
-  const { add } = useCart();
   const { user } = useAuth() || {};
 
   const [loading, setLoading] = useState(false);
@@ -392,34 +390,11 @@ export default function CakeConstructor2D({ designId: propDesignId }) {
     }
   };
 
-  const addToCart = async () => {
-    try {
-      await runAction("cart", async () => {
-        const nextId = await saveDesign("draft");
-        if (!nextId) return;
-
-        const options = { blat, crema, umplutura, decor, topping, culoare, font, mesaj };
-        add({
-          id: nextId,
-          name: "Tort personalizat",
-          price: total,
-          image: "/images/placeholder.svg",
-          qty: 1,
-          options,
-          variantKey: JSON.stringify(options),
-          prepHours: timpOre,
-        });
-        setStatus({
-          type: "success",
-          text: "Designul a fost adaugat in cos.",
-        });
-      });
-    } catch {
-      setStatus({
-        type: "error",
-        text: "Nu am putut adauga designul in cos.",
-      });
-    }
+  const addToCart = () => {
+    setStatus({
+      type: "warning",
+      text: "Designurile personalizate nu intra direct in checkout public. Salveaza draftul sau trimite cererea catre patiser pentru confirmarea pretului.",
+    });
   };
 
   const downloadExportImage = async () => {
@@ -821,7 +796,7 @@ export default function CakeConstructor2D({ designId: propDesignId }) {
               disabled={busyAction !== ""}
               onClick={addToCart}
             >
-              {busyAction === "cart" ? "Se adauga..." : "Adauga in cos"}
+              Pret confirmat manual
             </button>
             <button
               type="button"
@@ -839,6 +814,12 @@ export default function CakeConstructor2D({ designId: propDesignId }) {
             >
               {busyAction === "send" ? "Se trimite..." : "Trimite patiserului"}
             </button>
+          </div>
+
+          <div className="rounded-[24px] border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+            Comenzile personalizate se confirma manual. Pentru lansarea publica,
+            designul nu se poate plati direct din cos pana cand pretul final nu
+            este validat de patiser.
           </div>
 
           {loading ? (

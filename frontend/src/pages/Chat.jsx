@@ -439,6 +439,7 @@ export default function Chat() {
               <input
                 className="mt-2 block w-full text-sm text-gray-600"
                 type="file"
+                accept=".jpg,.jpeg,.png,.webp,.gif,.pdf,.txt,.csv"
                 onChange={(event) => setFile(event.target.files?.[0] || null)}
               />
             </label>

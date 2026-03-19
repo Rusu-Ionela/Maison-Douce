@@ -7,6 +7,7 @@ import {
   getPrestatorEnvWarningMessage,
   hasPrestatorEnvConfig,
 } from "../lib/runtimeConfig";
+import { formatDateInput, parseDateInput } from "../lib/date";
 import { buttons, inputs, cards, badges } from "../lib/tailwindComponents";
 
 function extractFilename(contentDisposition, fallback) {
@@ -30,10 +31,16 @@ export default function AdminCalendar() {
   const [savingCapacity, setSavingCapacity] = useState(false);
 
   const prestatorId = getConfiguredPrestatorId();
-  const dateStr = selectedDate.toISOString().split("T")[0];
+  const dateStr = formatDateInput(selectedDate);
 
   useEffect(() => {
     const fetchData = async () => {
+      if (!prestatorId) {
+        setSlots([]);
+        setReservations([]);
+        setDayCapacity("");
+        return;
+      }
       setLoading(true);
       setError("");
       try {
@@ -63,6 +70,7 @@ export default function AdminCalendar() {
   }, [dateStr, prestatorId]);
 
   const refreshSlots = async () => {
+    if (!prestatorId) return;
     const { data } = await api.get(`/calendar/availability/${prestatorId}`, {
       params: { from: dateStr, to: dateStr },
     });
@@ -71,6 +79,10 @@ export default function AdminCalendar() {
 
   const addTimeSlot = async () => {
     try {
+      if (!prestatorId) {
+        setError(getPrestatorEnvWarningMessage());
+        return;
+      }
       if (!newSlotTime) {
         setError("Introdu o ora pentru slot.");
         return;
@@ -91,6 +103,10 @@ export default function AdminCalendar() {
 
   const blockSlot = async (time) => {
     try {
+      if (!prestatorId) {
+        setError(getPrestatorEnvWarningMessage());
+        return;
+      }
       await api.post(`/calendar/availability/${prestatorId}`, {
         slots: [{ date: dateStr, time, capacity: 0 }],
       });
@@ -105,6 +121,10 @@ export default function AdminCalendar() {
     setError("");
     setSavingCapacity(true);
     try {
+      if (!prestatorId) {
+        setError(getPrestatorEnvWarningMessage());
+        return;
+      }
       await api.post(`/calendar/day-capacity/${prestatorId}`, {
         date: dateStr,
         capacity: Number(dayCapacity || 0),
@@ -166,7 +186,12 @@ export default function AdminCalendar() {
               <input
                 type="date"
                 value={dateStr}
-                onChange={(e) => setSelectedDate(new Date(e.target.value))}
+                onChange={(e) => {
+                  const nextDate = parseDateInput(e.target.value);
+                  if (nextDate) {
+                    setSelectedDate(nextDate);
+                  }
+                }}
                 className={inputs.default}
               />
             </div>

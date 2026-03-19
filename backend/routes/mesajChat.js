@@ -9,6 +9,14 @@ function isAdmin(req) {
   return role === "admin" || role === "patiser";
 }
 
+function getDisplayName(req) {
+  return (
+    [req.user?.nume, req.user?.prenume].filter(Boolean).join(" ").trim() ||
+    req.user?.email ||
+    "Utilizator"
+  );
+}
+
 // GET /api/mesaje-chat - toate mesajele (admin)
 router.get("/", authRequired, roleCheck("admin", "patiser"), async (_req, res) => {
   try {
@@ -45,9 +53,12 @@ router.get("/room/:room", authRequired, async (req, res) => {
 // POST /api/mesaje-chat - salveaza un mesaj
 router.post("/", authRequired, async (req, res) => {
   try {
-    const { autor, utilizator, text, room, authorId, fileUrl, fileName, rol } = req.body;
+    const { text, room, fileUrl, fileName } = req.body;
     if (!text && !fileUrl) {
       return res.status(400).json({ message: "Text sau fisier este obligatoriu" });
+    }
+    if (!room) {
+      return res.status(400).json({ message: "Room este obligatoriu." });
     }
 
     if (room && !isAdmin(req)) {
@@ -58,17 +69,15 @@ router.post("/", authRequired, async (req, res) => {
       }
     }
 
-    const currentRole = req.user?.rol || req.user?.role || rol || "";
+    const currentRole = req.user?.rol || req.user?.role || "";
     const payload = {
       text: String(text || "").trim() || "Fisier atasat",
       data: new Date(),
-      utilizator: utilizator || autor || req.user?.nume || req.user?.name || "client",
+      utilizator: getDisplayName(req),
       rol: currentRole,
+      room: String(room),
+      authorId: String(req.user?._id || req.user?.id || ""),
     };
-    if (room) payload.room = String(room);
-    if (authorId || req.user?._id || req.user?.id) {
-      payload.authorId = String(authorId || req.user?._id || req.user?.id);
-    }
     if (fileUrl) payload.fileUrl = fileUrl;
     if (fileName) payload.fileName = fileName;
 
@@ -76,11 +85,7 @@ router.post("/", authRequired, async (req, res) => {
 
     try {
       const io = require("../socket").getIO();
-      if (room) {
-        io.to(String(room)).emit("receiveMessage", payload);
-      } else {
-        io.emit("receiveMessage", payload);
-      }
+      io.to(String(room)).emit("receiveMessage", payload);
     } catch {}
 
     res.status(201).json(msg);

@@ -3,7 +3,7 @@ const rateLimit = require("express-rate-limit");
 const router = express.Router();
 const Utilizator = require("../models/Utilizator");
 const { withValidation } = require("../middleware/validate");
-const { sendEmail } = require("../utils/notifications");
+const { hasEmailConfig, sendEmail } = require("../utils/notifications");
 const { generateResetToken } = require("../utils/resetTokens");
 const { readEmail } = require("../utils/validation");
 
@@ -35,6 +35,13 @@ router.post(
     const email = normalizeEmail(req.validated.email);
 
     try {
+      if (process.env.NODE_ENV === "production" && !hasEmailConfig()) {
+        return res.status(503).json({
+          message:
+            "Resetarea parolei este indisponibila momentan. Contacteaza suportul.",
+        });
+      }
+
       const utilizator = await Utilizator.findOne({ email });
       if (!utilizator || utilizator.activ === false) {
         return res.json({ message: GENERIC_RESET_MESSAGE });
@@ -51,16 +58,24 @@ router.post(
         rawToken
       )}`;
 
-      await sendEmail(
+      const sent = await sendEmail(
         email,
         "Resetare parola TortApp",
         `<p>Click aici pentru a reseta parola:</p><a href="${resetLink}">${resetLink}</a>`
       );
+      if (!sent) {
+        return res.status(503).json({
+          message:
+            "Nu am putut trimite emailul de resetare. Incearca din nou mai tarziu.",
+        });
+      }
 
       return res.json({ message: GENERIC_RESET_MESSAGE });
     } catch (err) {
       console.error("Eroare reset parola:", err);
-      return res.status(500).json({ message: "Eroare la trimitere email." });
+      return res.status(503).json({
+        message: "Nu am putut trimite emailul de resetare. Incearca din nou mai tarziu.",
+      });
     }
   })
 );

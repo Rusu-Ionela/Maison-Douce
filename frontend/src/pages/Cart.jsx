@@ -13,6 +13,7 @@ import {
   getPrestatorEnvWarningMessage,
   hasPrestatorEnvConfig,
 } from "../lib/runtimeConfig";
+import { formatDateInput, parseDateInput } from "../lib/date";
 
 function buildStatus(type, message, title = "") {
   return { type, message, title };
@@ -98,10 +99,13 @@ export default function Cart() {
   const total = subtotal + (metodaLivrare === "livrare" ? LIVRARE_FEE : 0);
 
   useEffect(() => {
-    if (!date) return;
+    if (!date || !prestatorId) {
+      setSlots(null);
+      return;
+    }
     setLoadingSlots(true);
     getAvailability(prestatorId, { from: date, to: date, hideFull: true })
-      .then((data) => setSlots(data))
+      .then((data) => setSlots(Array.isArray(data?.slots) ? data.slots : []))
       .catch(() => setSlots(null))
       .finally(() => setLoadingSlots(false));
   }, [date, prestatorId]);
@@ -109,14 +113,17 @@ export default function Cart() {
   const minDate = useMemo(() => {
     const now = new Date();
     now.setHours(now.getHours() + leadHours);
-    return now.toISOString().slice(0, 10);
+    return formatDateInput(now);
   }, [leadHours]);
 
   const slotIsValid = () => {
     if (!date || !time) return false;
     const [h, m] = time.split(":").map(Number);
-    const dt = new Date(date);
-    dt.setHours(h || 0, m || 0, 0, 0);
+    const dt = parseDateInput(date, {
+      hours: h || 0,
+      minutes: m || 0,
+    });
+    if (!dt) return false;
     const min = new Date();
     min.setHours(min.getHours() + leadHours);
     return dt >= min;
@@ -167,6 +174,30 @@ export default function Cart() {
       setCheckoutStatus(buildStatus("warning", "Cosul este gol."));
       return false;
     }
+    if (items.some((item) => Number(item.price || 0) <= 0)) {
+      setCheckoutStatus(
+        buildStatus(
+          "warning",
+          "Cosul contine produse care necesita confirmare manuala de pret. Elimina-le din cos si foloseste cererea de oferta."
+        )
+      );
+      return false;
+    }
+    if (items.some((item) => String(item.name || "").trim() === "Tort personalizat")) {
+      setCheckoutStatus(
+        buildStatus(
+          "warning",
+          "Designurile personalizate se confirma manual si nu pot fi finalizate prin checkout-ul standard."
+        )
+      );
+      return false;
+    }
+    if (!prestatorId) {
+      setCheckoutStatus(
+        buildStatus("error", getPrestatorEnvWarningMessage(), "Configurare lipsa")
+      );
+      return false;
+    }
     if (!date || !time) {
       setCheckoutStatus(
         buildStatus("warning", "Selecteaza data si ora pentru comanda.")
@@ -179,8 +210,36 @@ export default function Cart() {
       );
       return false;
     }
+    if (
+      !Array.isArray(slots) ||
+      !slots.some(
+        (slot) =>
+          slot?.date === date &&
+          slot?.time === time &&
+          Number(slot?.free ?? 0) > 0
+      )
+    ) {
+      setCheckoutStatus(
+        buildStatus("warning", "Slotul selectat nu mai este disponibil. Alege alt interval.")
+      );
+      return false;
+    }
     if (metodaLivrare === "livrare" && !adresa.trim()) {
       setCheckoutStatus(buildStatus("warning", "Completeaza adresa de livrare."));
+      return false;
+    }
+    if (
+      metodaLivrare === "livrare" &&
+      windowStart &&
+      windowEnd &&
+      windowEnd <= windowStart
+    ) {
+      setCheckoutStatus(
+        buildStatus(
+          "warning",
+          "Intervalul de livrare este invalid. Ora de final trebuie sa fie dupa ora de inceput."
+        )
+      );
       return false;
     }
     return true;
@@ -495,6 +554,7 @@ export default function Cart() {
               <input
                 type="file"
                 multiple
+                accept=".jpg,.jpeg,.png,.webp,.gif,.pdf,.txt,.csv"
                 onChange={(e) => setAttachments(Array.from(e.target.files || []))}
                 className={`${inputs.default} mb-2`}
                 disabled={submitting}
@@ -536,7 +596,7 @@ export default function Cart() {
                 <button
                   className={buttons.primary}
                   onClick={checkout}
-                  disabled={submitting}
+                  disabled={submitting || !prestatorId}
                 >
                   {submitting ? "Se proceseaza..." : "Continua la plata"}
                 </button>

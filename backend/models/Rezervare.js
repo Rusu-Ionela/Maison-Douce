@@ -4,7 +4,7 @@ const mongoose = require("mongoose");
 const RezervareSchema = new mongoose.Schema(
     {
         clientId: { type: String, required: true },
-        prestatorId: { type: String, default: "default" },
+        prestatorId: { type: String, default: "" },
 
         // LEGĂTURĂ CU COMANDA (FK)
         comandaId: { type: mongoose.Schema.Types.ObjectId, ref: "Comanda" },
@@ -48,6 +48,10 @@ const RezervareSchema = new mongoose.Schema(
     },
     { timestamps: true }
 );
+
+RezervareSchema.index({ clientId: 1, createdAt: -1 });
+RezervareSchema.index({ prestatorId: 1, date: 1, timeSlot: 1 });
+RezervareSchema.index({ prestatorId: 1, status: 1, createdAt: -1 });
 
 module.exports =
     mongoose.models.Rezervare ||

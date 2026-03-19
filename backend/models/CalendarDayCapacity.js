@@ -2,7 +2,7 @@ const mongoose = require("mongoose");
 
 const CalendarDayCapacitySchema = new mongoose.Schema(
   {
-    prestatorId: { type: String, default: "default", index: true },
+    prestatorId: { type: String, required: true, index: true },
     date: { type: String, required: true, index: true }, // YYYY-MM-DD
     capacity: { type: Number, default: 0, min: 0 },
   },

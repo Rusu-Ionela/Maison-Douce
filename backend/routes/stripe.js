@@ -4,6 +4,10 @@ const Stripe = require("stripe");
 const Comanda = require("../models/Comanda");
 const { authRequired } = require("../middleware/auth");
 const { withValidation } = require("../middleware/validate");
+const {
+  getAllowedClientOrigins,
+  normalizeOriginUrl,
+} = require("../utils/runtime");
 const { activateCutieFromComanda } = require("../utils/subscriptions");
 const {
   readEnum,
@@ -28,21 +32,14 @@ const stripe = STRIPE_KEY
 const stripeEnabled = Boolean(stripe);
 const fallbackAllowed = process.env.NODE_ENV !== "production" && !stripeEnabled;
 
-const BASE_CLIENT_URL = process.env.BASE_CLIENT_URL || "http://localhost:5173";
+const BASE_CLIENT_URL =
+  normalizeOriginUrl(process.env.BASE_CLIENT_URL || "") ||
+  process.env.BASE_CLIENT_URL ||
+  "http://localhost:5173";
 const ALLOWED_CURRENCIES = ["mdl", "usd", "eur"];
-const ALLOWED_CLIENT_REDIRECT_ORIGINS = Array.from(
-  new Set(
-    [BASE_CLIENT_URL, "http://localhost:5173", "http://localhost:5174"]
-      .map((url) => {
-        try {
-          return new URL(url).origin;
-        } catch {
-          return null;
-        }
-      })
-      .filter(Boolean)
-  )
-);
+const PUBLIC_STRIPE_ERROR =
+  "Serviciul de plata este indisponibil momentan. Incearca din nou mai tarziu.";
+const ALLOWED_CLIENT_REDIRECT_ORIGINS = getAllowedClientOrigins();
 
 const paymentLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
@@ -209,7 +206,7 @@ router.post(
       res.json({ clientSecret: pi.client_secret, mode: STRIPE_MODE });
     } catch (e) {
       console.error("payment-intent error:", e.message);
-      res.status(500).json({ message: e.message || "Stripe error" });
+      res.status(500).json({ message: PUBLIC_STRIPE_ERROR });
     }
   })
 );
@@ -254,7 +251,7 @@ router.post(
       res.json({ clientSecret: pi.client_secret, mode: STRIPE_MODE });
     } catch (e) {
       console.error("create-payment-intent error:", e.message);
-      res.status(500).json({ message: e.message || "Stripe error" });
+      res.status(500).json({ message: PUBLIC_STRIPE_ERROR });
     }
   })
 );
@@ -300,7 +297,7 @@ router.post(
       res.json({ id: session.id, url: session.url, mode: STRIPE_MODE });
     } catch (e) {
       console.error("checkout-session error:", e.message);
-      res.status(500).json({ message: e.message || "Stripe error" });
+      res.status(500).json({ message: PUBLIC_STRIPE_ERROR });
     }
   })
 );
@@ -346,7 +343,7 @@ router.post(
       res.json({ id: session.id, url: session.url, mode: STRIPE_MODE });
     } catch (e) {
       console.error("create-checkout-session error:", e.message);
-      res.status(500).json({ message: e.message || "Stripe error" });
+      res.status(500).json({ message: PUBLIC_STRIPE_ERROR });
     }
   })
 );
@@ -396,7 +393,7 @@ router.post(
       res.json({ ok: true, orderId: comanda._id, status: comanda.status });
     } catch (e) {
       console.error("confirm-payment error:", e.message);
-      res.status(500).json({ message: e.message || "Stripe error" });
+      res.status(500).json({ message: PUBLIC_STRIPE_ERROR });
     }
   })
 );
@@ -447,7 +444,7 @@ router.post(
       res.json({ ok: true, orderId: comanda._id, status: comanda.status });
     } catch (e) {
       console.error("confirm-session error:", e.message);
-      res.status(500).json({ message: e.message || "Stripe error" });
+      res.status(500).json({ message: PUBLIC_STRIPE_ERROR });
     }
   })
 );
@@ -482,7 +479,7 @@ router.post(
       });
     } catch (e) {
       console.error("fallback-confirm error:", e.message);
-      res.status(500).json({ message: e.message || "Payment fallback error" });
+      res.status(500).json({ message: PUBLIC_STRIPE_ERROR });
     }
   })
 );

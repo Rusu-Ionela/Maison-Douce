@@ -19,10 +19,6 @@ const FILE_PROFILES = {
       "application/pdf",
       "text/plain",
       "text/csv",
-      "application/msword",
-      "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-      "application/vnd.ms-excel",
-      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
     ],
     extensions: [
       ".jpg",
@@ -33,10 +29,6 @@ const FILE_PROFILES = {
       ".pdf",
       ".txt",
       ".csv",
-      ".doc",
-      ".docx",
-      ".xls",
-      ".xlsx",
     ],
   },
 };

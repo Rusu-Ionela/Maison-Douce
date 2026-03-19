@@ -313,7 +313,7 @@ module.exports = async (req, res) => {
       eventType: event?.type,
       error: serializeError(err),
     });
-    return res.status(500).json({ error: err.message, details: err.stack });
+    return res.status(500).json({ error: "Stripe webhook processing failed." });
   }
 
   return res.json({ received: true, eventId: event.id });

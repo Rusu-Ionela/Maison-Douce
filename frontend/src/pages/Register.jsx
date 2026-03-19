@@ -103,6 +103,7 @@ export default function Register() {
                   onChange={(event) =>
                     setForm((current) => ({ ...current, name: event.target.value }))
                   }
+                  autoComplete="name"
                 />
               </label>
               <label className="block text-sm font-semibold text-gray-700">
@@ -114,6 +115,7 @@ export default function Register() {
                   onChange={(event) =>
                     setForm((current) => ({ ...current, telefon: event.target.value }))
                   }
+                  autoComplete="tel"
                 />
               </label>
             </div>
@@ -128,6 +130,7 @@ export default function Register() {
                 onChange={(event) =>
                   setForm((current) => ({ ...current, email: event.target.value }))
                 }
+                autoComplete="email"
               />
             </label>
 
@@ -140,6 +143,7 @@ export default function Register() {
                 onChange={(event) =>
                   setForm((current) => ({ ...current, adresa: event.target.value }))
                 }
+                autoComplete="street-address"
               />
             </label>
 
@@ -154,6 +158,7 @@ export default function Register() {
                   onChange={(event) =>
                     setForm((current) => ({ ...current, password: event.target.value }))
                   }
+                  autoComplete="new-password"
                 />
               </label>
               <label className="block text-sm font-semibold text-gray-700">
@@ -166,6 +171,7 @@ export default function Register() {
                   onChange={(event) =>
                     setForm((current) => ({ ...current, confirm: event.target.value }))
                   }
+                  autoComplete="new-password"
                 />
               </label>
             </div>

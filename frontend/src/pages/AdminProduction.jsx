@@ -6,6 +6,7 @@ import AdminShell, {
 import StatusBanner from "../components/StatusBanner";
 import api from "/src/lib/api.js";
 import { buttons, inputs } from "../lib/tailwindComponents";
+import { getTodayDateInput } from "../lib/date";
 
 function defaultIngredientRow() {
   return { ingredient: "", qty: 0, unit: "g", note: "" };
@@ -30,7 +31,7 @@ function formatCurrency(value) {
 export default function AdminProduction() {
   const [recipes, setRecipes] = useState([]);
   const [board, setBoard] = useState([]);
-  const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
+  const [date, setDate] = useState(getTodayDateInput());
   const [selectedTort, setSelectedTort] = useState("");
   const [targetKg, setTargetKg] = useState(1);
   const [loadingRecipes, setLoadingRecipes] = useState(false);

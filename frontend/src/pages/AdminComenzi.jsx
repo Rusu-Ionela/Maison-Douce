@@ -11,6 +11,7 @@ import {
   getApiErrorMessage,
   queryKeys,
 } from "../lib/serverState";
+import { getTodayDateInput } from "../lib/date";
 import { badges, buttons, inputs } from "../lib/tailwindComponents";
 
 const STATUSES = [
@@ -57,8 +58,11 @@ function buildSearchText(item) {
     item.clientTelefon,
     item.adresaLivrare,
     item.deliveryInstructions,
+    item.preferinte,
     item.notesClient,
     item.notesAdmin,
+    item.customDetails?.descriere,
+    item.customDetails?.clientBudget,
     ...(Array.isArray(item.items)
       ? item.items.map((entry) => entry.name || entry.nume || "")
       : []),
@@ -170,6 +174,7 @@ export default function AdminComenzi() {
 
   const list = ordersQuery.data || EMPTY_LIST;
   const loading = ordersQuery.isLoading;
+  const today = getTodayDateInput();
   const filtered = useMemo(() => {
     const normalizedSearch = search.trim().toLowerCase();
 
@@ -204,7 +209,7 @@ export default function AdminComenzi() {
       (item) => item.paymentStatus !== "paid" && item.statusPlata !== "paid"
     ).length;
     const todayOrders = filtered.filter(
-      (item) => getOrderDateValue(item) === new Date().toISOString().slice(0, 10)
+      (item) => getOrderDateValue(item) === today
     ).length;
     const inWorkOrders = filtered.filter((item) => item.status === "in_lucru").length;
 
@@ -234,7 +239,7 @@ export default function AdminComenzi() {
         tone: "slate",
       },
     ];
-  }, [filtered]);
+  }, [filtered, today]);
 
   const hasFilters = Boolean(status || date || search.trim());
 
@@ -486,6 +491,16 @@ export default function AdminComenzi() {
                       {item.notesClient ? (
                         <div className="mt-2 text-xs text-gray-500">
                           Note client: {item.notesClient}
+                        </div>
+                      ) : null}
+                      {item.preferinte ? (
+                        <div className="mt-2 text-xs text-gray-500">
+                          Cerinte: {item.preferinte}
+                        </div>
+                      ) : null}
+                      {item.customDetails?.clientBudget ? (
+                        <div className="mt-2 text-xs text-amber-700">
+                          Buget orientativ client: {formatCurrency(item.customDetails.clientBudget)}
                         </div>
                       ) : null}
                       {item.notesAdmin ? (

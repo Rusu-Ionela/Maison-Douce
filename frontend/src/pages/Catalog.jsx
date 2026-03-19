@@ -357,21 +357,30 @@ export default function Catalog() {
                       >
                         Detalii
                       </Link>
-                      <button
-                        className="inline-flex items-center rounded-full bg-pink-600 px-3 py-2 text-sm font-semibold text-white shadow-soft hover:bg-pink-700"
-                        onClick={() =>
-                          add({
-                            id: p._id,
-                            name: p.nume,
-                            price: p.pret || 0,
-                            image: p.imagine,
-                            qty: 1,
-                            prepHours: p.timpPreparareOre || 24,
-                          })
-                        }
-                      >
-                        Adauga in cos
-                      </button>
+                      {Number(p.pret || 0) > 0 ? (
+                        <button
+                          className="inline-flex items-center rounded-full bg-pink-600 px-3 py-2 text-sm font-semibold text-white shadow-soft hover:bg-pink-700"
+                          onClick={() =>
+                            add({
+                              id: p._id,
+                              name: p.nume,
+                              price: p.pret || 0,
+                              image: p.imagine,
+                              qty: 1,
+                              prepHours: p.timpPreparareOre || 24,
+                            })
+                          }
+                        >
+                          Adauga in cos
+                        </button>
+                      ) : (
+                        <Link
+                          to="/calendar"
+                          className="inline-flex items-center rounded-full bg-amber-100 px-3 py-2 text-sm font-semibold text-amber-800 hover:bg-amber-200"
+                        >
+                          Cere oferta
+                        </Link>
+                      )}
                     </div>
                   </div>
                 </article>

@@ -2,6 +2,10 @@ const router = require("express").Router();
 const { authRequired, roleCheck } = require("../middleware/auth");
 const Rezervare = require("../models/Rezervare");
 const { notifyUser } = require("../utils/notifications");
+const {
+  applyScopedPrestatorFilter,
+  hasScopedPrestatorAccess,
+} = require("../utils/providerScope");
 
 function getAuthUserId(req) {
   return String(req.user?._id || req.user?.id || "");
@@ -34,7 +38,9 @@ router.get("/", authRequired, async (req, res) => {
       q.clientId = getAuthUserId(req);
     }
 
-    const list = await Rezervare.find(q).sort({ createdAt: -1 }).lean();
+    const list = await Rezervare.find(applyScopedPrestatorFilter(req, q))
+      .sort({ createdAt: -1 })
+      .lean();
     res.json(list);
   } catch (_e) {
     res.status(500).json({ message: "Eroare la preluare rezervari" });
@@ -48,7 +54,7 @@ router.get("/:id", authRequired, async (req, res) => {
     if (role !== "admin" && role !== "patiser" && role !== "prestator") {
       q.clientId = getAuthUserId(req);
     }
-    const r = await Rezervare.findOne(q).lean();
+    const r = await Rezervare.findOne(applyScopedPrestatorFilter(req, q)).lean();
     if (!r) return res.status(404).json({ message: "Rezervare inexistenta" });
     res.json(r);
   } catch (_e) {
@@ -59,12 +65,13 @@ router.get("/:id", authRequired, async (req, res) => {
 router.patch("/:id/status", authRequired, roleCheck("admin", "patiser"), async (req, res) => {
   try {
     const status = normalizeRezervareStatus(req.body?.status);
-    const r = await Rezervare.findByIdAndUpdate(
-      req.params.id,
-      { $set: { status } },
-      { new: true }
-    );
+    const r = await Rezervare.findById(req.params.id);
     if (!r) return res.status(404).json({ message: "Rezervare inexistenta" });
+    if (!hasScopedPrestatorAccess(req, r.prestatorId)) {
+      return res.status(403).json({ message: "Acces interzis pentru acest prestator." });
+    }
+    r.status = status;
+    await r.save();
     await notifyUser(r.clientId, {
       titlu: "Rezervare actualizata",
       mesaj: `Rezervarea ta este acum: ${status}.`,

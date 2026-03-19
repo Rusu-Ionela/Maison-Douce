@@ -1,0 +1,101 @@
+name: Deploy Production
+
+on:
+  workflow_dispatch:
+    inputs:
+      image_tag:
+        description: "Tag-ul imaginii din GHCR: latest sau sha-<commit>"
+        required: true
+        default: latest
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Compute image names
+        id: names
+        shell: bash
+        run: |
+          repo="${GITHUB_REPOSITORY#*/}"
+          owner_lc="${GITHUB_REPOSITORY_OWNER,,}"
+          repo_lc="${repo,,}"
+          echo "backend_image=ghcr.io/${owner_lc}/${repo_lc}-backend:${{ github.event.inputs.image_tag }}" >> "$GITHUB_OUTPUT"
+          echo "frontend_image=ghcr.io/${owner_lc}/${repo_lc}-frontend:${{ github.event.inputs.image_tag }}" >> "$GITHUB_OUTPUT"
+
+      - name: Validate production secrets and vars
+        env:
+          PRODUCTION_HOST: ${{ vars.PRODUCTION_HOST }}
+          PRODUCTION_USER: ${{ vars.PRODUCTION_USER }}
+          PRODUCTION_PATH: ${{ vars.PRODUCTION_PATH }}
+          PRODUCTION_ENV_FILE: ${{ secrets.PRODUCTION_ENV_FILE }}
+          PRODUCTION_SSH_KEY: ${{ secrets.PRODUCTION_SSH_KEY }}
+          PRODUCTION_GHCR_USERNAME: ${{ secrets.PRODUCTION_GHCR_USERNAME }}
+          PRODUCTION_GHCR_TOKEN: ${{ secrets.PRODUCTION_GHCR_TOKEN }}
+        shell: bash
+        run: |
+          test -n "$PRODUCTION_HOST" || { echo "Missing PRODUCTION_HOST variable"; exit 1; }
+          test -n "$PRODUCTION_USER" || { echo "Missing PRODUCTION_USER variable"; exit 1; }
+          test -n "$PRODUCTION_PATH" || { echo "Missing PRODUCTION_PATH variable"; exit 1; }
+          test -n "$PRODUCTION_ENV_FILE" || { echo "Missing PRODUCTION_ENV_FILE secret"; exit 1; }
+          test -n "$PRODUCTION_SSH_KEY" || { echo "Missing PRODUCTION_SSH_KEY secret"; exit 1; }
+          test -n "$PRODUCTION_GHCR_USERNAME" || { echo "Missing PRODUCTION_GHCR_USERNAME secret"; exit 1; }
+          test -n "$PRODUCTION_GHCR_TOKEN" || { echo "Missing PRODUCTION_GHCR_TOKEN secret"; exit 1; }
+
+      - name: Prepare production bundle
+        shell: bash
+        run: |
+          mkdir -p .deploy-production
+          cp deploy/production/docker-compose.production.yml .deploy-production/docker-compose.production.yml
+          cat > .deploy-production/production.env <<'EOF'
+          APP_STACK=${{ vars.PRODUCTION_STACK_NAME || 'maison-douce-prod' }}
+          BACKEND_IMAGE=${{ steps.names.outputs.backend_image }}
+          FRONTEND_IMAGE=${{ steps.names.outputs.frontend_image }}
+          ${{ secrets.PRODUCTION_ENV_FILE }}
+          EOF
+
+      - name: Upload production bundle
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ vars.PRODUCTION_HOST }}
+          username: ${{ vars.PRODUCTION_USER }}
+          key: ${{ secrets.PRODUCTION_SSH_KEY }}
+          port: ${{ vars.PRODUCTION_PORT || 22 }}
+          source: .deploy-production
+          target: ${{ vars.PRODUCTION_PATH }}
+          overwrite: true
+
+      - name: Deploy over SSH
+        uses: appleboy/ssh-action@v1.2.0
+        env:
+          PRODUCTION_GHCR_USERNAME: ${{ secrets.PRODUCTION_GHCR_USERNAME }}
+          PRODUCTION_GHCR_TOKEN: ${{ secrets.PRODUCTION_GHCR_TOKEN }}
+        with:
+          host: ${{ vars.PRODUCTION_HOST }}
+          username: ${{ vars.PRODUCTION_USER }}
+          key: ${{ secrets.PRODUCTION_SSH_KEY }}
+          port: ${{ vars.PRODUCTION_PORT || 22 }}
+          envs: PRODUCTION_GHCR_USERNAME,PRODUCTION_GHCR_TOKEN
+          script: |
+            set -e
+            cd "${{ vars.PRODUCTION_PATH }}/.deploy-production"
+            STACK_NAME=$(awk -F= '/^APP_STACK=/{print $2}' production.env)
+            STACK_NAME=${STACK_NAME:-maison-douce-prod}
+            FRONTEND_PORT=$(awk -F= '/^FRONTEND_PORT=/{print $2}' production.env)
+            FRONTEND_PORT=${FRONTEND_PORT:-8080}
+            echo "$PRODUCTION_GHCR_TOKEN" | docker login ghcr.io -u "$PRODUCTION_GHCR_USERNAME" --password-stdin
+            docker compose -p "$STACK_NAME" --env-file production.env -f docker-compose.production.yml pull
+            docker compose -p "$STACK_NAME" --env-file production.env -f docker-compose.production.yml up -d --remove-orphans
+            docker compose -p "$STACK_NAME" --env-file production.env -f docker-compose.production.yml ps
+            curl -fsS "http://127.0.0.1:${FRONTEND_PORT}/" >/dev/null
+            docker image prune -af --filter "until=168h" || true

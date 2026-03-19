@@ -14,6 +14,15 @@ const { hashResetToken, generateResetToken } = require("../utils/resetTokens");
 const { getJwtSecret, signAuthToken, verifyAuthToken } = require("../utils/jwt");
 const { cleanupUploadedFiles, toPublicUploadPath } = require("../utils/multer");
 const { serializeError } = require("../utils/log");
+const {
+  buildCreatedAtRange,
+  buildStringDateRange,
+  getOrderDeliveryFee,
+  getOrderItemQuantity,
+  getOrderTotal,
+  normalizeDeliveryMethod,
+  summarizeOrderItems,
+} = require("../utils/reporting");
 
 test("readString and readBoolean validate supported values", () => {
   assert.equal(
@@ -120,4 +129,49 @@ test("serializeError returns predictable error metadata", () => {
   assert.equal(serialized.name, "Error");
   assert.equal(serialized.message, "boom");
   assert.match(serialized.stack, /boom/);
+});
+
+test("reporting helpers validate date ranges and build inclusive filters", () => {
+  assert.deepEqual(buildStringDateRange("date", "2026-03-01", "2026-03-31"), {
+    date: { $gte: "2026-03-01", $lte: "2026-03-31" },
+  });
+
+  const createdAtRange = buildCreatedAtRange(
+    "createdAt",
+    "2026-03-01",
+    "2026-03-31"
+  );
+  assert.equal(createdAtRange.createdAt.$gte.getFullYear(), 2026);
+  assert.equal(createdAtRange.createdAt.$gte.getMonth(), 2);
+  assert.equal(createdAtRange.createdAt.$gte.getDate(), 1);
+  assert.equal(createdAtRange.createdAt.$lte.getHours(), 23);
+  assert.equal(createdAtRange.createdAt.$lte.getMinutes(), 59);
+  assert.equal(createdAtRange.createdAt.$lte.getSeconds(), 59);
+
+  assert.throws(
+    () => buildStringDateRange("date", "2026-03-31", "2026-03-01"),
+    /mai mica sau egala/
+  );
+  assert.throws(
+    () => buildCreatedAtRange("createdAt", "2026-02-31", "2026-03-01"),
+    /YYYY-MM-DD/
+  );
+});
+
+test("reporting helpers normalize totals, methods and item summaries", () => {
+  const order = {
+    items: [
+      { name: "Red Velvet", qty: 2, lineTotal: 240 },
+      { nume: "Mousse", cantitate: 1, pret: 90 },
+    ],
+    taxaLivrare: 25,
+    totalFinal: 355,
+  };
+
+  assert.equal(summarizeOrderItems(order), "Red Velvet x2 | Mousse x1");
+  assert.equal(getOrderItemQuantity(order), 3);
+  assert.equal(getOrderDeliveryFee(order), 25);
+  assert.equal(getOrderTotal(order), 355);
+  assert.equal(normalizeDeliveryMethod("livrare"), "delivery");
+  assert.equal(normalizeDeliveryMethod("pickup"), "pickup");
 });

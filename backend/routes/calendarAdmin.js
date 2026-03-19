@@ -4,6 +4,7 @@ const { Parser } = require("json2csv");
 const Comanda = require("../models/Comanda");
 const Rezervare = require("../models/Rezervare");
 const { authRequired, roleCheck } = require("../middleware/auth");
+const { applyScopedPrestatorFilter } = require("../utils/providerScope");
 
 // GET /api/calendar-admin?date=YYYY-MM-DD
 router.get("/", authRequired, roleCheck("admin", "patiser"), async (req, res) => {
@@ -14,8 +15,12 @@ router.get("/", authRequired, roleCheck("admin", "patiser"), async (req, res) =>
     }
 
     const [comenzi, rezervari] = await Promise.all([
-      Comanda.find({ $or: [{ dataLivrare: date }, { dataRezervare: date }] }).lean(),
-      Rezervare.find({ date }).lean(),
+      Comanda.find(
+        applyScopedPrestatorFilter(req, {
+          $or: [{ dataLivrare: date }, { dataRezervare: date }],
+        })
+      ).lean(),
+      Rezervare.find(applyScopedPrestatorFilter(req, { date })).lean(),
     ]);
 
     const agenda = [];
@@ -38,7 +43,7 @@ router.get("/", authRequired, roleCheck("admin", "patiser"), async (req, res) =>
 router.get("/export/csv", authRequired, roleCheck("admin", "patiser"), async (req, res) => {
   try {
     const { date } = req.query;
-    const filter = date ? { dataLivrare: date } : {};
+    const filter = applyScopedPrestatorFilter(req, date ? { dataLivrare: date } : {});
     const comenzi = await Comanda.find(filter).lean();
 
     const rows = comenzi.map((c) => ({

@@ -3,6 +3,7 @@ const Comanda = require("../models/Comanda");
 const Tort = require("../models/Tort");
 
 const router = express.Router();
+const GENERIC_SERVER_MESSAGE = "Eroare server.";
 
 /**
  * Construiește un set de recomandări hibrid:
@@ -164,7 +165,7 @@ router.get("/", async (req, res) => {
     res.json({ recomandate: torturi });
   } catch (e) {
     console.error("recommendations error:", e.message);
-    res.status(500).json({ message: e.message });
+    res.status(500).json({ message: GENERIC_SERVER_MESSAGE });
   }
 });
 
@@ -181,7 +182,7 @@ router.get("/ai", async (req, res) => {
     res.json(data);
   } catch (e) {
     console.error("[ai recommendations] error:", e.message);
-    res.status(500).json({ ok: false, message: e.message });
+    res.status(500).json({ ok: false, message: GENERIC_SERVER_MESSAGE });
   }
 });
 
@@ -206,7 +207,7 @@ router.post("/ai", async (req, res) => {
     res.json(data);
   } catch (e) {
     console.error("[ai recommendations POST] error:", e.message);
-    res.status(500).json({ ok: false, message: e.message });
+    res.status(500).json({ ok: false, message: GENERIC_SERVER_MESSAGE });
   }
 });
 

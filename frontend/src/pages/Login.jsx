@@ -8,6 +8,7 @@ export default function Login() {
   const nav = useNavigate();
   const [form, setForm] = useState({ email: "", parola: "" });
   const [err, setErr] = useState("");
+  const [submitting, setSubmitting] = useState(false);
 
   if (isAuthenticated) {
     if (user?.rol === "admin" || user?.rol === "prestator" || user?.rol === "patiser") {
@@ -21,6 +22,7 @@ export default function Login() {
     setErr("");
 
     try {
+      setSubmitting(true);
       const loggedUser = await login(form);
       if (
         loggedUser.rol === "admin" ||
@@ -36,6 +38,8 @@ export default function Login() {
         error?.response?.data?.message ||
           "Eroare la autentificare. Verifica emailul si parola."
       );
+    } finally {
+      setSubmitting(false);
     }
   }
 
@@ -93,6 +97,7 @@ export default function Login() {
                   setForm((current) => ({ ...current, email: event.target.value }))
                 }
                 placeholder="email@exemplu.com"
+                autoComplete="email"
                 required
               />
             </label>
@@ -107,6 +112,7 @@ export default function Login() {
                   setForm((current) => ({ ...current, parola: event.target.value }))
                 }
                 placeholder="Parola ta"
+                autoComplete="current-password"
                 required
               />
             </label>
@@ -114,8 +120,9 @@ export default function Login() {
             <button
               className="w-full rounded-full bg-pink-600 px-5 py-3 text-sm font-semibold text-white transition hover:bg-pink-700"
               type="submit"
+              disabled={submitting}
             >
-              Intra in cont
+              {submitting ? "Se autentifica..." : "Intra in cont"}
             </button>
           </form>
 

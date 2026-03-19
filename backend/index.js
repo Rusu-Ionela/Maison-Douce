@@ -10,31 +10,19 @@ const rateLimit = require("express-rate-limit");
 const morgan = require("morgan");
 const crypto = require("crypto");
 const { log, serializeError } = require("./utils/log");
+const {
+  getAllowedClientOrigins,
+  validateRuntimeConfig,
+  normalizeOriginUrl,
+} = require("./utils/runtime");
 
 function validateCriticalEnv() {
-  const missing = [];
-  const hasStripeKey = Boolean(
-    process.env.STRIPE_SECRET_KEY ||
-      process.env.STRIPE_SECRET ||
-      process.env.STRIPE_SK
-  );
+  const { missing, invalid } = validateRuntimeConfig();
 
-  if (!process.env.JWT_SECRET) {
-    missing.push("JWT_SECRET");
-  }
-
-  if (process.env.NODE_ENV === "production") {
-    if (!process.env.BASE_CLIENT_URL) {
-      missing.push("BASE_CLIENT_URL");
-    }
-    if (hasStripeKey && !process.env.STRIPE_WEBHOOK_SECRET) {
-      missing.push("STRIPE_WEBHOOK_SECRET");
-    }
-  }
-
-  if (missing.length > 0) {
+  if (missing.length > 0 || invalid.length > 0) {
     log("error", "missing_required_env", {
       missing,
+      invalid,
     });
     process.exit(1);
   }
@@ -50,18 +38,17 @@ const bootAt = Date.now();
 app.set("trust proxy", Number(process.env.TRUST_PROXY || 1));
 app.set("etag", false);
 
-const ORIGIN = process.env.BASE_CLIENT_URL || "http://localhost:5173";
-const CORS_ORIGINS = [
-  ORIGIN,
-  "http://localhost:5173",
-  "http://127.0.0.1:5173",
-  "http://localhost:5174",
-  "http://127.0.0.1:5174",
-];
+const BASE_CLIENT_URL =
+  String(process.env.BASE_CLIENT_URL || "").trim() || "http://localhost:5173";
+const ORIGIN = normalizeOriginUrl(BASE_CLIENT_URL) || BASE_CLIENT_URL;
+const CORS_ORIGINS = getAllowedClientOrigins();
 
 app.use(
   cors({
-    origin: CORS_ORIGINS,
+    origin: (origin, callback) => {
+      if (!origin) return callback(null, true);
+      return callback(null, CORS_ORIGINS.includes(origin));
+    },
     credentials: true,
     methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     allowedHeaders: ["Content-Type", "Authorization", "X-Request-Id"],
@@ -173,8 +160,13 @@ app.use(
   "/uploads",
   express.static(path.join(__dirname, "uploads"), {
     setHeaders: (res, filePath) => {
+      res.setHeader("X-Robots-Tag", "noindex, nofollow, noarchive");
+      res.setHeader("Cross-Origin-Resource-Policy", "same-origin");
       if (!/\.(png|jpe?g|gif|webp|svg|pdf|txt|csv)$/i.test(filePath)) {
         res.setHeader("Content-Disposition", "attachment");
+      }
+      if (/\\misc\\|\/misc\//i.test(filePath)) {
+        res.setHeader("Cache-Control", "private, no-store");
       }
     },
   })
@@ -255,11 +247,17 @@ const errorHandler = (err, req, res, _next) => {
     error: serializeError(err),
   });
 
-  res.status(err.status || 500).json({
+  const status = Number(err?.status || err?.statusCode || 500);
+  const publicMessage =
+    status >= 500
+      ? "Eroare server."
+      : err?.publicMessage || err?.message || "Cererea nu a putut fi procesata.";
+
+  res.status(status).json({
     success: false,
-    message: err.message || "Eroare server",
+    message: publicMessage,
     requestId: req?.id,
-    error: process.env.NODE_ENV === "development" ? err.message : undefined,
+    error: process.env.NODE_ENV === "development" ? err?.message : undefined,
   });
 };
 

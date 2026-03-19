@@ -4,6 +4,7 @@ const path = require('path');
 const router = express.Router();
 const Personalizare = require('../models/Personalizare');
 const { authRequired } = require("../middleware/auth");
+const GENERIC_SERVER_MESSAGE = "Eroare server.";
 
 function ensureDir(dir) {
     if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
@@ -53,7 +54,7 @@ router.post("/", authRequired, async (req, res) => {
         res.status(201).json({ ok: true, id: doc._id, imageUrl });
     } catch (e) {
         console.error('POST /personalizare error:', e);
-        res.status(500).json({ ok: false, error: e.message });
+        res.status(500).json({ ok: false, error: GENERIC_SERVER_MESSAGE });
     }
 });
 
@@ -70,7 +71,7 @@ router.get('/client/:clientId', authRequired, async (req, res) => {
         res.json(list);
     } catch (e) {
         console.error('GET /personalizare/client error:', e);
-        res.status(500).json({ error: e.message });
+        res.status(500).json({ error: GENERIC_SERVER_MESSAGE });
     }
 });
 
@@ -86,7 +87,7 @@ router.get('/:id', authRequired, async (req, res) => {
         res.json(doc);
     } catch (e) {
         console.error('GET /personalizare/:id error:', e);
-        res.status(500).json({ error: e.message });
+        res.status(500).json({ error: GENERIC_SERVER_MESSAGE });
     }
 });
 
@@ -148,7 +149,7 @@ router.put('/:id', authRequired, async (req, res) => {
         res.json({ ok: true, id: doc._id, imageUrl: doc.imageUrl });
     } catch (e) {
         console.error('PUT /personalizare/:id error:', e);
-        res.status(500).json({ error: e.message });
+        res.status(500).json({ error: GENERIC_SERVER_MESSAGE });
     }
 });
 

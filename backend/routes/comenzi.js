@@ -9,14 +9,21 @@ const Comanda = require("../models/Comanda");
 const Rezervare = require("../models/Rezervare");
 const CalendarPrestator = require("../models/CalendarPrestator");
 const CalendarDayCapacity = require("../models/CalendarDayCapacity");
+const Tort = require("../models/Tort");
 const { notifyUser, notifyAdmins } = require("../utils/notifications");
 const { recordAuditLog } = require("../utils/audit");
 const { adminMutationLimiter } = require("../middleware/rateLimiters");
 const Utilizator = require("../models/Utilizator");
+const {
+    applyScopedPrestatorFilter,
+    getScopedPrestatorId,
+    hasScopedPrestatorAccess,
+} = require("../utils/providerScope");
 // const Utilizator = require("../models/Utilizator"); // folosește dacă vrei populate
 
 const LIVRARE_FEE = 100;
 const MIN_LEAD_HOURS = Number(process.env.MIN_LEAD_HOURS || 24);
+const GENERIC_SERVER_MESSAGE = "Eroare server.";
 
 function isStaffRole(role) {
     return ["admin", "patiser", "prestator"].includes(String(role || ""));
@@ -24,6 +31,61 @@ function isStaffRole(role) {
 
 function getAuthUserId(req) {
     return String(req.user?.id || req.user?._id || "");
+}
+
+function normalizePrestatorId(value) {
+    return String(value || "").trim();
+}
+
+function rejectOutsidePrestatorScope(req, res, prestatorId) {
+    if (!hasScopedPrestatorAccess(req, prestatorId)) {
+        res.status(403).json({ message: "Acces interzis pentru acest prestator." });
+        return true;
+    }
+    return false;
+}
+
+function isValidDeliveryWindow(value) {
+    const clean = String(value || "").trim();
+    if (!clean) return true;
+
+    const match = clean.match(/^(\d{2}:\d{2})(?:-(\d{2}:\d{2}))?$/);
+    if (!match) return false;
+    if (!match[2]) return true;
+    return match[2] > match[1];
+}
+
+function normalizeAttachments(attachments) {
+    if (!Array.isArray(attachments)) return [];
+
+    return attachments
+        .filter((item) => item && typeof item === "object")
+        .map((item) => ({
+            url: String(item.url || "").trim(),
+            name: String(item.name || "").trim().slice(0, 255),
+        }))
+        .filter((item) => item.url)
+        .slice(0, 5);
+}
+
+function getPublicOrderError(error) {
+    const message = String(error?.message || "").trim();
+    const safePatterns = [
+        /^Utilizator neautentificat/i,
+        /^dataLivrare/i,
+        /^Alege un interval/i,
+        /^Capacitatea zilei/i,
+        /^Slot /i,
+        /^Calendar inexistent/i,
+        /^Comanda trebuie/i,
+        /^Unul sau mai multe produse/i,
+    ];
+
+    if (safePatterns.some((pattern) => pattern.test(message))) {
+        return { status: 400, message };
+    }
+
+    return { status: 500, message: GENERIC_SERVER_MESSAGE };
 }
 
 /* ---------------------- Helpers Comanda ---------------------- */
@@ -43,14 +105,88 @@ function normalizeItems(rawItems = [], produse = []) {
     return [];
 }
 
-function isBeforeMinLead(dateStr, timeStr) {
+function isBeforeMinLead(dateStr, timeStr, requiredLeadHours = MIN_LEAD_HOURS) {
     if (!dateStr || !timeStr) return false;
     const [h, m] = String(timeStr).split(":").map(Number);
     const target = new Date(`${dateStr}T00:00:00`);
     target.setHours(Number.isFinite(h) ? h : 0, Number.isFinite(m) ? m : 0, 0, 0);
     const min = new Date();
-    min.setHours(min.getHours() + MIN_LEAD_HOURS);
+    min.setHours(min.getHours() + Number(requiredLeadHours || MIN_LEAD_HOURS));
     return target < min;
+}
+
+async function buildPricedOrder(items = [], options = {}) {
+    const { allowManualPricing = false } = options;
+    if (!Array.isArray(items) || items.length === 0) {
+        return { items: [], subtotal: 0, leadHours: MIN_LEAD_HOURS };
+    }
+
+    const normalized = items.map((item) => ({
+        ...item,
+        productId: String(item?.productId || item?.tortId || "").trim(),
+        qty: Math.max(1, Number(item?.qty || item?.cantitate || 1)),
+    }));
+
+    const ids = normalized
+        .map((item) => item.productId)
+        .filter((value) => mongoose.Types.ObjectId.isValid(value));
+    const torts = ids.length
+        ? await Tort.find(
+            { _id: { $in: ids }, activ: { $ne: false } },
+            { nume: 1, pret: 1, timpPreparareOre: 1 }
+        ).lean()
+        : [];
+    const tortMap = new Map(torts.map((item) => [String(item._id), item]));
+
+    const pricedItems = normalized.map((item) => {
+        const tort = tortMap.get(item.productId);
+        if (!tort && !allowManualPricing) {
+            return null;
+        }
+
+        const fallbackPrice = Math.max(0, Number(item.price || item.pret || 0));
+        const price = tort ? Math.max(0, Number(tort.pret || 0)) : fallbackPrice;
+        const prepHours = tort ? Math.max(0, Number(tort.timpPreparareOre || 0)) : 0;
+        const name = tort?.nume || item.name || item.nume || "Produs";
+
+        return {
+            productId: item.productId || undefined,
+            tortId: item.tortId || item.productId || undefined,
+            name,
+            nume: name,
+            qty: item.qty,
+            cantitate: item.qty,
+            price,
+            pret: price,
+            lineTotal: price * item.qty,
+            personalizari:
+                item.personalizari && typeof item.personalizari === "object"
+                    ? item.personalizari
+                    : undefined,
+            prepHours,
+        };
+    });
+
+    if (!allowManualPricing && pricedItems.some((item) => !item)) {
+        throw new Error("Unul sau mai multe produse nu mai sunt disponibile.");
+    }
+
+    const sanitizedItems = pricedItems.filter(Boolean);
+    if (!allowManualPricing && sanitizedItems.some((item) => Number(item.price || 0) <= 0)) {
+        throw new Error("Unul sau mai multe produse necesita confirmare manuala de pret.");
+    }
+
+    return {
+        items: sanitizedItems,
+        subtotal: sanitizedItems.reduce(
+            (sum, item) => sum + Number(item.price || 0) * Number(item.qty || 0),
+            0
+        ),
+        leadHours: Math.max(
+            MIN_LEAD_HOURS,
+            ...sanitizedItems.map((item) => Number(item.prepHours || 0))
+        ),
+    };
 }
 
 async function isDayCapacityFull(prestatorId, dateStr) {
@@ -63,6 +199,127 @@ async function isDayCapacityFull(prestatorId, dateStr) {
     ]);
     const used = usedAgg[0]?.used || 0;
     return used >= Number(dayCap.capacity || 0);
+}
+
+let supportsMongoTransactionsCache = null;
+
+async function supportsMongoTransactions() {
+    if (supportsMongoTransactionsCache != null) {
+        return supportsMongoTransactionsCache;
+    }
+
+    try {
+        const client = mongoose.connection.getClient
+            ? mongoose.connection.getClient()
+            : mongoose.connection.client;
+
+        if (!client) {
+            supportsMongoTransactionsCache = false;
+            return supportsMongoTransactionsCache;
+        }
+
+        const hello = await client.db().admin().command({ hello: 1 });
+        supportsMongoTransactionsCache = Boolean(
+            hello?.setName || hello?.msg === "isdbgrid"
+        );
+    } catch {
+        supportsMongoTransactionsCache = false;
+    }
+
+    return supportsMongoTransactionsCache;
+}
+
+function applySession(query, session) {
+    return session ? query.session(session) : query;
+}
+
+async function reserveSlotForOrder({ prestatorId, dataLivrare, oraLivrare, session }) {
+    const CalendarSlotEntry = require("../models/CalendarSlotEntry");
+    const entry = await applySession(
+        CalendarSlotEntry.findOne({
+            prestatorId,
+            date: dataLivrare,
+            time: oraLivrare,
+        }),
+        session
+    );
+
+    if (entry) {
+        const upd = await applySession(
+            CalendarSlotEntry.updateOne(
+                { _id: entry._id, used: { $lt: entry.capacity } },
+                { $inc: { used: 1 } }
+            ),
+            session
+        );
+
+        if (!upd || upd.modifiedCount === 0) {
+            throw new Error("Slot indisponibil.");
+        }
+
+        return {
+            source: "entry",
+            prestatorId,
+            dataLivrare,
+            oraLivrare,
+        };
+    }
+
+    const cal = await applySession(
+        CalendarPrestator.findOne({ prestatorId }),
+        session
+    );
+    if (!cal) throw new Error("Calendar inexistent pentru prestator.");
+
+    const idx = (cal.slots || []).findIndex(
+        (slot) => slot.date === dataLivrare && slot.time === oraLivrare
+    );
+    if (idx === -1) throw new Error("Slot indisponibil.");
+
+    const slot = cal.slots[idx];
+    if (Number(slot.used || 0) >= Number(slot.capacity || 0)) {
+        throw new Error("Slot epuizat.");
+    }
+
+    cal.slots[idx].used = Number(slot.used || 0) + 1;
+    await cal.save(session ? { session } : undefined);
+
+    return {
+        source: "legacy",
+        prestatorId,
+        dataLivrare,
+        oraLivrare,
+    };
+}
+
+async function releaseReservedSlot({ source, prestatorId, dataLivrare, oraLivrare }) {
+    if (source === "entry") {
+        const CalendarSlotEntry = require("../models/CalendarSlotEntry");
+        const entry = await CalendarSlotEntry.findOne({
+            prestatorId,
+            date: dataLivrare,
+            time: oraLivrare,
+        });
+
+        if (entry && entry.used > 0) {
+            await CalendarSlotEntry.updateOne(
+                { _id: entry._id, used: { $gt: 0 } },
+                { $inc: { used: -1 } }
+            );
+        }
+        return;
+    }
+
+    const cal = await CalendarPrestator.findOne({ prestatorId });
+    if (!cal) return;
+
+    const idx = (cal.slots || []).findIndex(
+        (slot) => slot.date === dataLivrare && slot.time === oraLivrare
+    );
+    if (idx === -1) return;
+
+    cal.slots[idx].used = Math.max(0, Number(cal.slots[idx].used || 0) - 1);
+    await cal.save();
 }
 
 /* ---------------------- Helpers Rezervare -> Admin view ---------------------- */
@@ -120,6 +377,8 @@ function mapComandaToAdmin(c, userMap = new Map()) {
         taxaLivrare: c.taxaLivrare || 0,
         total: c.total,
         totalFinal: c.totalFinal,
+        preferinte: c.preferinte || "",
+        customDetails: c.customDetails || null,
         notesClient: c.notesClient || "",
         notesAdmin: c.notesAdmin || "",
         paymentStatus: c.paymentStatus || "",
@@ -142,7 +401,7 @@ router.post("/", authRequired, async (req, res) => {
             adresaLivrare,
             dataLivrare,
             oraLivrare,
-            prestatorId = "default",
+            prestatorId: rawPrestatorId,
             note,
             preferinte,
             imagineGenerata,
@@ -150,10 +409,12 @@ router.post("/", authRequired, async (req, res) => {
             deliveryWindow,
             attachments,
         } = req.body;
+        let prestatorId = normalizePrestatorId(rawPrestatorId);
 
         const role = req.user?.rol || req.user?.role;
         const isStaff = isStaffRole(role);
         const authUserId = getAuthUserId(req);
+        const scopedPrestatorId = getScopedPrestatorId(req);
         const effectiveClientId =
             isStaff && requestedClientId ? String(requestedClientId) : authUserId;
 
@@ -163,19 +424,57 @@ router.post("/", authRequired, async (req, res) => {
         if (!isStaff && requestedClientId && String(requestedClientId) !== authUserId) {
             return res.status(403).json({ message: "Nu poti crea comenzi pentru alt client." });
         }
-        if (dataLivrare && oraLivrare && isBeforeMinLead(dataLivrare, oraLivrare)) {
+        if (scopedPrestatorId) {
+            if (prestatorId && prestatorId !== scopedPrestatorId) {
+                return res.status(403).json({ message: "Acces interzis pentru acest prestator." });
+            }
+            prestatorId = prestatorId || scopedPrestatorId;
+        }
+        if ((dataLivrare || oraLivrare) && !prestatorId) {
             return res.status(400).json({
-                message: `Alege un interval cu minim ${MIN_LEAD_HOURS} ore inainte.`,
+                message: "prestatorId este obligatoriu pentru comenzile programate.",
+            });
+        }
+        if (!["ridicare", "livrare"].includes(String(metodaLivrare || "").trim())) {
+            return res.status(400).json({
+                message: "metodaLivrare trebuie sa fie ridicare sau livrare.",
+            });
+        }
+        if (metodaLivrare === "livrare" && !String(adresaLivrare || "").trim()) {
+            return res.status(400).json({
+                message: "Adresa de livrare este obligatorie pentru aceasta comanda.",
+            });
+        }
+        if (!isValidDeliveryWindow(deliveryWindow)) {
+            return res.status(400).json({
+                message:
+                    "Intervalul de livrare este invalid. Foloseste formatul HH:mm sau HH:mm-HH:mm.",
+            });
+        }
+        const items = normalizeItems(rawItems, produse);
+        if (!items.length) {
+            return res.status(400).json({ message: "Comanda trebuie sa contina cel putin un produs." });
+        }
+        const pricedOrder = await buildPricedOrder(items, {
+            allowManualPricing: isStaff,
+        });
+        if (
+            dataLivrare &&
+            oraLivrare &&
+            isBeforeMinLead(dataLivrare, oraLivrare, pricedOrder.leadHours)
+        ) {
+            return res.status(400).json({
+                message: `Alege un interval cu minim ${pricedOrder.leadHours} ore inainte.`,
             });
         }
 
-        const items = normalizeItems(rawItems, produse);
-        const subtotal = calcSubtotal(items);
+        const subtotal = pricedOrder.subtotal;
         const taxaLivrare = metodaLivrare === "livrare" ? LIVRARE_FEE : 0;
+        const safeAttachments = normalizeAttachments(attachments);
 
         const comanda = await Comanda.create({
             clientId: effectiveClientId,
-            items,
+            items: pricedOrder.items,
             subtotal,
             taxaLivrare,
             total: subtotal + taxaLivrare,
@@ -184,10 +483,10 @@ router.post("/", authRequired, async (req, res) => {
             adresaLivrare: metodaLivrare === "livrare" ? adresaLivrare : undefined,
             deliveryInstructions: deliveryInstructions || "",
             deliveryWindow: deliveryWindow || "",
-            attachments: Array.isArray(attachments) ? attachments : [],
+            attachments: safeAttachments,
             dataLivrare,
             oraLivrare,
-            prestatorId,
+            prestatorId: prestatorId || undefined,
             note,
             preferinte,
             imagineGenerata,
@@ -212,7 +511,8 @@ router.post("/", authRequired, async (req, res) => {
         res.status(201).json(comanda);
     } catch (e) {
         console.error("Eroare creare comanda:", e);
-        res.status(500).json({ message: e.message || "Eroare server." });
+        const publicError = getPublicOrderError(e);
+        res.status(publicError.status).json({ message: publicError.message });
     }
 });
 
@@ -222,8 +522,9 @@ router.post("/", authRequired, async (req, res) => {
  * Body: { clientId, items|produse, metodaLivrare, adresaLivrare?, dataLivrare, oraLivrare, prestatorId }
  */
 router.post("/creeaza-cu-slot", authRequired, async (req, res) => {
-    const session = await mongoose.startSession();
-    session.startTransaction();
+    let session = null;
+    let transactionStarted = false;
+    let reservedSlot = null;
     try {
         const {
             clientId: requestedClientId,
@@ -233,7 +534,7 @@ router.post("/creeaza-cu-slot", authRequired, async (req, res) => {
             adresaLivrare,
             dataLivrare,
             oraLivrare,
-            prestatorId = "default",
+            prestatorId: rawPrestatorId,
             note,
             preferinte,
             imagineGenerata,
@@ -241,10 +542,12 @@ router.post("/creeaza-cu-slot", authRequired, async (req, res) => {
             deliveryWindow,
             attachments,
         } = req.body;
+        let prestatorId = normalizePrestatorId(rawPrestatorId);
 
         const role = req.user?.rol || req.user?.role;
         const isStaff = isStaffRole(role);
         const authUserId = getAuthUserId(req);
+        const scopedPrestatorId = getScopedPrestatorId(req);
         const effectiveClientId =
             isStaff && requestedClientId ? String(requestedClientId) : authUserId;
 
@@ -253,75 +556,100 @@ router.post("/creeaza-cu-slot", authRequired, async (req, res) => {
             return res.status(403).json({ message: "Nu poti crea comenzi pentru alt client." });
         }
         if (!dataLivrare || !oraLivrare) throw new Error("dataLivrare și oraLivrare sunt obligatorii.");
-        if (isBeforeMinLead(dataLivrare, oraLivrare)) {
-            throw new Error(`Alege un interval cu minim ${MIN_LEAD_HOURS} ore inainte.`);
+        if (scopedPrestatorId) {
+            if (prestatorId && prestatorId !== scopedPrestatorId) {
+                return res.status(403).json({ message: "Acces interzis pentru acest prestator." });
+            }
+            prestatorId = prestatorId || scopedPrestatorId;
+        }
+        if (!prestatorId) {
+            return res.status(400).json({
+                message: "prestatorId este obligatoriu pentru comenzile cu slot.",
+            });
+        }
+        if (!["ridicare", "livrare"].includes(String(metodaLivrare || "").trim())) {
+            return res.status(400).json({
+                message: "metodaLivrare trebuie sa fie ridicare sau livrare.",
+            });
+        }
+        if (metodaLivrare === "livrare" && !String(adresaLivrare || "").trim()) {
+            return res.status(400).json({
+                message: "Adresa de livrare este obligatorie pentru aceasta comanda.",
+            });
+        }
+        if (!isValidDeliveryWindow(deliveryWindow)) {
+            return res.status(400).json({
+                message:
+                    "Intervalul de livrare este invalid. Foloseste formatul HH:mm sau HH:mm-HH:mm.",
+            });
+        }
+        const items = normalizeItems(rawItems, produse);
+        if (!items.length) {
+            return res.status(400).json({ message: "Comanda trebuie sa contina cel putin un produs." });
+        }
+        const pricedOrder = await buildPricedOrder(items, {
+            allowManualPricing: isStaff,
+        });
+        if (isBeforeMinLead(dataLivrare, oraLivrare, pricedOrder.leadHours)) {
+            throw new Error(`Alege un interval cu minim ${pricedOrder.leadHours} ore inainte.`);
         }
         if (await isDayCapacityFull(prestatorId, dataLivrare)) {
             throw new Error("Capacitatea zilei este atinsa. Alege alta data.");
         }
 
         // 1) Blochează slotul — preferăm CalendarSlotEntry (atomic), fallback la CalendarPrestator
-        const CalendarSlotEntry = require('../models/CalendarSlotEntry');
-        // try to increment entry atomically within the session
-        let entryUpdated = false;
-        try {
-            const entry = await CalendarSlotEntry.findOne({ prestatorId, date: dataLivrare, time: oraLivrare }).session(session);
-            if (entry) {
-                const upd = await CalendarSlotEntry.updateOne({ _id: entry._id, used: { $lt: entry.capacity } }, { $inc: { used: 1 } }).session(session);
-                if (!upd || upd.modifiedCount === 0) throw new Error('Slot indisponibil.');
-                entryUpdated = true;
-            }
-        } catch (err) {
-            // if entry exists but cannot be incremented, abort
-            if (err.message && err.message.includes('Slot indisponibil')) throw err;
+        if (await supportsMongoTransactions()) {
+            session = await mongoose.startSession();
+            session.startTransaction();
+            transactionStarted = true;
         }
 
-        if (!entryUpdated) {
-            // fallback to legacy CalendarPrestator array
-            const cal = await CalendarPrestator.findOne({ prestatorId }).session(session);
-            if (!cal) throw new Error('Calendar inexistent pentru prestator.');
-            const idx = (cal.slots || []).findIndex((s) => s.date === dataLivrare && s.time === oraLivrare);
-            if (idx === -1) throw new Error('Slot indisponibil.');
-            const slot = cal.slots[idx];
-            if (Number(slot.used || 0) >= Number(slot.capacity || 0)) throw new Error('Slot epuizat.');
-
-            cal.slots[idx].used = Number(slot.used || 0) + 1;
-            await cal.save({ session });
-        }
+        // Checkout-ul din cos trebuie sa functioneze si pe Mongo standalone.
+        reservedSlot = await reserveSlotForOrder({
+            prestatorId,
+            dataLivrare,
+            oraLivrare,
+            session,
+        });
 
         // 2) Totaluri
-        const items = normalizeItems(rawItems, produse);
-        const subtotal = calcSubtotal(items);
+        const subtotal = pricedOrder.subtotal;
         const taxaLivrare = metodaLivrare === "livrare" ? LIVRARE_FEE : 0;
+        const safeAttachments = normalizeAttachments(attachments);
 
         // 3) Creează comanda
-        const [comanda] = await Comanda.create(
-            [{
-                clientId: effectiveClientId,
-                items,
-                subtotal,
-                taxaLivrare,
-                total: subtotal + taxaLivrare,
-                totalFinal: subtotal + taxaLivrare,
-                metodaLivrare,
-                adresaLivrare: metodaLivrare === "livrare" ? adresaLivrare : undefined,
-                deliveryInstructions: deliveryInstructions || "",
-                deliveryWindow: deliveryWindow || "",
-                attachments: Array.isArray(attachments) ? attachments : [],
-                dataLivrare,
-                oraLivrare,
-                prestatorId,
-                note,
-                preferinte,
-                imagineGenerata,
-                notesClient: note || "",
-                status: "in_asteptare",
-                statusHistory: [{ status: "in_asteptare", note: "Comanda creata cu slot" }],
-            }],
-            { session }
-        );
+        const comandaPayload = {
+            clientId: effectiveClientId,
+            items: pricedOrder.items,
+            subtotal,
+            taxaLivrare,
+            total: subtotal + taxaLivrare,
+            totalFinal: subtotal + taxaLivrare,
+            metodaLivrare,
+            adresaLivrare: metodaLivrare === "livrare" ? adresaLivrare : undefined,
+            deliveryInstructions: deliveryInstructions || "",
+            deliveryWindow: deliveryWindow || "",
+            attachments: safeAttachments,
+            dataLivrare,
+            oraLivrare,
+            prestatorId,
+            note,
+            preferinte,
+            imagineGenerata,
+            notesClient: note || "",
+            status: "in_asteptare",
+            statusHistory: [{ status: "in_asteptare", note: "Comanda creata cu slot" }],
+        };
 
-        await session.commitTransaction();
+        let comanda;
+        if (session) {
+            [comanda] = await Comanda.create([comandaPayload], { session });
+            await session.commitTransaction();
+        } else {
+            comanda = await Comanda.create(comandaPayload);
+        }
+
+        reservedSlot = null;
         await notifyUser(effectiveClientId, {
             titlu: "Comanda primita",
             mesaj: `Comanda #${comanda.numeroComanda || comanda._id} a fost inregistrata.`,
@@ -336,11 +664,26 @@ router.post("/creeaza-cu-slot", authRequired, async (req, res) => {
         });
         res.status(201).json(comanda);
     } catch (e) {
-        await session.abortTransaction();
+        if (transactionStarted && session) {
+            try {
+                await session.abortTransaction();
+            } catch {
+                // ignore abort errors during cleanup
+            }
+        } else if (reservedSlot) {
+            try {
+                await releaseReservedSlot(reservedSlot);
+            } catch (rollbackErr) {
+                console.warn("creeaza-cu-slot rollback warning:", rollbackErr?.message || rollbackErr);
+            }
+        }
         console.error("creeaza-cu-slot error:", e);
-        res.status(400).json({ message: e.message });
+        const publicError = getPublicOrderError(e);
+        res.status(publicError.status).json({ message: publicError.message });
     } finally {
-        session.endSession();
+        if (session) {
+            session.endSession();
+        }
     }
 });
 
@@ -349,11 +692,12 @@ router.post("/creeaza-cu-slot", authRequired, async (req, res) => {
  * GET /api/comenzi
  * — întoarce ÎMPREUNĂ Comanda + Rezervare în format comun pentru AdminCalendar.jsx
  */
-router.get("/", authRequired, roleCheck("admin", "patiser"), async (_req, res) => {
+router.get("/", authRequired, roleCheck("admin", "patiser"), async (req, res) => {
     try {
+        const scopedFilter = applyScopedPrestatorFilter(req);
         const [comenzi, rezervari] = await Promise.all([
-            Comanda.find({}).lean(),
-            Rezervare.find({}).lean(),
+            Comanda.find(scopedFilter).lean(),
+            Rezervare.find(scopedFilter).lean(),
         ]);
 
         const userIds = new Set();
@@ -408,7 +752,9 @@ router.get("/client/:clientId", authRequired, async (req, res) => {
         }
 
         const clientId = isStaff ? requestedClientId : authUserId;
-        const comenzi = await Comanda.find({ clientId }).sort({ createdAt: -1 });
+        const comenzi = await Comanda.find(
+            applyScopedPrestatorFilter(req, { clientId })
+        ).sort({ createdAt: -1 });
         res.json(comenzi.map((c) => ({
             _id: c._id,
             prestatorId: c.prestatorId || "",
@@ -435,7 +781,7 @@ router.get("/client/:clientId", authRequired, async (req, res) => {
 router.get("/admin", authRequired, roleCheck("admin", "patiser"), async (req, res) => {
     try {
         const { date } = req.query;
-        const filter = date ? { dataLivrare: date } : {};
+        const filter = applyScopedPrestatorFilter(req, date ? { dataLivrare: date } : {});
         const comenzi = await Comanda.find(filter).lean();
         res.json(comenzi);
     } catch (e) {
@@ -459,6 +805,9 @@ router.patch("/:id/status", authRequired, roleCheck("admin", "patiser"), adminMu
         // încearcă Comanda
         let doc = await Comanda.findById(id);
         if (doc) {
+            if (rejectOutsidePrestatorScope(req, res, doc.prestatorId)) {
+                return;
+            }
             const previousStatus = doc.status;
             const paid = doc.paymentStatus === "paid" || doc.statusPlata === "paid";
             const requiresPaid = ["acceptata", "in_lucru", "gata", "livrata", "ridicata", "confirmata"];
@@ -521,8 +870,14 @@ router.patch("/:id/status", authRequired, roleCheck("admin", "patiser"), adminMu
                 break;
         }
 
-        doc = await Rezervare.findByIdAndUpdate(id, { $set: update }, { new: true });
+        doc = await Rezervare.findById(id);
         if (!doc) return res.status(404).json({ message: "Comanda/Rezervarea nu a fost găsită." });
+
+        if (rejectOutsidePrestatorScope(req, res, doc.prestatorId)) {
+            return;
+        }
+        doc.set(update);
+        await doc.save();
 
         await recordAuditLog(req, {
             action: "reservation.status.updated",
@@ -558,6 +913,9 @@ router.patch("/:id/price", authRequired, roleCheck("admin", "patiser"), adminMut
         } = req.body || {};
 
         const comanda = await Comanda.findById(req.params.id);
+        if (comanda && rejectOutsidePrestatorScope(req, res, comanda.prestatorId)) {
+            return;
+        }
         if (!comanda) return res.status(404).json({ message: "Comanda inexistentŽŸ." });
 
         const updates = {};
@@ -622,18 +980,37 @@ router.patch("/:id/schedule", authRequired, roleCheck("admin", "patiser"), admin
         }
 
         const comanda = await Comanda.findById(req.params.id);
+        if (comanda && rejectOutsidePrestatorScope(req, res, comanda.prestatorId)) {
+            return;
+        }
         if (!comanda) return res.status(404).json({ message: "Comanda inexistentă." });
 
         const CalendarSlotEntry = require("../models/CalendarSlotEntry");
-        const prestatorId = comanda.prestatorId || "default";
+        const prestatorId = normalizePrestatorId(comanda.prestatorId);
+        if (!prestatorId) {
+            return res.status(400).json({ message: "Comanda nu are prestator configurat." });
+        }
 
         const prevDate = comanda.dataLivrare;
         const prevTime = comanda.oraLivrare;
         const isSameDay = prevDate && prevDate === dataLivrare;
+        let requiredLeadHours = MIN_LEAD_HOURS;
 
-        if (isBeforeMinLead(dataLivrare, oraLivrare)) {
+        try {
+            const repriced = await buildPricedOrder(comanda.items || [], {
+                allowManualPricing: true,
+            });
+            requiredLeadHours = Math.max(
+                MIN_LEAD_HOURS,
+                Number(repriced.leadHours || MIN_LEAD_HOURS)
+            );
+        } catch {
+            requiredLeadHours = MIN_LEAD_HOURS;
+        }
+
+        if (isBeforeMinLead(dataLivrare, oraLivrare, requiredLeadHours)) {
             return res.status(400).json({
-                message: `Alege un interval cu minim ${MIN_LEAD_HOURS} ore inainte.`,
+                message: `Alege un interval cu minim ${requiredLeadHours} ore inainte.`,
             });
         }
         if (!isSameDay && (await isDayCapacityFull(prestatorId, dataLivrare))) {
@@ -706,6 +1083,9 @@ router.patch("/:id/refuza", authRequired, roleCheck("admin", "patiser"), adminMu
     try {
         const { motiv } = req.body || {};
         const comanda = await Comanda.findById(req.params.id);
+        if (comanda && rejectOutsidePrestatorScope(req, res, comanda.prestatorId)) {
+            return;
+        }
         if (!comanda) return res.status(404).json({ message: "Comanda inexistentă." });
 
         comanda.status = "refuzata";
@@ -756,10 +1136,23 @@ router.get("/:id", authRequired, async (req, res, next) => {
         if (!isStaff && String(c.clientId || "") !== authUserId) {
             return res.status(403).json({ message: "Acces interzis la aceasta comanda." });
         }
+        if (isStaff && rejectOutsidePrestatorScope(req, res, c.prestatorId)) {
+            return;
+        }
 
-        res.json(c);
+        if (isStaff) {
+            return res.json(c);
+        }
+
+        const clientSafeOrder = { ...c };
+        delete clientSafeOrder.notesAdmin;
+        delete clientSafeOrder.statusHistory;
+        delete clientSafeOrder.stripePaymentId;
+        delete clientSafeOrder.utilizatorId;
+
+        return res.json(clientSafeOrder);
     } catch (e) {
-        res.status(500).json({ message: e.message });
+        res.status(500).json({ message: GENERIC_SERVER_MESSAGE });
     }
 });
 
@@ -770,7 +1163,7 @@ router.get("/:id", authRequired, async (req, res, next) => {
 router.get("/export/csv", authRequired, roleCheck("admin", "patiser"), async (req, res) => {
     try {
         const { from, to, status } = req.query;
-        const q = {};
+        const q = applyScopedPrestatorFilter(req);
         if (from || to) {
             q.dataLivrare = {};
             if (from) q.dataLivrare.$gte = from;
@@ -842,6 +1235,9 @@ router.patch("/:id/cancel", authRequired, async (req, res) => {
         if (!isStaff && String(doc.clientId || "") !== authUserId) {
             return res.status(403).json({ message: "Nu poti anula comanda altui client." });
         }
+        if (isStaff && rejectOutsidePrestatorScope(req, res, doc.prestatorId)) {
+            return;
+        }
 
         // dacă deja anulată, returnează
         if (doc.status === "anulata" || doc.status === "cancelled") {
@@ -904,7 +1300,7 @@ router.patch("/:id/cancel", authRequired, async (req, res) => {
         res.json({ ok: true, status: doc.status });
     } catch (e) {
         console.error("cancel comanda error:", e);
-        res.status(500).json({ message: e.message });
+        res.status(500).json({ message: GENERIC_SERVER_MESSAGE });
     }
 });
 

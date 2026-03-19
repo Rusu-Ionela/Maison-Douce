@@ -5,6 +5,10 @@ const Utilizator = require("../models/Utilizator");
 const Notificare = require("../models/Notificare");
 
 const { sendPushToUser, hasVapidConfig } = require("./push");
+const {
+  hasEmailTransportConfig,
+  isMailOutboxFallbackEnabled,
+} = require("./runtime");
 
 const SMTP_HOST = process.env.SMTP_HOST || "";
 const SMTP_PORT = Number(process.env.SMTP_PORT || 587);
@@ -14,10 +18,10 @@ const SMTP_USER = process.env.SMTP_USER || process.env.EMAIL_USER || "";
 const SMTP_PASS = process.env.SMTP_PASS || process.env.EMAIL_PASS || "";
 const SMTP_FROM =
   process.env.SMTP_FROM || (SMTP_USER ? `Maison-Douce <${SMTP_USER}>` : "Maison-Douce <no-reply@localhost>");
-const MAIL_OUTBOX_DIR = path.join(__dirname, "..", "uploads", "mail-outbox");
+const MAIL_OUTBOX_DIR = path.join(__dirname, "..", ".runtime", "mail-outbox");
 
 function getTransport() {
-  if (!SMTP_USER || !SMTP_PASS) return null;
+  if (!hasEmailTransportConfig()) return null;
   if (SMTP_HOST) {
     return nodemailer.createTransport({
       host: SMTP_HOST,
@@ -62,7 +66,9 @@ function persistMailOutbox(to, subject, html) {
 async function sendEmail(to, subject, html) {
   const transport = getTransport();
   if (!transport) {
-    return persistMailOutbox(to, subject, html);
+    return isMailOutboxFallbackEnabled()
+      ? persistMailOutbox(to, subject, html)
+      : false;
   }
   try {
     await transport.sendMail({
@@ -74,7 +80,9 @@ async function sendEmail(to, subject, html) {
     return true;
   } catch (e) {
     console.warn("Email send failed:", e?.message || e);
-    return persistMailOutbox(to, subject, html);
+    return isMailOutboxFallbackEnabled()
+      ? persistMailOutbox(to, subject, html)
+      : false;
   }
 }
 
@@ -154,6 +162,7 @@ async function notifyAdmins(payload) {
 }
 
 module.exports = {
+  hasEmailConfig: hasEmailTransportConfig,
   notifyUser,
   notifyAdmins,
   sendEmail,

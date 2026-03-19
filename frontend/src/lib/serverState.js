@@ -5,7 +5,36 @@ function asArray(value) {
 }
 
 export function getApiErrorMessage(error, fallbackMessage) {
-  return error?.response?.data?.message || fallbackMessage;
+  const responseData = error?.response?.data;
+
+  if (typeof responseData === "string" && responseData.trim()) {
+    return responseData;
+  }
+
+  if (typeof responseData?.message === "string" && responseData.message.trim()) {
+    return responseData.message;
+  }
+
+  if (typeof responseData?.error === "string" && responseData.error.trim()) {
+    return responseData.error;
+  }
+
+  const firstDetail = Array.isArray(responseData?.details)
+    ? responseData.details.find((detail) => typeof detail?.message === "string")
+    : null;
+  if (firstDetail?.message) {
+    return firstDetail.message;
+  }
+
+  if (
+    typeof error?.message === "string" &&
+    error.message.trim() &&
+    error.message !== "Network Error"
+  ) {
+    return error.message;
+  }
+
+  return fallbackMessage;
 }
 
 export const queryKeys = {
@@ -71,7 +100,7 @@ export async function fetchStripeStatus() {
   } catch {
     return {
       enabled: false,
-      fallbackAvailable: true,
+      fallbackAvailable: false,
       mode: "unknown",
     };
   }

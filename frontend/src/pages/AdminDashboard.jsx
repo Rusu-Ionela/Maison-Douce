@@ -13,6 +13,7 @@ import {
   getApiErrorMessage,
   queryKeys,
 } from "../lib/serverState";
+import { addDays, formatDateInput, getTodayDateInput } from "../lib/date";
 
 const EMPTY_LIST = [];
 
@@ -55,8 +56,8 @@ export default function AdminDashboard() {
   const dashboardError =
     ordersQuery.error || reservationsQuery.error || notificationsQuery.error;
 
-  const today = new Date().toISOString().slice(0, 10);
-  const tomorrow = new Date(Date.now() + 86400000).toISOString().slice(0, 10);
+  const today = getTodayDateInput();
+  const tomorrow = formatDateInput(addDays(new Date(), 1) || new Date());
 
   const stats = useMemo(() => {
     const totalRevenue = comenzi.reduce(

@@ -27,6 +27,7 @@ const upload = createUploadMiddleware({
 });
 
 const SORT_OPTIONS = ["price_asc", "price_desc", "rating", "popular"];
+const GENERIC_SERVER_MESSAGE = "Eroare server.";
 
 function maybeUpload(req, res, next) {
   if (req.is("multipart/form-data")) {
@@ -237,7 +238,7 @@ router.get(
         pages: Math.ceil(total / limit),
       });
     } catch (err) {
-      res.status(500).json({ message: err.message });
+      res.status(500).json({ message: GENERIC_SERVER_MESSAGE });
     }
   })
 );
@@ -305,7 +306,7 @@ router.get(
       if (!tort) return res.status(404).json({ message: "Tort negasit" });
       res.json(tort);
     } catch (err) {
-      res.status(500).json({ message: err.message });
+      res.status(500).json({ message: GENERIC_SERVER_MESSAGE });
     }
   })
 );
@@ -401,7 +402,7 @@ router.delete(
       });
       res.json({ message: "Tort sters cu succes" });
     } catch (err) {
-      res.status(500).json({ message: err.message });
+      res.status(500).json({ message: GENERIC_SERVER_MESSAGE });
     }
   })
 );

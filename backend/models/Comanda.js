@@ -30,7 +30,7 @@ const ComandaSchema = new mongoose.Schema(
     // Identificare / relații
     clientId: { type: mongoose.Schema.Types.Mixed }, // poate fi string sau ObjectId
     utilizatorId: { type: mongoose.Schema.Types.ObjectId, ref: "Utilizator" },
-    prestatorId: { type: String, default: "default" },
+    prestatorId: { type: String, default: "" },
     numeroComanda: { type: String, unique: true, sparse: true },
 
     // Produse
@@ -129,6 +129,10 @@ ComandaSchema.pre("insertMany", function (next, docs) {
 
 ComandaSchema.index({ prestatorId: 1, dataLivrare: 1, oraLivrare: 1 });
 ComandaSchema.index({ prestatorId: 1, dataRezervare: 1, oraRezervare: 1 });
+ComandaSchema.index({ clientId: 1, createdAt: -1 });
+ComandaSchema.index({ prestatorId: 1, createdAt: -1 });
+ComandaSchema.index({ prestatorId: 1, status: 1, createdAt: -1 });
+ComandaSchema.index({ prestatorId: 1, paymentStatus: 1, createdAt: -1 });
 
 module.exports =
   mongoose.models.Comanda || mongoose.model("Comanda", ComandaSchema);

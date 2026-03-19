@@ -19,6 +19,8 @@ const CalendarPrestatorSchema = new mongoose.Schema(
     { timestamps: true }
 );
 
+CalendarPrestatorSchema.index({ prestatorId: 1 }, { unique: true });
+
 module.exports =
     mongoose.models.CalendarPrestator ||
     mongoose.model("CalendarPrestator", CalendarPrestatorSchema);

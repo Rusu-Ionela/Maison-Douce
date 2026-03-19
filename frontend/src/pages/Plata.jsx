@@ -177,6 +177,11 @@ export default function Plata() {
     rawOrderTotalFinal > 0 || orderHasDiscount
       ? rawOrderTotalFinal
       : orderBaseTotal;
+  const requiresPriceConfirmation = Boolean(
+    comanda?.tip === "rezervare-calendar" &&
+      !orderPaid &&
+      orderTotalFinal <= 0
+  );
 
   const discountLabel = useMemo(() => {
     if (!comanda) return "";
@@ -218,7 +223,8 @@ export default function Plata() {
     !comandaId ||
     !comanda ||
     orderQuery.isLoading ||
-    orderPaid;
+    orderPaid ||
+    requiresPriceConfirmation;
 
   const refreshAfterDiscount = async () => {
     await Promise.all([
@@ -731,7 +737,11 @@ export default function Plata() {
               {orderTotalFinal <= 0 && comanda && !orderPaid && (
                 <StatusBanner
                   type="warning"
-                  message="Totalul comenzii este 0. Verifica reducerile sau confirma manual cu administratorul."
+                  message={
+                    requiresPriceConfirmation
+                      ? "Pretul final pentru aceasta rezervare nu este inca confirmat. Vei putea plati dupa actualizarea comenzii de catre echipa."
+                      : "Totalul comenzii este 0. Verifica reducerile sau confirma manual cu administratorul."
+                  }
                 />
               )}
 

@@ -85,6 +85,18 @@ function orderBadgeClass(order) {
   return badges.info;
 }
 
+function getOrderDisplayTotal(order) {
+  const rawTotalFinal = Number(order?.totalFinal ?? order?.total ?? 0);
+  const hasDiscount =
+    Number(order?.discountTotal || order?.discountFidelizare || 0) > 0 ||
+    Number(order?.pointsUsed || 0) > 0 ||
+    Boolean(order?.voucherCode);
+
+  return rawTotalFinal > 0 || hasDiscount
+    ? rawTotalFinal
+    : Number(order?.total || 0);
+}
+
 export default function ProfilClient() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
@@ -157,7 +169,7 @@ export default function ProfilClient() {
       const nextUser = response?.data?.user || null;
       const syncedUser = nextUser && syncUser ? syncUser(nextUser) : nextUser;
       setProfile((current) => buildProfileState(syncedUser || nextUser || current));
-      setStatus({ type: "success", message: "Profilul a fost actualizat." });
+      setStatus({ type: "success", message: "Profil actualizat cu succes." });
     },
     onError: (error) =>
       setStatus({
@@ -372,7 +384,7 @@ export default function ProfilClient() {
             <div className="text-xs font-semibold uppercase tracking-[0.16em] text-pink-500">Total comenzi</div>
             <div className="mt-2 text-3xl font-semibold text-gray-900">{orders.length}</div>
             <div className="mt-1 text-sm text-gray-600">
-              valoare cumulata {money(orders.reduce((sum, item) => sum + Number(item?.totalFinal || item?.total || 0), 0))}
+              valoare cumulata {money(orders.reduce((sum, item) => sum + getOrderDisplayTotal(item), 0))}
             </div>
           </article>
           <article className="rounded-[24px] border border-slate-100 bg-slate-50/80 px-4 py-4 shadow-soft">
@@ -481,9 +493,9 @@ export default function ProfilClient() {
               <div className="grid gap-6 xl:grid-cols-2">
                 <form onSubmit={submitPasswordChange} className="rounded-[26px] border border-rose-100 bg-white px-5 py-5 shadow-soft space-y-4">
                   <h3 className="text-lg font-semibold text-gray-900">Schimba parola</h3>
-                  <input type="password" value={passwordForm.currentPassword} onChange={(event) => setPasswordForm((current) => ({ ...current, currentPassword: event.target.value }))} placeholder="Parola curenta" className={inputs.default} />
-                  <input type="password" value={passwordForm.newPassword} onChange={(event) => setPasswordForm((current) => ({ ...current, newPassword: event.target.value }))} placeholder="Parola noua" className={inputs.default} />
-                  <input type="password" value={passwordForm.confirmPassword} onChange={(event) => setPasswordForm((current) => ({ ...current, confirmPassword: event.target.value }))} placeholder="Confirma parola noua" className={inputs.default} />
+                  <input type="password" value={passwordForm.currentPassword} onChange={(event) => setPasswordForm((current) => ({ ...current, currentPassword: event.target.value }))} placeholder="Parola curenta" className={inputs.default} autoComplete="current-password" aria-label="Parola curenta" />
+                  <input type="password" value={passwordForm.newPassword} onChange={(event) => setPasswordForm((current) => ({ ...current, newPassword: event.target.value }))} placeholder="Parola noua" className={inputs.default} autoComplete="new-password" aria-label="Parola noua" />
+                  <input type="password" value={passwordForm.confirmPassword} onChange={(event) => setPasswordForm((current) => ({ ...current, confirmPassword: event.target.value }))} placeholder="Confirma parola noua" className={inputs.default} autoComplete="new-password" aria-label="Confirma parola noua" />
                   <button type="submit" disabled={changePasswordMutation.isPending} className={buttons.primary}>
                     {changePasswordMutation.isPending ? "Se actualizeaza..." : "Actualizeaza parola"}
                   </button>
@@ -491,8 +503,8 @@ export default function ProfilClient() {
                 <form onSubmit={submitDeactivateAccount} className="rounded-[26px] border border-rose-200 bg-rose-50 px-5 py-5 shadow-soft space-y-4">
                   <h3 className="text-lg font-semibold text-rose-900">Dezactiveaza contul</h3>
                   <p className="text-sm text-rose-800">Status cont: {profile.activ === false ? "dezactivat" : "activ"}. Ultima schimbare parola: {formatDateTime(profile.lastPasswordChangeAt)}.</p>
-                  <input type="password" value={deactivateForm.currentPassword} onChange={(event) => setDeactivateForm((current) => ({ ...current, currentPassword: event.target.value }))} placeholder="Parola curenta" className={inputs.default} />
-                  <input type="email" value={deactivateForm.confirmEmail} onChange={(event) => setDeactivateForm((current) => ({ ...current, confirmEmail: event.target.value }))} placeholder={profile.email} className={inputs.default} />
+                  <input type="password" value={deactivateForm.currentPassword} onChange={(event) => setDeactivateForm((current) => ({ ...current, currentPassword: event.target.value }))} placeholder="Parola curenta" className={inputs.default} autoComplete="current-password" aria-label="Parola curenta pentru dezactivare" />
+                  <input type="email" value={deactivateForm.confirmEmail} onChange={(event) => setDeactivateForm((current) => ({ ...current, confirmEmail: event.target.value }))} placeholder={profile.email} className={inputs.default} autoComplete="email" aria-label="Confirmare email cont" />
                   <textarea value={deactivateForm.reason} onChange={(event) => setDeactivateForm((current) => ({ ...current, reason: event.target.value }))} placeholder="Motiv optional" className={`min-h-[110px] ${inputs.default}`} />
                   <button type="submit" disabled={deactivateAccountMutation.isPending} className={buttons.outline}>
                     {deactivateAccountMutation.isPending ? "Se dezactiveaza..." : "Dezactiveaza contul"}
@@ -515,7 +527,9 @@ export default function ProfilClient() {
                       <div className="flex flex-wrap items-start justify-between gap-3">
                         <div>
                           <div className="text-xs font-semibold uppercase tracking-[0.16em] text-pink-500">Comanda</div>
-                          <div className="mt-2 text-lg font-semibold text-gray-900">{order.numeroComanda || `#${String(order._id || "").slice(-6)}`}</div>
+                          <div className="mt-2 text-lg font-semibold text-gray-900">
+                            {`Comanda ${order.numeroComanda || `#${String(order._id || "").slice(-6)}`}`}
+                          </div>
                           <div className="mt-1 text-sm text-gray-600">{order.dataLivrare || "-"} {order.oraLivrare || ""}</div>
                         </div>
                         <div className="flex flex-wrap items-center gap-2">
@@ -523,15 +537,21 @@ export default function ProfilClient() {
                             {order.paymentStatus === "paid" || order.statusPlata === "paid" ? "Platita" : order.status || "In asteptare"}
                           </span>
                           {order.paymentStatus !== "paid" && order.statusPlata !== "paid" ? (
-                            <Link to={`/plata?comandaId=${encodeURIComponent(order._id)}`} className={buttons.secondary}>
-                              Continua plata
-                            </Link>
+                            getOrderDisplayTotal(order) > 0 ? (
+                              <Link to={`/plata?comandaId=${encodeURIComponent(order._id)}`} className={buttons.secondary}>
+                                Continua plata
+                              </Link>
+                            ) : (
+                              <span className="rounded-full bg-amber-100 px-3 py-1 text-xs font-semibold text-amber-800">
+                                Pret in confirmare
+                              </span>
+                            )
                           ) : null}
                         </div>
                       </div>
                       <div className="grid gap-3 rounded-[24px] border border-rose-100 bg-rose-50/70 p-4 md:grid-cols-2">
                         <div><div className="text-sm text-gray-500">Metoda predare</div><div className="font-semibold text-gray-900">{order.metodaLivrare || "ridicare"}</div></div>
-                        <div><div className="text-sm text-gray-500">Total</div><div className="font-semibold text-gray-900">{money(order.totalFinal || order.total)}</div></div>
+                        <div><div className="text-sm text-gray-500">Total</div><div className="font-semibold text-gray-900">{getOrderDisplayTotal(order) > 0 ? money(getOrderDisplayTotal(order)) : "Se confirma dupa analiza"}</div></div>
                       </div>
                       <div className="space-y-2">
                         {(order.items || []).map((item, index) => (

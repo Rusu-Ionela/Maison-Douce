@@ -7,14 +7,15 @@ import {
   getPrestatorEnvWarningMessage,
   isPrestatorCalendarFallback,
 } from "../lib/runtimeConfig";
+import { addDays, formatDateInput, getTodayDateInput } from "../lib/date";
 
 function toDateStr(d) {
-  return d.toISOString().slice(0, 10);
+  return formatDateInput(d);
 }
 
 async function fetchAvailability(prestatorId) {
   const from = toDateStr(new Date());
-  const to = toDateStr(new Date(Date.now() + 30 * 24 * 60 * 60 * 1000));
+  const to = toDateStr(addDays(new Date(), 30) || new Date());
   const res = await api.get(`/calendar/availability/${prestatorId}`, {
     params: { from, to },
   });
@@ -23,7 +24,7 @@ async function fetchAvailability(prestatorId) {
 
 export default function CalendarPrestator() {
   const { user } = useAuth() || {};
-  const [date, setDate] = useState(toDateStr(new Date()));
+  const [date, setDate] = useState(getTodayDateInput());
   const [time, setTime] = useState("");
   const [capacity, setCapacity] = useState(3);
   const [slots, setSlots] = useState([]);

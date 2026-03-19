@@ -36,7 +36,7 @@ router.post(
   }
 );
 
-router.get("/", authRequired, roleCheck("admin", "patiser"), (_req, res) => {
+router.get("/", authRequired, roleCheck("admin"), (_req, res) => {
   const files = fs.readdirSync(uploadDir).map((name) => ({
     name,
     url: toPublicUploadPath(UPLOAD_SUBDIR, name),
@@ -47,7 +47,7 @@ router.get("/", authRequired, roleCheck("admin", "patiser"), (_req, res) => {
 router.delete(
   "/",
   authRequired,
-  roleCheck("admin", "patiser"),
+  roleCheck("admin"),
   withValidation((req) => ({
     name: readString(req.body?.name, {
       field: "name",

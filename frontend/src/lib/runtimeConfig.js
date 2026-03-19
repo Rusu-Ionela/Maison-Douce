@@ -1,6 +1,49 @@
-const DEFAULT_PRESTATOR_ID = "default";
-const prestatorEnvId = String(import.meta.env.VITE_PRESTATOR_ID || "").trim();
-const stripePublicKey = String(import.meta.env.VITE_STRIPE_PK || "").trim();
+const DEFAULT_PRESTATOR_ID = "";
+const DEFAULT_API_BASE_URL = "/api";
+const DEFAULT_MIN_LEAD_HOURS = 24;
+
+const buildConfig = {
+  VITE_API_URL: String(import.meta.env.VITE_API_URL || "").trim(),
+  VITE_PRESTATOR_ID: String(import.meta.env.VITE_PRESTATOR_ID || "").trim(),
+  VITE_STRIPE_PK: String(import.meta.env.VITE_STRIPE_PK || "").trim(),
+  VITE_MIN_LEAD_HOURS: String(import.meta.env.VITE_MIN_LEAD_HOURS || "").trim(),
+};
+
+function getRuntimeConfigObject() {
+  if (typeof window === "undefined") return {};
+  const config = window.__APP_RUNTIME_CONFIG__;
+  return config && typeof config === "object" ? config : {};
+}
+
+function readConfigString(key, fallback = "") {
+  const runtimeValue = String(getRuntimeConfigObject()[key] || "").trim();
+  if (runtimeValue) return runtimeValue;
+
+  const buildValue = String(buildConfig[key] || "").trim();
+  if (buildValue) return buildValue;
+
+  return fallback;
+}
+
+const apiBaseUrl = readConfigString("VITE_API_URL", DEFAULT_API_BASE_URL).replace(
+  /\/$/,
+  ""
+);
+const prestatorEnvId = readConfigString("VITE_PRESTATOR_ID", "");
+const stripePublicKey = readConfigString("VITE_STRIPE_PK", "");
+const rawMinLeadHours = readConfigString(
+  "VITE_MIN_LEAD_HOURS",
+  String(DEFAULT_MIN_LEAD_HOURS)
+);
+const parsedMinLeadHours = Number(rawMinLeadHours);
+const minLeadHours =
+  Number.isFinite(parsedMinLeadHours) && parsedMinLeadHours > 0
+    ? parsedMinLeadHours
+    : DEFAULT_MIN_LEAD_HOURS;
+
+export function getApiBaseUrl() {
+  return apiBaseUrl;
+}
 
 export function getConfiguredPrestatorId() {
   return prestatorEnvId || DEFAULT_PRESTATOR_ID;
@@ -20,8 +63,8 @@ export function isPrestatorCalendarFallback(user) {
 
 export function getPrestatorEnvWarningMessage() {
   return (
-    'VITE_PRESTATOR_ID nu este configurat. Aplicatia foloseste calendarul fallback "default", ' +
-    "iar sloturile pot lipsi sau pot apartine altui prestator."
+    "VITE_PRESTATOR_ID nu este configurat. Rezervarile si comenzile cu slot sunt " +
+    "dezactivate pana cand aplicatia este configurata pentru prestatorul corect."
   );
 }
 
@@ -31,6 +74,10 @@ export function getStripePublicKey() {
 
 export function hasStripePublicKey() {
   return Boolean(stripePublicKey);
+}
+
+export function getMinLeadHours() {
+  return minLeadHours;
 }
 
 export function getStripePublicKeyWarningMessage() {
