@@ -1673,7 +1673,9 @@ test("backend integration flows", async (t) => {
         token: client.token,
       });
       assert.equal(order.status, 200);
-      assert.equal(order.data?.total, 0);
+      assert.equal(order.data?.subtotal, 120);
+      assert.equal(order.data?.deliveryFee || order.data?.taxaLivrare || 0, 0);
+      assert.equal(order.data?.total, 120);
       assert.equal(order.data?.customDetails?.clientBudget, 120);
       assert.equal(reserve.data?.requiresPriceConfirmation, true);
 
@@ -1683,6 +1685,81 @@ test("backend integration flows", async (t) => {
       assert.equal(availability.status, 200);
       assert.equal(availability.data?.slots?.[0]?.used, 1);
       assert.equal(availability.data?.slots?.[0]?.free, 1);
+    });
+
+    await t.test("monthly provider availability uses providerId and booking removes only the selected provider slot", async () => {
+      await harness.resetDb();
+
+      const providerA = await registerUser("patiser");
+      const providerB = await registerUser("patiser");
+      const client = await registerUser("client");
+      const providerAId = providerA.user?.id;
+      const providerBId = providerB.user?.id;
+      const month = futureDate(10).slice(0, 7);
+
+      assert.equal(providerA.status, 201);
+      assert.equal(providerB.status, 201);
+      assert.equal(client.status, 201);
+      assert.ok(providerAId);
+      assert.ok(providerBId);
+
+      const availabilityA = await harness.request(
+        `/calendar/availability?providerId=${providerAId}&month=${month}`
+      );
+      assert.equal(availabilityA.status, 200);
+      assert.equal(availabilityA.data?.providerId, providerAId);
+      assert.equal(availabilityA.data?.source, "fallback");
+      assert.equal(availabilityA.data?.scheduleConfigured, false);
+      assert.match(
+        availabilityA.data?.message || "",
+        /Nu exista disponibilitate configurata/i
+      );
+      assert.ok(Array.isArray(availabilityA.data?.availableDates));
+      assert.ok(availabilityA.data.availableDates.length > 0);
+
+      const selectedDate = availabilityA.data.availableDates[0];
+      const selectedTime = availabilityA.data?.slotsByDate?.[selectedDate]?.[0];
+      assert.ok(selectedDate);
+      assert.ok(selectedTime);
+
+      const availabilityB = await harness.request(
+        `/calendar/availability?providerId=${providerBId}&month=${month}`
+      );
+      assert.equal(availabilityB.status, 200);
+      assert.ok(availabilityB.data?.slotsByDate?.[selectedDate]?.includes(selectedTime));
+
+      const booking = await harness.request("/calendar/book", {
+        method: "POST",
+        token: client.token,
+        body: {
+          providerId: providerAId,
+          date: selectedDate,
+          time: selectedTime,
+          metoda: "ridicare",
+          subtotal: 220,
+          descriere: "Rezervare lunara generata automat",
+        },
+      });
+      assert.equal(booking.status, 200);
+      assert.equal(booking.data?.ok, true);
+      assert.equal(booking.data?.providerId, providerAId);
+
+      const availabilityAAfterBooking = await harness.request(
+        `/calendar/availability?providerId=${providerAId}&month=${month}`
+      );
+      assert.equal(availabilityAAfterBooking.status, 200);
+      assert.equal(
+        availabilityAAfterBooking.data?.slotsByDate?.[selectedDate]?.includes(selectedTime),
+        false
+      );
+
+      const availabilityBAfterBooking = await harness.request(
+        `/calendar/availability?providerId=${providerBId}&month=${month}`
+      );
+      assert.equal(availabilityBAfterBooking.status, 200);
+      assert.ok(
+        availabilityBAfterBooking.data?.slotsByDate?.[selectedDate]?.includes(selectedTime)
+      );
     });
 
     await t.test("staff can reschedule an order and owner can cancel it with slot rollback", async () => {
@@ -1756,8 +1833,14 @@ test("backend integration flows", async (t) => {
       );
       assert.equal(firstAvailability.status, 200);
       assert.equal(secondAvailability.status, 200);
-      assert.equal(firstAvailability.data?.slots?.[0]?.used, 0);
-      assert.equal(secondAvailability.data?.slots?.[0]?.used, 1);
+      const firstMovedSlot = (firstAvailability.data?.slots || []).find(
+        (slot) => slot?.time === "10:00"
+      );
+      const secondMovedSlot = (secondAvailability.data?.slots || []).find(
+        (slot) => slot?.time === "11:30"
+      );
+      assert.equal(firstMovedSlot?.used, 0);
+      assert.equal(secondMovedSlot?.used, 1);
 
       const cancelByOwner = await harness.request(`/comenzi/${orderId}/cancel`, {
         method: "PATCH",
@@ -1776,7 +1859,10 @@ test("backend integration flows", async (t) => {
         `/calendar/availability/${providerId}?from=${secondDate}&to=${secondDate}`
       );
       assert.equal(rolledBackAvailability.status, 200);
-      assert.equal(rolledBackAvailability.data?.slots?.[0]?.used, 0);
+      const rolledBackSlot = (rolledBackAvailability.data?.slots || []).find(
+        (slot) => slot?.time === "11:30"
+      );
+      assert.equal(rolledBackSlot?.used, 0);
     });
 
     await t.test("fallback payment confirmation only works for the owner", async () => {

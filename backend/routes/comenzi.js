@@ -10,7 +10,11 @@ const Rezervare = require("../models/Rezervare");
 const CalendarPrestator = require("../models/CalendarPrestator");
 const CalendarDayCapacity = require("../models/CalendarDayCapacity");
 const Tort = require("../models/Tort");
-const { notifyUser, notifyAdmins } = require("../utils/notifications");
+const {
+    notifyUser,
+    notifyAdmins,
+    notifyProviderById,
+} = require("../utils/notifications");
 const { recordAuditLog } = require("../utils/audit");
 const { adminMutationLimiter } = require("../middleware/rateLimiters");
 const Utilizator = require("../models/Utilizator");
@@ -19,15 +23,13 @@ const {
     getScopedPrestatorId,
     hasScopedPrestatorAccess,
 } = require("../utils/providerScope");
+const { resolveProviderForRequest } = require("../utils/providerDirectory");
+const { isStaffRole, normalizeUserRole } = require("../utils/roles");
 // const Utilizator = require("../models/Utilizator"); // folosește dacă vrei populate
 
 const LIVRARE_FEE = 100;
 const MIN_LEAD_HOURS = Number(process.env.MIN_LEAD_HOURS || 24);
 const GENERIC_SERVER_MESSAGE = "Eroare server.";
-
-function isStaffRole(role) {
-    return ["admin", "patiser", "prestator"].includes(String(role || ""));
-}
 
 function getAuthUserId(req) {
     return String(req.user?.id || req.user?._id || "");
@@ -79,6 +81,9 @@ function getPublicOrderError(error) {
         /^Calendar inexistent/i,
         /^Comanda trebuie/i,
         /^Unul sau mai multe produse/i,
+        /^Produsele selectate apartin/i,
+        /^Comanda trebuie sa contina produse de la un singur prestator/i,
+        /^Nu am putut determina prestatorul/i,
     ];
 
     if (safePatterns.some((pattern) => pattern.test(message))) {
@@ -86,6 +91,69 @@ function getPublicOrderError(error) {
     }
 
     return { status: 500, message: GENERIC_SERVER_MESSAGE };
+}
+
+function buildReservationTimeSlot(time = "") {
+    const [h, m] = String(time || "00:00").split(":").map(Number);
+    const endH = String((Number.isFinite(h) ? h : 0) + 1).padStart(2, "0");
+    const endM = String(Number.isFinite(m) ? m : 0).padStart(2, "0");
+    return `${String(time || "00:00")}-${endH}:${endM}`;
+}
+
+function normalizeHandoffMethod(value) {
+    const normalized = String(value || "").trim().toLowerCase();
+    if (normalized === "livrare" || normalized === "delivery" || normalized === "courier") {
+        return "delivery";
+    }
+    return "pickup";
+}
+
+function mapOrderStatusToReservationStatus(status) {
+    const normalized = String(status || "").trim().toLowerCase();
+    if (["anulata", "cancelled", "canceled", "refuzata"].includes(normalized)) {
+        return "canceled";
+    }
+    if (["livrata", "ridicata", "ridicat_client", "completed"].includes(normalized)) {
+        return "completed";
+    }
+    if (
+        [
+            "acceptata",
+            "confirmata",
+            "in_lucru",
+            "gata",
+            "confirmed",
+            "processing",
+        ].includes(normalized)
+    ) {
+        return "confirmed";
+    }
+    return "pending";
+}
+
+function mapOrderToHandoffStatus(comanda) {
+    const direct = String(comanda?.handoffStatus || "").trim();
+    if (direct) return direct;
+
+    const normalizedStatus = String(comanda?.status || "").trim().toLowerCase();
+    const handoffMethod = normalizeHandoffMethod(comanda?.metodaLivrare);
+
+    if (["anulata", "cancelled", "canceled", "refuzata"].includes(normalizedStatus)) {
+        return "canceled";
+    }
+    if (normalizedStatus === "predat_curierului") {
+        return "out_for_delivery";
+    }
+    if (["livrata", "delivered"].includes(normalizedStatus)) {
+        return "delivered";
+    }
+    if (
+        ["ridicata", "ridicat_client", "picked_up"].includes(normalizedStatus) &&
+        handoffMethod === "pickup"
+    ) {
+        return "picked_up";
+    }
+    return "scheduled";
 }
 
 /* ---------------------- Helpers Comanda ---------------------- */
@@ -133,7 +201,7 @@ async function buildPricedOrder(items = [], options = {}) {
     const torts = ids.length
         ? await Tort.find(
             { _id: { $in: ids }, activ: { $ne: false } },
-            { nume: 1, pret: 1, timpPreparareOre: 1 }
+            { nume: 1, pret: 1, timpPreparareOre: 1, prestatorId: 1 }
         ).lean()
         : [];
     const tortMap = new Map(torts.map((item) => [String(item._id), item]));
@@ -148,10 +216,14 @@ async function buildPricedOrder(items = [], options = {}) {
         const price = tort ? Math.max(0, Number(tort.pret || 0)) : fallbackPrice;
         const prepHours = tort ? Math.max(0, Number(tort.timpPreparareOre || 0)) : 0;
         const name = tort?.nume || item.name || item.nume || "Produs";
+        const providerId = normalizePrestatorId(
+            tort?.prestatorId || item.prestatorId || item.providerId || ""
+        );
 
         return {
             productId: item.productId || undefined,
             tortId: item.tortId || item.productId || undefined,
+            prestatorId: providerId || undefined,
             name,
             nume: name,
             qty: item.qty,
@@ -186,7 +258,44 @@ async function buildPricedOrder(items = [], options = {}) {
             MIN_LEAD_HOURS,
             ...sanitizedItems.map((item) => Number(item.prepHours || 0))
         ),
+        providerIds: Array.from(
+            new Set(
+                sanitizedItems
+                    .map((item) => normalizePrestatorId(item.prestatorId))
+                    .filter(Boolean)
+            )
+        ),
     };
+}
+
+async function resolveOrderPrestatorId(req, rawPrestatorId, pricedOrder) {
+    const explicitPrestatorId = normalizePrestatorId(rawPrestatorId);
+    const providerIds = Array.isArray(pricedOrder?.providerIds)
+        ? pricedOrder.providerIds.filter(Boolean)
+        : [];
+
+    if (providerIds.length > 1) {
+        throw new Error("Comanda trebuie sa contina produse de la un singur prestator.");
+    }
+
+    let prestatorId = explicitPrestatorId
+        ? normalizePrestatorId(await resolveProviderForRequest(req, explicitPrestatorId))
+        : "";
+    const itemsPrestatorId = providerIds[0] || "";
+
+    if (prestatorId && itemsPrestatorId && prestatorId !== itemsPrestatorId) {
+        throw new Error("Produsele selectate apartin altui prestator.");
+    }
+
+    if (!prestatorId) {
+        prestatorId = itemsPrestatorId;
+    }
+
+    if (!prestatorId) {
+        prestatorId = normalizePrestatorId(await resolveProviderForRequest(req, rawPrestatorId));
+    }
+
+    return prestatorId;
 }
 
 async function isDayCapacityFull(prestatorId, dateStr) {
@@ -306,8 +415,8 @@ async function releaseReservedSlot({ source, prestatorId, dataLivrare, oraLivrar
                 { _id: entry._id, used: { $gt: 0 } },
                 { $inc: { used: -1 } }
             );
+            return;
         }
-        return;
     }
 
     const cal = await CalendarPrestator.findOne({ prestatorId });
@@ -320,6 +429,56 @@ async function releaseReservedSlot({ source, prestatorId, dataLivrare, oraLivrar
 
     cal.slots[idx].used = Math.max(0, Number(cal.slots[idx].used || 0) - 1);
     await cal.save();
+}
+
+async function syncReservationFromOrder(comanda) {
+    if (!comanda?._id) return null;
+
+    const prestatorId = normalizePrestatorId(comanda.prestatorId);
+    const date = String(comanda.dataLivrare || comanda.dataRezervare || "").trim();
+    const time = String(
+        comanda.oraLivrare || comanda.oraRezervare || comanda.calendarSlot?.time || ""
+    ).trim();
+
+    if (!prestatorId || !date || !time) {
+        await Rezervare.deleteOne({ comandaId: comanda._id });
+        return null;
+    }
+
+    const handoffMethod = normalizeHandoffMethod(comanda.metodaLivrare);
+    const update = {
+        clientId: String(comanda.clientId || ""),
+        prestatorId,
+        comandaId: comanda._id,
+        tortId: comanda.tortId || undefined,
+        customDetails: comanda.customDetails || undefined,
+        date,
+        timeSlot: buildReservationTimeSlot(time),
+        handoffMethod,
+        deliveryFee: Number(comanda.taxaLivrare || comanda.deliveryFee || 0),
+        deliveryAddress:
+            handoffMethod === "delivery" ? String(comanda.adresaLivrare || "").trim() : "",
+        deliveryInstructions: String(comanda.deliveryInstructions || "").trim(),
+        deliveryWindow: String(comanda.deliveryWindow || "").trim(),
+        subtotal: Number(comanda.subtotal || 0),
+        total: Number(comanda.totalFinal ?? comanda.total ?? 0),
+        paymentStatus: String(comanda.paymentStatus || comanda.statusPlata || "unpaid"),
+        status: mapOrderStatusToReservationStatus(comanda.status),
+        handoffStatus: mapOrderToHandoffStatus(comanda),
+        notes:
+            String(comanda.notesClient || comanda.preferinte || "").trim() ||
+            String(comanda.notesAdmin || "").trim(),
+    };
+
+    return Rezervare.findOneAndUpdate(
+        { comandaId: comanda._id },
+        { $set: update },
+        {
+            new: true,
+            upsert: true,
+            setDefaultsOnInsert: true,
+        }
+    );
 }
 
 /* ---------------------- Helpers Rezervare -> Admin view ---------------------- */
@@ -409,7 +568,7 @@ router.post("/", authRequired, async (req, res) => {
             deliveryWindow,
             attachments,
         } = req.body;
-        let prestatorId = normalizePrestatorId(rawPrestatorId);
+        let prestatorId = "";
 
         const role = req.user?.rol || req.user?.role;
         const isStaff = isStaffRole(role);
@@ -423,17 +582,6 @@ router.post("/", authRequired, async (req, res) => {
         }
         if (!isStaff && requestedClientId && String(requestedClientId) !== authUserId) {
             return res.status(403).json({ message: "Nu poti crea comenzi pentru alt client." });
-        }
-        if (scopedPrestatorId) {
-            if (prestatorId && prestatorId !== scopedPrestatorId) {
-                return res.status(403).json({ message: "Acces interzis pentru acest prestator." });
-            }
-            prestatorId = prestatorId || scopedPrestatorId;
-        }
-        if ((dataLivrare || oraLivrare) && !prestatorId) {
-            return res.status(400).json({
-                message: "prestatorId este obligatoriu pentru comenzile programate.",
-            });
         }
         if (!["ridicare", "livrare"].includes(String(metodaLivrare || "").trim())) {
             return res.status(400).json({
@@ -458,6 +606,18 @@ router.post("/", authRequired, async (req, res) => {
         const pricedOrder = await buildPricedOrder(items, {
             allowManualPricing: isStaff,
         });
+        prestatorId = await resolveOrderPrestatorId(req, rawPrestatorId, pricedOrder);
+        if (scopedPrestatorId) {
+            if (prestatorId && prestatorId !== scopedPrestatorId) {
+                return res.status(403).json({ message: "Acces interzis pentru acest prestator." });
+            }
+            prestatorId = prestatorId || scopedPrestatorId;
+        }
+        if ((dataLivrare || oraLivrare) && !prestatorId) {
+            return res.status(400).json({
+                message: "Nu am putut determina prestatorul pentru comanda programata.",
+            });
+        }
         if (
             dataLivrare &&
             oraLivrare &&
@@ -477,6 +637,7 @@ router.post("/", authRequired, async (req, res) => {
             items: pricedOrder.items,
             subtotal,
             taxaLivrare,
+            deliveryFee: taxaLivrare,
             total: subtotal + taxaLivrare,
             totalFinal: subtotal + taxaLivrare,
             metodaLivrare,
@@ -490,22 +651,43 @@ router.post("/", authRequired, async (req, res) => {
             note,
             preferinte,
             imagineGenerata,
+            handoffMethod: normalizeHandoffMethod(metodaLivrare),
+            handoffStatus: "scheduled",
             notesClient: note || "",
             status: "plasata",
             statusHistory: [{ status: "plasata", note: "Comanda creata" }],
         });
+        await syncReservationFromOrder(comanda);
 
         await notifyUser(effectiveClientId, {
             titlu: "Comanda primita",
             mesaj: `Comanda #${comanda.numeroComanda || comanda._id} a fost inregistrata.`,
             tip: "comanda",
             link: `/plata?comandaId=${comanda._id}`,
+            prestatorId,
+            actorId: prestatorId,
+            actorRole: "patiser",
+            meta: { comandaId: String(comanda._id) },
+        });
+        await notifyProviderById(prestatorId, {
+            titlu: "Comanda noua",
+            mesaj: `Ai primit comanda #${comanda.numeroComanda || comanda._id}.`,
+            tip: "comanda",
+            link: "/admin/comenzi",
+            prestatorId,
+            actorId: effectiveClientId,
+            actorRole: normalizeUserRole(role),
+            meta: { comandaId: String(comanda._id) },
         });
         await notifyAdmins({
             titlu: "Comanda noua",
             mesaj: `Comanda #${comanda.numeroComanda || comanda._id} a fost plasata.`,
             tip: "comanda",
             link: "/admin/comenzi",
+            prestatorId,
+            actorId: effectiveClientId,
+            actorRole: normalizeUserRole(role),
+            meta: { comandaId: String(comanda._id) },
         });
 
         res.status(201).json(comanda);
@@ -542,7 +724,7 @@ router.post("/creeaza-cu-slot", authRequired, async (req, res) => {
             deliveryWindow,
             attachments,
         } = req.body;
-        let prestatorId = normalizePrestatorId(rawPrestatorId);
+        let prestatorId = "";
 
         const role = req.user?.rol || req.user?.role;
         const isStaff = isStaffRole(role);
@@ -556,17 +738,6 @@ router.post("/creeaza-cu-slot", authRequired, async (req, res) => {
             return res.status(403).json({ message: "Nu poti crea comenzi pentru alt client." });
         }
         if (!dataLivrare || !oraLivrare) throw new Error("dataLivrare și oraLivrare sunt obligatorii.");
-        if (scopedPrestatorId) {
-            if (prestatorId && prestatorId !== scopedPrestatorId) {
-                return res.status(403).json({ message: "Acces interzis pentru acest prestator." });
-            }
-            prestatorId = prestatorId || scopedPrestatorId;
-        }
-        if (!prestatorId) {
-            return res.status(400).json({
-                message: "prestatorId este obligatoriu pentru comenzile cu slot.",
-            });
-        }
         if (!["ridicare", "livrare"].includes(String(metodaLivrare || "").trim())) {
             return res.status(400).json({
                 message: "metodaLivrare trebuie sa fie ridicare sau livrare.",
@@ -590,6 +761,18 @@ router.post("/creeaza-cu-slot", authRequired, async (req, res) => {
         const pricedOrder = await buildPricedOrder(items, {
             allowManualPricing: isStaff,
         });
+        prestatorId = await resolveOrderPrestatorId(req, rawPrestatorId, pricedOrder);
+        if (scopedPrestatorId) {
+            if (prestatorId && prestatorId !== scopedPrestatorId) {
+                return res.status(403).json({ message: "Acces interzis pentru acest prestator." });
+            }
+            prestatorId = prestatorId || scopedPrestatorId;
+        }
+        if (!prestatorId) {
+            return res.status(400).json({
+                message: "Nu am putut determina prestatorul pentru comanda cu slot.",
+            });
+        }
         if (isBeforeMinLead(dataLivrare, oraLivrare, pricedOrder.leadHours)) {
             throw new Error(`Alege un interval cu minim ${pricedOrder.leadHours} ore inainte.`);
         }
@@ -623,6 +806,7 @@ router.post("/creeaza-cu-slot", authRequired, async (req, res) => {
             items: pricedOrder.items,
             subtotal,
             taxaLivrare,
+            deliveryFee: taxaLivrare,
             total: subtotal + taxaLivrare,
             totalFinal: subtotal + taxaLivrare,
             metodaLivrare,
@@ -636,6 +820,8 @@ router.post("/creeaza-cu-slot", authRequired, async (req, res) => {
             note,
             preferinte,
             imagineGenerata,
+            handoffMethod: normalizeHandoffMethod(metodaLivrare),
+            handoffStatus: "scheduled",
             notesClient: note || "",
             status: "in_asteptare",
             statusHistory: [{ status: "in_asteptare", note: "Comanda creata cu slot" }],
@@ -650,17 +836,36 @@ router.post("/creeaza-cu-slot", authRequired, async (req, res) => {
         }
 
         reservedSlot = null;
+        await syncReservationFromOrder(comanda);
         await notifyUser(effectiveClientId, {
             titlu: "Comanda primita",
             mesaj: `Comanda #${comanda.numeroComanda || comanda._id} a fost inregistrata.`,
             tip: "comanda",
             link: `/plata?comandaId=${comanda._id}`,
+            prestatorId,
+            actorId: prestatorId,
+            actorRole: "patiser",
+            meta: { comandaId: String(comanda._id) },
+        });
+        await notifyProviderById(prestatorId, {
+            titlu: "Comanda noua",
+            mesaj: `Ai primit comanda #${comanda.numeroComanda || comanda._id}.`,
+            tip: "comanda",
+            link: "/admin/comenzi",
+            prestatorId,
+            actorId: effectiveClientId,
+            actorRole: normalizeUserRole(role),
+            meta: { comandaId: String(comanda._id) },
         });
         await notifyAdmins({
             titlu: "Comanda noua",
             mesaj: `Comanda #${comanda.numeroComanda || comanda._id} a fost plasata.`,
             tip: "comanda",
             link: "/admin/comenzi",
+            prestatorId,
+            actorId: effectiveClientId,
+            actorRole: normalizeUserRole(role),
+            meta: { comandaId: String(comanda._id) },
         });
         res.status(201).json(comanda);
     } catch (e) {
@@ -819,12 +1024,43 @@ router.patch("/:id/status", authRequired, roleCheck("admin", "patiser"), adminMu
                 ? [...doc.statusHistory, { status: nou, note: req.body?.note || "" }]
                 : [{ status: nou, note: req.body?.note || "" }];
             await doc.save();
+            if (["anulata", "cancelled", "canceled", "refuzata"].includes(String(nou || "").toLowerCase())) {
+                await releaseReservedSlot({
+                    source: "entry",
+                    prestatorId: doc.prestatorId,
+                    dataLivrare: doc.dataLivrare || doc.dataRezervare,
+                    oraLivrare: doc.oraLivrare || doc.oraRezervare,
+                });
+            }
+            await syncReservationFromOrder(doc);
 
             await notifyUser(doc.clientId, {
                 titlu: "Status comanda actualizat",
                 mesaj: `Comanda #${doc.numeroComanda || doc._id} este acum: ${nou}.`,
                 tip: "status",
                 link: `/plata?comandaId=${doc._id}`,
+                prestatorId: doc.prestatorId,
+                actorId: req.user?._id || req.user?.id,
+                actorRole: normalizeUserRole(req.user?.rol || req.user?.role),
+                meta: {
+                    comandaId: String(doc._id),
+                    previousStatus,
+                    nextStatus: nou,
+                },
+            });
+            await notifyProviderById(doc.prestatorId, {
+                titlu: "Status comanda modificat",
+                mesaj: `Comanda #${doc.numeroComanda || doc._id} este acum: ${nou}.`,
+                tip: "status",
+                link: "/admin/comenzi",
+                prestatorId: doc.prestatorId,
+                actorId: req.user?._id || req.user?.id,
+                actorRole: normalizeUserRole(req.user?.rol || req.user?.role),
+                meta: {
+                    comandaId: String(doc._id),
+                    previousStatus,
+                    nextStatus: nou,
+                },
             });
 
             await recordAuditLog(req, {
@@ -879,6 +1115,33 @@ router.patch("/:id/status", authRequired, roleCheck("admin", "patiser"), adminMu
         doc.set(update);
         await doc.save();
 
+        if (doc.comandaId) {
+            const comanda = await Comanda.findById(doc.comandaId);
+            if (comanda) {
+                comanda.handoffStatus = update.handoffStatus || comanda.handoffStatus;
+                comanda.status = nou;
+                comanda.statusHistory = Array.isArray(comanda.statusHistory)
+                    ? [...comanda.statusHistory, { status: nou, note: req.body?.note || "" }]
+                    : [{ status: nou, note: req.body?.note || "" }];
+                await comanda.save();
+            }
+        }
+
+        await notifyUser(doc.clientId, {
+            titlu: "Rezervare actualizata",
+            mesaj: `Rezervarea ta este acum: ${update.status || nou}.`,
+            tip: "rezervare",
+            link: "/profil",
+            prestatorId: doc.prestatorId,
+            actorId: req.user?._id || req.user?.id,
+            actorRole: normalizeUserRole(req.user?.rol || req.user?.role),
+            meta: {
+                rezervareId: String(doc._id),
+                comandaId: doc.comandaId ? String(doc.comandaId) : "",
+                nextStatus: update.status || nou,
+            },
+        });
+
         await recordAuditLog(req, {
             action: "reservation.status.updated",
             entityType: "rezervare",
@@ -924,6 +1187,7 @@ router.patch("/:id/price", authRequired, roleCheck("admin", "patiser"), adminMut
         if (deliveryFee != null && updates.taxaLivrare == null) {
             updates.taxaLivrare = Number(deliveryFee || 0);
         }
+        if (updates.taxaLivrare != null) updates.deliveryFee = updates.taxaLivrare;
         if (discountTotal != null) updates.discountTotal = Number(discountTotal || 0);
         if (total != null) updates.total = Number(total || 0);
         if (totalFinal != null) updates.totalFinal = Number(totalFinal || 0);
@@ -944,12 +1208,33 @@ router.patch("/:id/price", authRequired, roleCheck("admin", "patiser"), adminMut
             ? [...comanda.statusHistory, { status: "pret_actualizat", note: noteText }]
             : [{ status: "pret_actualizat", note: noteText }];
         await comanda.save();
+        await syncReservationFromOrder(comanda);
 
         await notifyUser(comanda.clientId, {
             titlu: "Comanda actualizata",
             mesaj: `Pret nou pentru comanda #${comanda.numeroComanda || comanda._id}: ${comanda.totalFinal || comanda.total} MDL.`,
             tip: "update",
             link: `/plata?comandaId=${comanda._id}`,
+            prestatorId: comanda.prestatorId,
+            actorId: req.user?._id || req.user?.id,
+            actorRole: normalizeUserRole(req.user?.rol || req.user?.role),
+            meta: {
+                comandaId: String(comanda._id),
+                totalFinal: Number(comanda.totalFinal || comanda.total || 0),
+            },
+        });
+        await notifyProviderById(comanda.prestatorId, {
+            titlu: "Pret comanda actualizat",
+            mesaj: `Comanda #${comanda.numeroComanda || comanda._id} are acum totalul ${comanda.totalFinal || comanda.total} MDL.`,
+            tip: "update",
+            link: "/admin/comenzi",
+            prestatorId: comanda.prestatorId,
+            actorId: req.user?._id || req.user?.id,
+            actorRole: normalizeUserRole(req.user?.rol || req.user?.role),
+            meta: {
+                comandaId: String(comanda._id),
+                totalFinal: Number(comanda.totalFinal || comanda.total || 0),
+            },
         });
 
         await recordAuditLog(req, {
@@ -1048,11 +1333,46 @@ router.patch("/:id/schedule", authRequired, roleCheck("admin", "patiser"), admin
             ? [...comanda.statusHistory, { status: "reprogramata", note: "Data/ora modificata" }]
             : [{ status: "reprogramata", note: "Data/ora modificata" }];
         await comanda.save();
+        await syncReservationFromOrder(comanda);
         await notifyUser(comanda.clientId, {
             titlu: "Comanda reprogramata",
             mesaj: `Comanda #${comanda.numeroComanda || comanda._id} a fost reprogramata la ${dataLivrare} ${oraLivrare}.`,
             tip: "update",
             link: `/plata?comandaId=${comanda._id}`,
+            prestatorId: comanda.prestatorId,
+            actorId: req.user?._id || req.user?.id,
+            actorRole: normalizeUserRole(req.user?.rol || req.user?.role),
+            meta: {
+                comandaId: String(comanda._id),
+                previousSchedule: {
+                    dataLivrare: prevDate || "",
+                    oraLivrare: prevTime || "",
+                },
+                nextSchedule: {
+                    dataLivrare,
+                    oraLivrare,
+                },
+            },
+        });
+        await notifyProviderById(comanda.prestatorId, {
+            titlu: "Programare actualizata",
+            mesaj: `Comanda #${comanda.numeroComanda || comanda._id} a fost mutata la ${dataLivrare} ${oraLivrare}.`,
+            tip: "update",
+            link: "/admin/calendar",
+            prestatorId: comanda.prestatorId,
+            actorId: req.user?._id || req.user?.id,
+            actorRole: normalizeUserRole(req.user?.rol || req.user?.role),
+            meta: {
+                comandaId: String(comanda._id),
+                previousSchedule: {
+                    dataLivrare: prevDate || "",
+                    oraLivrare: prevTime || "",
+                },
+                nextSchedule: {
+                    dataLivrare,
+                    oraLivrare,
+                },
+            },
         });
         await recordAuditLog(req, {
             action: "order.schedule.updated",
@@ -1094,11 +1414,38 @@ router.patch("/:id/refuza", authRequired, roleCheck("admin", "patiser"), adminMu
             ? [...comanda.statusHistory, { status: "refuzata", note: comanda.motivRefuz }]
             : [{ status: "refuzata", note: comanda.motivRefuz }];
         await comanda.save();
+        await releaseReservedSlot({
+            source: "entry",
+            prestatorId: comanda.prestatorId,
+            dataLivrare: comanda.dataLivrare || comanda.dataRezervare,
+            oraLivrare: comanda.oraLivrare || comanda.oraRezervare,
+        });
+        await syncReservationFromOrder(comanda);
         await notifyUser(comanda.clientId, {
             titlu: "Comanda refuzata",
             mesaj: comanda.motivRefuz,
             tip: "warning",
             link: `/plata?comandaId=${comanda._id}`,
+            prestatorId: comanda.prestatorId,
+            actorId: req.user?._id || req.user?.id,
+            actorRole: normalizeUserRole(req.user?.rol || req.user?.role),
+            meta: {
+                comandaId: String(comanda._id),
+                motiv: comanda.motivRefuz,
+            },
+        });
+        await notifyProviderById(comanda.prestatorId, {
+            titlu: "Comanda refuzata",
+            mesaj: `Comanda #${comanda.numeroComanda || comanda._id} a fost marcata ca refuzata.`,
+            tip: "warning",
+            link: "/admin/comenzi",
+            prestatorId: comanda.prestatorId,
+            actorId: req.user?._id || req.user?.id,
+            actorRole: normalizeUserRole(req.user?.rol || req.user?.role),
+            meta: {
+                comandaId: String(comanda._id),
+                motiv: comanda.motivRefuz,
+            },
         });
         await recordAuditLog(req, {
             action: "order.rejected",
@@ -1247,6 +1594,7 @@ router.patch("/:id/cancel", authRequired, async (req, res) => {
         // marchează anulată
         doc.status = "anulata";
         await doc.save();
+        await syncReservationFromOrder(doc);
 
         // dacă are data/ora și prestator => decrementăm used în CalendarSlotEntry (preferred) sau legacy CalendarPrestator
         if (doc.dataLivrare && doc.oraLivrare && doc.prestatorId) {
@@ -1295,6 +1643,27 @@ router.patch("/:id/cancel", authRequired, async (req, res) => {
                 actorIsStaff: isStaff,
                 clientId: String(doc.clientId || ""),
             },
+        });
+
+        await notifyUser(doc.clientId, {
+            titlu: "Comanda anulata",
+            mesaj: `Comanda #${doc.numeroComanda || doc._id} a fost anulata.`,
+            tip: "warning",
+            link: "/profil",
+            prestatorId: doc.prestatorId,
+            actorId: req.user?._id || req.user?.id,
+            actorRole: normalizeUserRole(req.user?.rol || req.user?.role),
+            meta: { comandaId: String(doc._id) },
+        });
+        await notifyProviderById(doc.prestatorId, {
+            titlu: "Comanda anulata",
+            mesaj: `Comanda #${doc.numeroComanda || doc._id} a fost anulata.`,
+            tip: "warning",
+            link: "/admin/comenzi",
+            prestatorId: doc.prestatorId,
+            actorId: req.user?._id || req.user?.id,
+            actorRole: normalizeUserRole(req.user?.rol || req.user?.role),
+            meta: { comandaId: String(doc._id) },
         });
 
         res.json({ ok: true, status: doc.status });

@@ -39,7 +39,7 @@ router.get("/", authRequired, roleCheck("admin", "patiser"), async (req, res) =>
   }
 });
 
-// GET /api/calendar-admin/export/csv?date=YYYY-MM-DD
+
 router.get("/export/csv", authRequired, roleCheck("admin", "patiser"), async (req, res) => {
   try {
     const { date } = req.query;

@@ -1,94 +1,162 @@
 const express = require("express");
-const axios = require("axios");
-const fs = require("fs");
-const path = require("path");
 const router = express.Router();
+const AIImageRequest = require("../models/AIImageRequest");
+const { authRequired } = require("../middleware/auth");
+const { generateCakeImage } = require("../services/aiImages");
+const { resolveProviderForRequest } = require("../utils/providerDirectory");
+const { isStaffRole } = require("../utils/roles");
+const { createLogger, serializeError } = require("../utils/log");
 
-const OPENAI_API_KEY = process.env.OPENAI_API_KEY || "";
-const OPENAI_IMAGE_MODEL = process.env.OPENAI_IMAGE_MODEL || "gpt-image-1";
-const AI_IMAGE_SIZE = process.env.AI_IMAGE_SIZE || "1024x1024";
+const logger = createLogger("ai_route");
 
-function ensureDir(dir) {
-  if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+function normalizeId(value) {
+  return String(value || "").trim();
 }
 
-function escapeXml(value) {
-  return String(value || "")
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&apos;");
+function promptPreview(prompt) {
+  return String(prompt || "").trim().slice(0, 160);
 }
 
-function buildSvg(prompt) {
-  const text = escapeXml(String(prompt || "tort personalizat").slice(0, 80));
-  return `
-    <svg xmlns="http://www.w3.org/2000/svg" width="480" height="320" viewBox="0 0 480 320">
-      <defs>
-        <linearGradient id="g1" x1="0" x2="1" y1="0" y2="1">
-          <stop offset="0%" stop-color="#f7c9d4" />
-          <stop offset="100%" stop-color="#ffffff" />
-        </linearGradient>
-      </defs>
-      <rect width="480" height="320" fill="#fffaf7"/>
-      <rect x="90" y="70" width="300" height="60" rx="18" fill="url(#g1)" stroke="#e7c2cf"/>
-      <rect x="110" y="140" width="260" height="50" rx="16" fill="#f7e7f0" stroke="#e7c2cf"/>
-      <rect x="130" y="195" width="220" height="45" rx="14" fill="#f7c9d4" stroke="#e7c2cf"/>
-      <circle cx="240" cy="55" r="18" fill="#f7c9d4" stroke="#e7c2cf"/>
-      <text x="240" y="290" text-anchor="middle" font-size="14" fill="#6b7280" font-family="Georgia, serif">
-        ${text}
-      </text>
-    </svg>
-  `;
-}
-
-async function generateWithOpenAI(prompt) {
-  const response = await axios.post(
-    "https://api.openai.com/v1/images/generations",
-    {
-      model: OPENAI_IMAGE_MODEL,
-      prompt,
-      size: AI_IMAGE_SIZE,
-      response_format: "b64_json",
-    },
-    {
-      headers: {
-        Authorization: `Bearer ${OPENAI_API_KEY}`,
-        "Content-Type": "application/json",
+async function persistHistoryEntry(payload, requestId) {
+  try {
+    const historyEntry = await AIImageRequest.create(payload);
+    return { historyEntry, historyError: null };
+  } catch (error) {
+    const historyError = serializeError(error);
+    logger.error("ai_history_persist_failed", {
+      requestId,
+      payload: {
+        userId: normalizeId(payload?.userId),
+        prestatorId: normalizeId(payload?.prestatorId),
+        status: payload?.status,
+        prompt: promptPreview(payload?.prompt),
       },
-    }
-  );
-  return response.data;
+      error: historyError,
+    });
+    return { historyEntry: null, historyError };
+  }
 }
 
-router.post("/generate-cake", async (req, res) => {
+router.post("/generate-cake", authRequired, async (req, res) => {
   const prompt = String(req.body?.prompt || "").trim() || "tort personalizat";
-  const uploadsDir = path.join(__dirname, "..", "uploads", "ai");
-  ensureDir(uploadsDir);
+  const userId = normalizeId(req.user?._id || req.user?.id);
+  const prestatorId = normalizeId(
+    await resolveProviderForRequest(req, req.body?.prestatorId || "")
+  );
 
-  if (OPENAI_API_KEY) {
-    try {
-      const data = await generateWithOpenAI(prompt);
-      const b64 = data?.data?.[0]?.b64_json;
-      const url = data?.data?.[0]?.url;
-      if (b64) {
-        const fileName = `ai_${Date.now()}.png`;
-        fs.writeFileSync(path.join(uploadsDir, fileName), Buffer.from(b64, "base64"));
-        return res.json({ imageUrl: `/uploads/ai/${fileName}`, source: "openai" });
-      }
-      if (url) {
-        return res.json({ imageUrl: url, source: "openai" });
-      }
-    } catch (e) {
-      console.warn("OpenAI image failed, fallback to local:", e?.message || e);
-    }
+  if (!prestatorId) {
+    return res.status(400).json({
+      message: "Selecteaza un prestator valid inainte de a genera imaginea.",
+    });
   }
 
-  const svg = buildSvg(prompt);
-  const fileName = `ai_${Date.now()}.svg`;
-  fs.writeFileSync(path.join(uploadsDir, fileName), svg, "utf8");
-  return res.json({ imageUrl: `/uploads/ai/${fileName}`, source: "local" });
+  try {
+    const result = await generateCakeImage(prompt, {
+      requestId: req.id,
+      userId,
+      prestatorId,
+    });
+    const status = result.fallback ? "fallback" : "success";
+    const { historyEntry, historyError } = userId
+      ? await persistHistoryEntry(
+          {
+            userId,
+            prestatorId,
+            prompt,
+            imageUrl: result.imageUrl,
+            source: result.source,
+            status,
+            errorMessage: result.providerError?.message || "",
+          },
+          req.id
+        )
+      : { historyEntry: null, historyError: null };
+
+    return res.json({
+      success: true,
+      imageUrl: result.imageUrl,
+      source: result.source,
+      mode: result.mode,
+      fallback: Boolean(result.fallback),
+      provider: result.provider || null,
+      providerRequestId: result.providerRequestId || null,
+      providerError: result.providerError || null,
+      historyEntry,
+      historyError,
+    });
+  } catch (error) {
+    const backendError = serializeError(error);
+    logger.error("generate_cake_failed", {
+      requestId: req.id,
+      userId,
+      prestatorId,
+      prompt: promptPreview(prompt),
+      error: backendError,
+    });
+    const errorMessage =
+      String(error?.message || "").trim() ||
+      "Nu am putut genera imaginea pe baza promptului.";
+    const { historyEntry, historyError } = userId
+      ? await persistHistoryEntry(
+          {
+            userId,
+            prestatorId,
+            prompt,
+            status: "error",
+            errorMessage,
+          },
+          req.id
+        )
+      : { historyEntry: null, historyError: null };
+
+    return res.status(500).json({
+      success: false,
+      message: errorMessage,
+      requestId: req.id,
+      error: backendError,
+      historyEntry,
+      historyError,
+    });
+  }
+});
+
+router.get("/history", authRequired, async (req, res) => {
+  try {
+    const role = req.user?.rol || req.user?.role;
+    const isStaff = isStaffRole(role);
+    const userId = normalizeId(req.user?._id || req.user?.id);
+    const requestedUserId = normalizeId(req.query?.userId);
+    const requestedPrestatorId = normalizeId(req.query?.prestatorId);
+
+    const filter = {};
+    if (isStaff) {
+      if (requestedUserId) filter.userId = requestedUserId;
+      filter.prestatorId = requestedPrestatorId || userId;
+    } else {
+      filter.userId = userId;
+      if (requestedPrestatorId) filter.prestatorId = requestedPrestatorId;
+    }
+
+    const items = await AIImageRequest.find(filter)
+      .sort({ createdAt: -1 })
+      .limit(25)
+      .lean();
+
+    res.json({ items });
+  } catch (error) {
+    logger.error("ai_history_failed", {
+      requestId: req.id,
+      userId: normalizeId(req.user?._id || req.user?.id),
+      prestatorId: normalizeId(req.query?.prestatorId),
+      error: serializeError(error),
+    });
+    res.status(500).json({
+      success: false,
+      message: "Nu am putut incarca istoricul AI.",
+      requestId: req.id,
+      error: serializeError(error),
+    });
+  }
 });
 
 module.exports = router;

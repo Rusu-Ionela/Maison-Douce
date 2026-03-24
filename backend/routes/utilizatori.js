@@ -14,6 +14,15 @@ const {
   readObject,
   readString,
 } = require("../utils/validation");
+const {
+  getDefaultProvider,
+  listPublicProviders,
+} = require("../utils/providerDirectory");
+const {
+  isProviderRole,
+  normalizeUserRole,
+} = require("../utils/roles");
+const { isProductionEnv } = require("../utils/runtime");
 
 const router = express.Router();
 
@@ -47,17 +56,17 @@ function hasOwnField(source, key) {
 }
 
 function normalizeRequestedRole(rawRole) {
-  const role = String(rawRole || "client").trim().toLowerCase();
-  return role === "prestator" ? "patiser" : role;
+  return normalizeUserRole(rawRole || "client");
 }
 
 function serializeUser(user) {
+  const normalizedRole = normalizeUserRole(user.rol || user.role);
   return {
     id: user._id,
     nume: user.nume,
     prenume: user.prenume || "",
     email: user.email,
-    rol: user.rol,
+    rol: normalizedRole,
     activ: user.activ !== false,
     deactivatedAt: user.deactivatedAt || null,
     lastPasswordChangeAt: user.lastPasswordChangeAt || null,
@@ -66,6 +75,16 @@ function serializeUser(user) {
     preferinte: user.preferinte || {},
     adreseSalvate: user.adreseSalvate || [],
     setariNotificari: user.setariNotificari || {},
+    providerProfile: isProviderRole(normalizedRole)
+      ? {
+          displayName: user.providerProfile?.displayName || "",
+          slug: user.providerProfile?.slug || "",
+          bio: user.providerProfile?.bio || "",
+          isPublic: user.providerProfile?.isPublic !== false,
+          isDefaultProvider: Boolean(user.providerProfile?.isDefaultProvider),
+          acceptsOrders: user.providerProfile?.acceptsOrders !== false,
+        }
+      : undefined,
   };
 }
 
@@ -244,7 +263,12 @@ router.post(
       if (requestedRole === "patiser") {
         const requiredCode = process.env.PATISER_INVITE_CODE || "PATISER-INVITE";
         if (inviteCode !== requiredCode) {
-          return res.status(403).json({ message: "Cod invitatie invalid." });
+          return res.status(403).json({
+            message: "Cod invitatie invalid.",
+            hint: isProductionEnv()
+              ? "Solicita codul de invitatie de la administrator."
+              : `In mediul local, codul activ este ${requiredCode}.`,
+          });
         }
       }
 
@@ -321,6 +345,35 @@ router.post(
     }
   })
 );
+
+router.get("/providers", async (_req, res) => {
+  try {
+    const items = await listPublicProviders();
+    const defaultProvider = await getDefaultProvider();
+    res.json({
+      items,
+      defaultProviderId: defaultProvider?.id || "",
+    });
+  } catch (e) {
+    console.error("/providers error:", e.message);
+    res.status(500).json({ message: "Nu am putut incarca lista de prestatori." });
+  }
+});
+
+router.get("/provider-invite-info", (_req, res) => {
+  const configuredCode = String(process.env.PATISER_INVITE_CODE || "").trim();
+  const activeCode = configuredCode || "PATISER-INVITE";
+  const production = isProductionEnv();
+
+  res.json({
+    inviteRequired: true,
+    message: production
+      ? "Codul de invitatie pentru patiser este oferit de administratorul Maison-Douce."
+      : "In mediul local poti folosi codul de test pentru a crea un cont de patiser.",
+    code: production ? "" : activeCode,
+    source: configuredCode ? "env" : "default",
+  });
+});
 
 router.get("/me", authRequired, async (req, res) => {
   try {

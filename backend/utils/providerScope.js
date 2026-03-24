@@ -1,5 +1,7 @@
+const { isAdminRole, isProviderRole, normalizeUserRole } = require("./roles");
+
 function getRequestRole(req) {
-  return String(req?.user?.rol || req?.user?.role || "").trim().toLowerCase();
+  return normalizeUserRole(req?.user?.rol || req?.user?.role || "");
 }
 
 function getRequestUserId(req) {
@@ -7,14 +9,14 @@ function getRequestUserId(req) {
 }
 
 function isAdminRequest(req) {
-  return getRequestRole(req) === "admin";
+  return isAdminRole(getRequestRole(req));
 }
 
 function getScopedPrestatorId(req) {
   if (isAdminRequest(req)) return "";
 
   const role = getRequestRole(req);
-  if (role === "patiser" || role === "prestator") {
+  if (isProviderRole(role)) {
     return getRequestUserId(req);
   }
 

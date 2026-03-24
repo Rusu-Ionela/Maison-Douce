@@ -19,6 +19,8 @@ const {
 } = require("../utils/multer");
 const { recordAuditLog } = require("../utils/audit");
 const { adminMutationLimiter } = require("../middleware/rateLimiters");
+const { resolveProviderForRequest } = require("../utils/providerDirectory");
+const { getScopedPrestatorId } = require("../utils/providerScope");
 
 const upload = createUploadMiddleware({
   subdir: "torturi",
@@ -161,6 +163,10 @@ router.get(
       "excludeAlergeni",
       30
     ),
+    prestatorId: readMongoId(req.query?.prestatorId || req.query?.providerId, {
+      field: "prestatorId",
+      defaultValue: "",
+    }),
   }), async (req, res) => {
     try {
       const {
@@ -181,9 +187,11 @@ router.get(
         sort,
         excludeIngrediente,
         excludeAlergeni,
+        prestatorId,
       } = req.validated;
 
       const filter = {};
+      if (prestatorId) filter.prestatorId = prestatorId;
       if (categorie) filter.categorie = categorie;
       if (activ !== undefined) filter.activ = activ;
       if (stil) filter.stil = stil;
@@ -272,6 +280,10 @@ router.post(
         portii: Number(req.body.portii || 0),
         timpPreparareOre: Number(req.body.timpPreparareOre || 0),
         activ: req.body.activ !== "false",
+        prestatorId:
+          getScopedPrestatorId(req) ||
+          (await resolveProviderForRequest(req, req.body?.prestatorId || "")) ||
+          undefined,
       };
 
       const tort = await Tort.create(data);
@@ -342,6 +354,10 @@ router.put(
         pretVechi: Number(req.body.pretVechi || 0),
         stoc: Number(req.body.stoc || 0),
       };
+      if (req.body.prestatorId != null && !getScopedPrestatorId(req)) {
+        data.prestatorId =
+          (await resolveProviderForRequest(req, req.body.prestatorId || "")) || "";
+      }
       if (req.body.portii != null) data.portii = Number(req.body.portii || 0);
       if (req.body.timpPreparareOre != null) {
         data.timpPreparareOre = Number(req.body.timpPreparareOre || 0);
@@ -352,6 +368,15 @@ router.put(
 
       if (req.file) {
         data.imagine = toPublicUploadPath("torturi", req.file.filename);
+      }
+
+      const existingTort = await Tort.findById(req.validated.id);
+      if (!existingTort) return res.status(404).json({ message: "Tort negasit" });
+      if (
+        getScopedPrestatorId(req) &&
+        String(existingTort.prestatorId || "") !== String(getScopedPrestatorId(req))
+      ) {
+        return res.status(403).json({ message: "Acces interzis pentru acest prestator." });
       }
 
       const tort = await Tort.findByIdAndUpdate(req.validated.id, data, {
@@ -389,6 +414,15 @@ router.delete(
     }),
   }), async (req, res) => {
     try {
+      const existingTort = await Tort.findById(req.validated.id);
+      if (!existingTort) return res.status(404).json({ message: "Tort negasit" });
+      if (
+        getScopedPrestatorId(req) &&
+        String(existingTort.prestatorId || "") !== String(getScopedPrestatorId(req))
+      ) {
+        return res.status(403).json({ message: "Acces interzis pentru acest prestator." });
+      }
+
       const tort = await Tort.findByIdAndDelete(req.validated.id);
       if (!tort) return res.status(404).json({ message: "Tort negasit" });
       await recordAuditLog(req, {

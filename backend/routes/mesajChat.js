@@ -1,13 +1,10 @@
-// backend/routes/mesajeChat.js
 const express = require("express");
 const router = express.Router();
 const MesajChat = require("../models/MesajChat");
 const { authRequired, roleCheck } = require("../middleware/auth");
-
-function isAdmin(req) {
-  const role = req.user?.rol || req.user?.role;
-  return role === "admin" || role === "patiser";
-}
+const { canAccessConversationRoom, parseConversationRoom } = require("../utils/chatRooms");
+const { normalizeUserRole, isStaffRole } = require("../utils/roles");
+const { notifyProviderById, notifyUser } = require("../utils/notifications");
 
 function getDisplayName(req) {
   return (
@@ -17,10 +14,77 @@ function getDisplayName(req) {
   );
 }
 
-// GET /api/mesaje-chat - toate mesajele (admin)
-router.get("/", authRequired, roleCheck("admin", "patiser"), async (_req, res) => {
+function buildMessagePayload(req, body = {}) {
+  const text = String(body.text || "").trim() || "Fisier atasat";
+  const room = String(body.room || "").trim();
+  const details = parseConversationRoom(room);
+  const authorId = String(req.user?._id || req.user?.id || "");
+  const role = normalizeUserRole(req.user?.rol || req.user?.role);
+
+  return {
+    text,
+    data: new Date(),
+    utilizator: getDisplayName(req),
+    rol: role,
+    room,
+    authorId,
+    fileUrl: body.fileUrl ? String(body.fileUrl) : "",
+    fileName: body.fileName ? String(body.fileName) : "",
+    clientId: details.clientId || "",
+    prestatorId: details.prestatorId || "",
+    participantIds: [details.clientId, details.prestatorId].filter(Boolean),
+  };
+}
+
+async function notifyConversationParticipants(message) {
+  if (!message?.room) return;
+  const role = normalizeUserRole(message.rol);
+  if (!message.clientId || !message.prestatorId) return;
+
+  if (role === "client") {
+    await notifyProviderById(message.prestatorId, {
+      titlu: "Mesaj nou de la client",
+      mesaj: `${message.utilizator || "Client"} a trimis un mesaj nou.`,
+      tip: "chat",
+      link: "/chat/utilizatori",
+      prestatorId: message.prestatorId,
+      actorId: message.authorId,
+      actorRole: role,
+      meta: {
+        room: message.room,
+        clientId: message.clientId,
+      },
+    });
+    return;
+  }
+
+  await notifyUser(message.clientId, {
+    titlu: "Raspuns nou in chat",
+    mesaj: `${message.utilizator || "Echipa"} a raspuns in conversatie.`,
+    tip: "chat",
+    link: "/chat",
+    prestatorId: message.prestatorId,
+    actorId: message.authorId,
+    actorRole: role,
+    meta: {
+      room: message.room,
+      clientId: message.clientId,
+    },
+  });
+}
+
+router.get("/", authRequired, roleCheck("admin", "patiser"), async (req, res) => {
   try {
-    const mesaje = await MesajChat.find().sort({ data: 1 }).lean();
+    const role = normalizeUserRole(req.user?.rol || req.user?.role);
+    const userId = String(req.user?._id || req.user?.id || "");
+    const filter =
+      role === "admin"
+        ? {}
+        : {
+            $or: [{ prestatorId: userId }, { participantIds: userId }],
+          };
+
+    const mesaje = await MesajChat.find(filter).sort({ data: 1 }).lean();
     res.json(mesaje);
   } catch (e) {
     console.error("GET /mesaje-chat error:", e);
@@ -28,18 +92,12 @@ router.get("/", authRequired, roleCheck("admin", "patiser"), async (_req, res) =
   }
 });
 
-// GET /api/mesaje-chat/room/:room - mesaje pentru un room
 router.get("/room/:room", authRequired, async (req, res) => {
   try {
     const { room } = req.params;
     if (!room) return res.json([]);
-
-    if (!isAdmin(req)) {
-      const userId = String(req.user._id || req.user.id || "");
-      const expected = `user-${userId}`;
-      if (room !== expected) {
-        return res.status(403).json({ message: "Acces interzis" });
-      }
+    if (!canAccessConversationRoom(req.user, room)) {
+      return res.status(403).json({ message: "Acces interzis" });
     }
 
     const mesaje = await MesajChat.find({ room: String(room) }).sort({ data: 1 }).lean();
@@ -50,43 +108,30 @@ router.get("/room/:room", authRequired, async (req, res) => {
   }
 });
 
-// POST /api/mesaje-chat - salveaza un mesaj
 router.post("/", authRequired, async (req, res) => {
   try {
-    const { text, room, fileUrl, fileName } = req.body;
+    const { text, room, fileUrl } = req.body || {};
     if (!text && !fileUrl) {
       return res.status(400).json({ message: "Text sau fisier este obligatoriu" });
     }
     if (!room) {
       return res.status(400).json({ message: "Room este obligatoriu." });
     }
-
-    if (room && !isAdmin(req)) {
-      const userId = String(req.user._id || req.user.id || "");
-      const expected = `user-${userId}`;
-      if (room !== expected) {
-        return res.status(403).json({ message: "Acces interzis" });
-      }
+    if (!canAccessConversationRoom(req.user, room)) {
+      return res.status(403).json({ message: "Acces interzis" });
     }
 
-    const currentRole = req.user?.rol || req.user?.role || "";
-    const payload = {
-      text: String(text || "").trim() || "Fisier atasat",
-      data: new Date(),
-      utilizator: getDisplayName(req),
-      rol: currentRole,
-      room: String(room),
-      authorId: String(req.user?._id || req.user?.id || ""),
-    };
-    if (fileUrl) payload.fileUrl = fileUrl;
-    if (fileName) payload.fileName = fileName;
-
+    const payload = buildMessagePayload(req, req.body || {});
     const msg = await MesajChat.create(payload);
 
     try {
       const io = require("../socket").getIO();
-      io.to(String(room)).emit("receiveMessage", payload);
+      io.to(String(room)).emit("receiveMessage", msg.toObject());
     } catch {}
+
+    if (!isStaffRole(payload.rol) || payload.prestatorId) {
+      await notifyConversationParticipants(payload);
+    }
 
     res.status(201).json(msg);
   } catch (e) {

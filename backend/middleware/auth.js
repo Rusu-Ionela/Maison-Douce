@@ -1,6 +1,7 @@
 const Utilizator = require("../models/Utilizator");
 const { verifyAuthToken } = require("../utils/jwt");
 const { createLogger, serializeError } = require("../utils/log");
+const { normalizeUserRole } = require("../utils/roles");
 
 const authLog = createLogger("auth");
 
@@ -26,6 +27,8 @@ async function authRequired(req, res, next) {
     if (user.activ === false) {
       return res.status(401).json({ message: "Contul este dezactivat." });
     }
+
+    user.rol = normalizeUserRole(user.rol || user.role);
 
     req.user = user;
     req.auth = payload;
@@ -61,6 +64,8 @@ async function authOptional(req, _res, next) {
       return next();
     }
 
+    user.rol = normalizeUserRole(user.rol || user.role);
+
     req.user = user;
     req.auth = payload;
     return next();
@@ -77,7 +82,7 @@ function roleCheck(...roles) {
 
     const rawRole =
       req.user.rol || req.user.role || req.user.tip || req.user.tipUtilizator;
-    const userRole = rawRole === "prestator" ? "patiser" : rawRole;
+    const userRole = normalizeUserRole(rawRole);
 
     if (!userRole) {
       return res.status(403).json({ message: "Rol utilizator neconfigurat" });

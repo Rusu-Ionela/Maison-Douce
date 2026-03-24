@@ -3,14 +3,19 @@ const router = require("express").Router();
 const { authRequired } = require("../middleware/auth");
 const Album = require("../models/Album");
 const NotificareFoto = require("../models/NotificareFoto");
+const Comanda = require("../models/Comanda");
 const { notifyUser, notifyAdmins } = require("../utils/notifications");
+const { resolveProviderForRequest } = require("../utils/providerDirectory");
+const { applyScopedPrestatorFilter } = require("../utils/providerScope");
 
 router.get("/", authRequired, async (req, res) => {
   try {
     const role = req.user?.rol || req.user?.role;
     const userId = role === "admin" || role === "patiser" ? req.query.userId : req.user._id;
     if (!userId) return res.status(400).json({ message: "userId lipsa" });
-    const list = await Album.find({ utilizatorId: userId }).sort({ data: -1 }).lean();
+    const query = applyScopedPrestatorFilter(req, { utilizatorId: userId });
+    if (req.query.prestatorId) query.prestatorId = String(req.query.prestatorId);
+    const list = await Album.find(query).sort({ data: -1 }).lean();
     res.json(list);
   } catch (e) {
     res.status(500).json({ message: "Eroare la preluare albume" });
@@ -22,8 +27,13 @@ router.post("/", authRequired, async (req, res) => {
     const role = req.user?.rol || req.user?.role;
     const { titlu, fisiere = [], utilizatorId, comandaId } = req.body || {};
     const ownerId = role === "admin" || role === "patiser" ? (utilizatorId || req.user._id) : req.user._id;
+    let prestatorId = await resolveProviderForRequest(req, req.body?.prestatorId || "");
+    if (!prestatorId && comandaId) {
+      const linkedOrder = await Comanda.findById(comandaId).lean();
+      prestatorId = String(linkedOrder?.prestatorId || "");
+    }
 
-    const alb = await Album.create({ titlu, fisiere, utilizatorId: ownerId, comandaId });
+    const alb = await Album.create({ titlu, fisiere, utilizatorId: ownerId, comandaId, prestatorId });
 
     if (String(ownerId) !== String(req.user._id)) {
       try {
@@ -62,7 +72,7 @@ router.get("/:id", authRequired, async (req, res) => {
     if (role !== "admin" && role !== "patiser") {
       q.utilizatorId = req.user._id;
     }
-    const a = await Album.findOne(q);
+    const a = await Album.findOne(applyScopedPrestatorFilter(req, q));
     if (!a) return res.status(404).json({ message: "Album inexistent" });
     res.json(a);
   } catch (e) {
@@ -77,7 +87,7 @@ router.delete("/:id", authRequired, async (req, res) => {
     if (role !== "admin" && role !== "patiser") {
       q.utilizatorId = req.user._id;
     }
-    await Album.deleteOne(q);
+    await Album.deleteOne(applyScopedPrestatorFilter(req, q));
     res.json({ ok: true });
   } catch (e) {
     res.status(500).json({ message: "Eroare la stergere album" });

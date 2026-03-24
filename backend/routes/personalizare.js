@@ -4,6 +4,7 @@ const path = require('path');
 const router = express.Router();
 const Personalizare = require('../models/Personalizare');
 const { authRequired } = require("../middleware/auth");
+const { resolveProviderForRequest } = require("../utils/providerDirectory");
 const GENERIC_SERVER_MESSAGE = "Eroare server.";
 
 function ensureDir(dir) {
@@ -17,6 +18,10 @@ router.post("/", authRequired, async (req, res) => {
         const { clientId, forma, culori, mesaj, imageData, note, options, pretEstimat, timpPreparareOre, status } = req.body;
         const role = req.user?.rol || req.user?.role;
         const ownerId = role === "admin" || role === "patiser" ? (clientId || req.user._id) : req.user._id;
+        const prestatorId = await resolveProviderForRequest(
+            req,
+            req.body?.prestatorId || req.body?.providerId || ""
+        );
 
         let imageUrl = null;
         if (imageData && typeof imageData === 'string' && imageData.startsWith('data:')) {
@@ -39,6 +44,7 @@ router.post("/", authRequired, async (req, res) => {
 
         const doc = await Personalizare.create({
             clientId: ownerId,
+            prestatorId,
             forma: forma || 'rotund',
             culori: Array.isArray(culori) ? culori : [],
             config: req.body.config || undefined,
@@ -62,12 +68,15 @@ router.post("/", authRequired, async (req, res) => {
 router.get('/client/:clientId', authRequired, async (req, res) => {
     try {
         const { clientId } = req.params;
+        const prestatorId = String(req.query?.prestatorId || "").trim();
         const role = req.user?.rol || req.user?.role;
         if (!clientId) return res.status(400).json({ error: 'clientId required' });
         if (role !== "admin" && role !== "patiser" && String(req.user._id) !== String(clientId)) {
             return res.status(403).json({ error: "Acces interzis" });
         }
-        const list = await Personalizare.find({ clientId }).sort({ createdAt: -1 }).lean();
+        const query = { clientId };
+        if (prestatorId) query.prestatorId = prestatorId;
+        const list = await Personalizare.find(query).sort({ createdAt: -1 }).lean();
         res.json(list);
     } catch (e) {
         console.error('GET /personalizare/client error:', e);

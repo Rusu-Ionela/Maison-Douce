@@ -3,6 +3,7 @@ const router = express.Router();
 const ComandaPersonalizata = require("../models/ComandaPersonalizata");
 const Comanda = require("../models/Comanda");
 const { authRequired, roleCheck } = require("../middleware/auth");
+const { resolveProviderForRequest } = require("../utils/providerDirectory");
 
 // POST - Salvare comanda personalizata (client)
 router.post("/", authRequired, async (req, res) => {
@@ -18,15 +19,20 @@ router.post("/", authRequired, async (req, res) => {
       pretEstimat,
       timpPreparareOre,
       data,
+      prestatorId: rawPrestatorId,
+      comandaId,
     } = req.body || {};
 
     const ownerId = clientId || req.user._id;
     if (String(ownerId) !== String(req.user._id)) {
       return res.status(403).json({ mesaj: "clientId invalid" });
     }
+    const prestatorId = await resolveProviderForRequest(req, rawPrestatorId || "");
 
     const comanda = new ComandaPersonalizata({
       clientId: ownerId,
+      prestatorId,
+      comandaId: comandaId || undefined,
       numeClient: numeClient || req.user.nume || "Client",
       preferinte: preferinte || "",
       imagine: imagine || imagineGenerata || "",
@@ -51,8 +57,10 @@ router.get("/", authRequired, async (req, res) => {
     const role = req.user?.rol || req.user?.role;
     const q = {};
     if (req.query.status) q.status = req.query.status;
+    if (req.query.prestatorId) q.prestatorId = req.query.prestatorId;
     if (role === "admin" || role === "patiser") {
       if (req.query.clientId) q.clientId = req.query.clientId;
+      if (role === "patiser") q.prestatorId = String(req.user._id);
     } else {
       q.clientId = req.user._id;
     }
@@ -72,8 +80,13 @@ router.patch("/:id/status", authRequired, roleCheck("admin", "patiser"), async (
     if (status) update.status = status;
     if (pretEstimat != null) update.pretEstimat = Number(pretEstimat || 0);
 
-    const doc = await ComandaPersonalizata.findByIdAndUpdate(req.params.id, update, { new: true });
+    const doc = await ComandaPersonalizata.findById(req.params.id);
     if (!doc) return res.status(404).json({ mesaj: "Comanda inexistenta" });
+    if (String(req.user?.rol || req.user?.role || "") === "patiser" && String(doc.prestatorId || "") !== String(req.user._id)) {
+      return res.status(403).json({ mesaj: "Acces interzis" });
+    }
+    Object.assign(doc, update);
+    await doc.save();
     res.json(doc);
   } catch (err) {
     console.error("Eroare la actualizarea comenzii:", err);

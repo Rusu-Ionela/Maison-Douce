@@ -120,9 +120,6 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
           build-args: |
             VITE_API_URL=/api
-            VITE_PRESTATOR_ID=${{ vars.FRONTEND_PRESTATOR_ID || 'default' }}
-            VITE_STRIPE_PK=${{ vars.FRONTEND_STRIPE_PK || '' }}
-            VITE_MIN_LEAD_HOURS=${{ vars.FRONTEND_MIN_LEAD_HOURS || '24' }}
             VITE_APP_VERSION=${{ needs.prepare.outputs.ref_sha }}
           cache-from: type=gha
           cache-to: type=gha,mode=max

@@ -7,9 +7,14 @@ const MesajChatSchema = new mongoose.Schema({
   rol: { type: String, default: "" },
   authorId: { type: String },
   room: { type: String, index: true },
+  clientId: { type: String, default: "", index: true },
+  prestatorId: { type: String, default: "", index: true },
+  participantIds: { type: [String], default: [] },
   fileUrl: { type: String, default: "" },
   fileName: { type: String, default: "" },
 });
+
+MesajChatSchema.index({ prestatorId: 1, clientId: 1, data: 1 });
 
 module.exports =
   mongoose.models.MesajChat || mongoose.model("MesajChat", MesajChatSchema);

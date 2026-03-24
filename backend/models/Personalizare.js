@@ -2,6 +2,7 @@ const mongoose = require('mongoose');
 
 const PersonalizareSchema = new mongoose.Schema({
     clientId: { type: mongoose.Schema.Types.ObjectId, ref: 'Utilizator', required: false },
+    prestatorId: { type: String, default: "" },
     forma: { type: String },
     culori: [String],
     config: { type: Object }, // optional JSON config (elements, positions) for re-edit
@@ -14,5 +15,7 @@ const PersonalizareSchema = new mongoose.Schema({
     status: { type: String, default: "draft" }, // draft | trimis
     createdAt: { type: Date, default: Date.now }
 });
+
+PersonalizareSchema.index({ clientId: 1, prestatorId: 1, createdAt: -1 });
 
 module.exports = mongoose.models.Personalizare || mongoose.model('Personalizare', PersonalizareSchema);

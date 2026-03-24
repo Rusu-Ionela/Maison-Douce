@@ -1,17 +1,14 @@
 let io;
 const MesajChat = require("./models/MesajChat");
 const Utilizator = require("./models/Utilizator");
-const { notifyAdmins } = require("./utils/notifications");
+const { notifyProviderById, notifyUser } = require("./utils/notifications");
 const { verifyAuthToken } = require("./utils/jwt");
 const { createLogger, serializeError } = require("./utils/log");
 const { getAllowedClientOrigins } = require("./utils/runtime");
+const { canAccessConversationRoom, parseConversationRoom } = require("./utils/chatRooms");
+const { isStaffRole, normalizeUserRole } = require("./utils/roles");
 
 const socketLog = createLogger("socket");
-
-function isStaffUser(user) {
-  const role = user?.rol || user?.role;
-  return ["admin", "patiser", "prestator"].includes(String(role || ""));
-}
 
 function getSocketUserId(user) {
   return String(user?._id || user?.id || "");
@@ -22,10 +19,32 @@ function getSocketDisplayName(user) {
   return fullName || user?.email || "Utilizator";
 }
 
-function canAccessRoom(user, room) {
-  if (!room) return false;
-  if (isStaffUser(user)) return true;
-  return String(room) === `user-${getSocketUserId(user)}`;
+async function notifyConversationParticipants(message) {
+  if (!message?.clientId || !message?.prestatorId) return;
+  if (message.rol === "client") {
+    await notifyProviderById(message.prestatorId, {
+      titlu: "Mesaj nou de la client",
+      mesaj: `${message.utilizator || "Client"} a trimis un mesaj nou.`,
+      tip: "chat",
+      link: "/chat/utilizatori",
+      prestatorId: message.prestatorId,
+      actorId: message.authorId,
+      actorRole: message.rol,
+      meta: { room: message.room },
+    });
+    return;
+  }
+
+  await notifyUser(message.clientId, {
+    titlu: "Raspuns nou in chat",
+    mesaj: `${message.utilizator || "Echipa"} a raspuns in conversatie.`,
+    tip: "chat",
+    link: "/chat",
+    prestatorId: message.prestatorId,
+    actorId: message.authorId,
+    actorRole: message.rol,
+    meta: { room: message.room },
+  });
 }
 
 function init(server) {
@@ -55,6 +74,7 @@ function init(server) {
         return next(new Error("Authentication required"));
       }
 
+      user.rol = normalizeUserRole(user.rol || user.role);
       socket.user = user;
       socket.auth = payload;
       return next();
@@ -74,7 +94,7 @@ function init(server) {
     });
 
     socket.on("joinRoom", (room) => {
-      if (!canAccessRoom(socket.user, room)) {
+      if (!canAccessConversationRoom(socket.user, room)) {
         socketLog.warn("room_join_denied", {
           socketId: socket.id,
           userId: getSocketUserId(socket.user),
@@ -91,12 +111,8 @@ function init(server) {
     });
 
     socket.on("leaveRoom", (room) => {
-      if (!canAccessRoom(socket.user, room)) return;
+      if (!canAccessConversationRoom(socket.user, room)) return;
       socket.leave(String(room));
-      socketLog.info("room_left", {
-        socketId: socket.id,
-        room: String(room),
-      });
     });
 
     socket.on("ping", () => socket.emit("pong"));
@@ -108,7 +124,7 @@ function init(server) {
         const fileName = data?.fileName ? String(data.fileName) : "";
         const room = data?.room ? String(data.room) : "";
         if (!text && !fileUrl) return;
-        if (!room || !canAccessRoom(socket.user, room)) {
+        if (!room || !canAccessConversationRoom(socket.user, room)) {
           socketLog.warn("chat_room_denied", {
             socketId: socket.id,
             userId: getSocketUserId(socket.user),
@@ -117,49 +133,36 @@ function init(server) {
           return;
         }
 
-        const utilizator = getSocketDisplayName(socket.user);
-        const authorId = getSocketUserId(socket.user);
-        const senderRole = socket.user?.rol || socket.user?.role || "";
+        const details = parseConversationRoom(room);
+        const payload = {
+          text: text || (fileUrl ? "Fisier atasat" : ""),
+          utilizator: getSocketDisplayName(socket.user),
+          rol: normalizeUserRole(socket.user?.rol || socket.user?.role || ""),
+          at: Date.now(),
+          data: new Date(),
+          room,
+          authorId: getSocketUserId(socket.user),
+          fileUrl,
+          fileName,
+          clientId: details.clientId || "",
+          prestatorId: details.prestatorId || "",
+          participantIds: [details.clientId, details.prestatorId].filter(Boolean),
+        };
 
         try {
-          await MesajChat.create({
-            text,
-            utilizator,
-            room,
-            authorId,
-            rol: senderRole,
-            fileUrl,
-            fileName,
-            data: new Date(),
-          });
+          const saved = await MesajChat.create(payload);
+          io.to(room).emit("receiveMessage", saved.toObject());
         } catch (dbErr) {
           socketLog.warn("chat_persist_failed", {
             socketId: socket.id,
             room,
             error: serializeError(dbErr),
           });
+          io.to(room).emit("receiveMessage", payload);
         }
 
-        const payload = {
-          text,
-          utilizator,
-          rol: senderRole,
-          at: Date.now(),
-          room,
-          authorId,
-          fileUrl,
-          fileName,
-        };
-
-        io.to(room).emit("receiveMessage", payload);
-
-        if (!["admin", "patiser"].includes(String(senderRole || ""))) {
-          await notifyAdmins({
-            titlu: "Mesaj nou",
-            mesaj: `Mesaj nou de la ${utilizator}.`,
-            tip: "chat",
-            link: "/chat/utilizatori",
-          });
+        if (!isStaffRole(payload.rol) || payload.prestatorId) {
+          await notifyConversationParticipants(payload);
         }
       } catch (err) {
         socketLog.error("chat_send_failed", {

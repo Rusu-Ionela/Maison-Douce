@@ -8,6 +8,7 @@ const TortSchema = new mongoose.Schema(
         arome: { type: [String], default: [] },
         imagine: { type: String, default: "" },
         galerie: { type: [String], default: [] },
+        prestatorId: { type: String, default: "" },
         pret: { type: Number, default: 0, min: 0 },
         costEstim: { type: Number, default: 0, min: 0 },
         pretVechi: { type: Number, default: 0, min: 0 },
@@ -40,5 +41,7 @@ const TortSchema = new mongoose.Schema(
         toObject: { virtuals: true }
     }
 );
+
+TortSchema.index({ prestatorId: 1, activ: 1, createdAt: -1 });
 
 module.exports = mongoose.model("Tort", TortSchema);

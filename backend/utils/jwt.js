@@ -1,4 +1,5 @@
 const jwt = require("jsonwebtoken");
+const { normalizeUserRole } = require("./roles");
 
 function getJwtSecret() {
   const secret = String(process.env.JWT_SECRET || "").trim();
@@ -14,7 +15,7 @@ function buildAuthPayload(user) {
     throw new Error("Cannot sign auth token without a user id.");
   }
 
-  const rol = user?.rol || user?.role || "client";
+  const rol = normalizeUserRole(user?.rol || user?.role || "client");
 
   return {
     id,

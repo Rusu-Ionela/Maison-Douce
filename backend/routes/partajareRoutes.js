@@ -11,6 +11,7 @@ const {
   toPublicUploadPath,
   withUpload,
 } = require("../utils/multer");
+const { resolveProviderForRequest } = require("../utils/providerDirectory");
 
 const upload = createUploadMiddleware({
   subdir: "shared",
@@ -39,6 +40,10 @@ router.post(
         role === "admin" || role === "patiser"
           ? req.validated.utilizatorId || req.user._id
           : req.user._id;
+      const prestatorId = await resolveProviderForRequest(
+        req,
+        req.body?.prestatorId || req.body?.providerId || ""
+      );
 
       const fisiere = (req.files || []).map((file) =>
         toPublicUploadPath("shared", file.filename)
@@ -48,7 +53,12 @@ router.post(
       }
 
       const linkUnic = createLink();
-      const partajare = new Partajare({ utilizatorId: ownerId, fisiere, linkUnic });
+      const partajare = new Partajare({
+        utilizatorId: ownerId,
+        prestatorId,
+        fisiere,
+        linkUnic,
+      });
       await partajare.save();
 
       const baseUrl = process.env.BASE_CLIENT_URL || "http://localhost:5173";

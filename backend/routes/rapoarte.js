@@ -3,32 +3,116 @@ const express = require("express");
 const router = express.Router();
 
 const Comanda = require("../models/Comanda");
-const CalendarSlot = require("../models/CalendarSlot");
+const Rezervare = require("../models/Rezervare");
 const { authRequired, roleCheck } = require("../middleware/auth");
+const {
+  buildCreatedAtRange,
+  buildStringDateRange,
+  buildUserMap,
+  formatUserLabel,
+  getItemName,
+  getItemQty,
+  getOrderDeliveryFee,
+  getOrderItemQuantity,
+  getOrderItems,
+  getOrderTotal,
+  normalizeDeliveryMethod,
+  readNumber,
+  summarizeOrderItems,
+} = require("../utils/reporting");
 
-// json2csv este opțional – dacă nu e instalat, ruta CSV va anunța asta
 let Json2CsvParser = null;
 let hasJson2csv = false;
 try {
   Json2CsvParser = require("json2csv").Parser;
   hasJson2csv = true;
-} catch (e) {
-  console.warn("json2csv nu este instalat. Exportul CSV nu va funcționa.");
+} catch {
+  console.warn("json2csv nu este instalat. Exportul CSV nu va functiona.");
 }
 
-/**
- * Helper: validează datele primite ca string (YYYY-MM-DD)
- */
-function parseDateOrNull(str) {
-  if (!str) return null;
-  const d = new Date(str);
-  return isNaN(d.getTime()) ? null : d;
+function describeReservation(reservation) {
+  const order = reservation.comandaId || {};
+  const orderDescription = summarizeOrderItems(order);
+  if (orderDescription) return orderDescription;
+  if (reservation.customDetails?.descriere) {
+    return String(reservation.customDetails.descriere);
+  }
+  if (reservation.tortId) {
+    return `Tort ${reservation.tortId}`;
+  }
+  return "";
 }
 
-/**
- * GET /api/rapoarte/reservari/:startDate/:endDate
- * Raport rezervări pe interval de timp
- */
+function getReservationQuantity(reservation) {
+  const order = reservation.comandaId || {};
+  const qty = getOrderItemQuantity(order);
+  if (qty > 0) return qty;
+  return reservation.tortId || reservation.customDetails ? 1 : 0;
+}
+
+function mapReservationDetails(reservation, userMap) {
+  const order = reservation.comandaId || {};
+  const client = userMap.get(String(reservation.clientId || ""));
+  const handoffMethod = normalizeDeliveryMethod(reservation.handoffMethod);
+  const paymentStatus =
+    reservation.paymentStatus ||
+    order.paymentStatus ||
+    order.statusPlata ||
+    "unpaid";
+
+  return {
+    id: reservation._id?.toString?.() || "",
+    comandaId: order?._id?.toString?.() || "",
+    createdAt: reservation.createdAt
+      ? new Date(reservation.createdAt).toISOString()
+      : "",
+    data: reservation.date || "",
+    ora: reservation.timeSlot || "",
+    clientId: String(reservation.clientId || ""),
+    client: formatUserLabel(client, reservation.clientId),
+    emailClient: client?.email || "",
+    telefonClient: client?.telefon || "",
+    tort: describeReservation(reservation) || "-",
+    cantitate: getReservationQuantity(reservation),
+    livrare: handoffMethod,
+    handoffMethod,
+    adresa: reservation.deliveryAddress || "",
+    instructiuniLivrare: reservation.deliveryInstructions || "",
+    intervalLivrare: reservation.deliveryWindow || "",
+    subtotal: readNumber(reservation.subtotal, 0),
+    taxaLivrare: readNumber(reservation.deliveryFee, 0),
+    total: readNumber(reservation.total, 0),
+    statusPlata: paymentStatus,
+    paymentStatus,
+    status: reservation.status || "pending",
+  };
+}
+
+async function loadReservationDetails(startDate, endDate) {
+  const filter = buildStringDateRange("date", startDate, endDate, {
+    required: true,
+    fromLabel: "startDate",
+    toLabel: "endDate",
+  });
+
+  const reservations = await Rezervare.find(filter)
+    .populate({
+      path: "comandaId",
+      select:
+        "items produse preferinte customDetails tortId clientId subtotal taxaLivrare deliveryFee total totalFinal paymentStatus statusPlata",
+    })
+    .sort({ date: 1, timeSlot: 1, createdAt: 1 })
+    .lean();
+
+  const userMap = await buildUserMap(
+    reservations.map((reservation) => reservation.clientId)
+  );
+
+  return reservations.map((reservation) =>
+    mapReservationDetails(reservation, userMap)
+  );
+}
+
 router.get(
   "/reservari/:startDate/:endDate",
   authRequired,
@@ -36,64 +120,45 @@ router.get(
   async (req, res) => {
     try {
       const { startDate, endDate } = req.params;
-
-      const start = parseDateOrNull(startDate);
-      const end = parseDateOrNull(endDate);
-
-      if (!start || !end) {
-        return res
-          .status(400)
-          .json({ error: "startDate și endDate trebuie să fie date valide" });
-      }
-
-      const calendars = await CalendarSlot.find({
-        date: { $gte: startDate, $lte: endDate },
-      });
-
-      let totalReservations = 0;
-      const reservationDetails = [];
+      const details = await loadReservationDetails(startDate, endDate);
       const deliveryMethods = { pickup: 0, delivery: 0, courier: 0 };
+      const paymentStatuses = {};
+      const statusBreakdown = {};
+      let totalRevenue = 0;
 
-      calendars.forEach((cal) => {
-        (cal.slots || []).forEach((slot) => {
-          (slot.orders || []).forEach((order) => {
-            totalReservations++;
-
-            if (deliveryMethods[order.deliveryMethod] !== undefined) {
-              deliveryMethods[order.deliveryMethod]++;
-            }
-
-            reservationDetails.push({
-              data: cal.date,
-              ora: slot.time,
-              client: order.clientName,
-              tort: order.tortName,
-              cantitate: order.quantity,
-              livrare: order.deliveryMethod,
-              adresa: order.address || "-",
-              status: order.status,
-            });
-          });
-        });
+      details.forEach((detail) => {
+        deliveryMethods[detail.handoffMethod] =
+          (deliveryMethods[detail.handoffMethod] || 0) + 1;
+        paymentStatuses[detail.paymentStatus] =
+          (paymentStatuses[detail.paymentStatus] || 0) + 1;
+        statusBreakdown[detail.status] =
+          (statusBreakdown[detail.status] || 0) + 1;
+        totalRevenue += readNumber(detail.total, 0);
       });
 
       res.json({
         period: { startDate, endDate },
-        totalReservations,
+        totalReservations: details.length,
+        totalRevenue: Number(totalRevenue.toFixed(2)),
         deliveryMethods,
-        details: reservationDetails,
+        paymentStatuses,
+        statusBreakdown,
+        details,
       });
     } catch (err) {
       console.error("Eroare /rapoarte/reservari:", err.message);
-      res.status(500).json({ error: "Eroare server la raport rezervări" });
+      if (
+        err.message.includes("YYYY-MM-DD") ||
+        err.message.includes("obligatorii") ||
+        err.message.includes("mai mica")
+      ) {
+        return res.status(400).json({ error: err.message });
+      }
+      res.status(500).json({ error: "Eroare server la raport rezervari" });
     }
   }
 );
 
-/**
- * GET /api/rapoarte/export/csv/:startDate/:endDate
- * Export rezervări CSV pe interval
- */
 router.get(
   "/export/csv/:startDate/:endDate",
   authRequired,
@@ -105,64 +170,66 @@ router.get(
       }
 
       const { startDate, endDate } = req.params;
+      const details = await loadReservationDetails(startDate, endDate);
+      const fields = [
+        "Data",
+        "Interval",
+        "Client",
+        "Email Client",
+        "Telefon Client",
+        "Descriere",
+        "Cantitate",
+        "Metoda Livrare",
+        "Adresa",
+        "Subtotal",
+        "Taxa Livrare",
+        "Total",
+        "Status Plata",
+        "Status",
+        "Creat la",
+      ];
+      const rows = details.map((detail) => ({
+        Data: detail.data,
+        Interval: detail.ora,
+        Client: detail.client,
+        "Email Client": detail.emailClient,
+        "Telefon Client": detail.telefonClient,
+        Descriere: detail.tort,
+        Cantitate: detail.cantitate,
+        "Metoda Livrare": detail.handoffMethod,
+        Adresa: detail.adresa || "",
+        Subtotal: Number(detail.subtotal || 0).toFixed(2),
+        "Taxa Livrare": Number(detail.taxaLivrare || 0).toFixed(2),
+        Total: Number(detail.total || 0).toFixed(2),
+        "Status Plata": detail.paymentStatus,
+        Status: detail.status,
+        "Creat la": detail.createdAt,
+      }));
 
-      const start = parseDateOrNull(startDate);
-      const end = parseDateOrNull(endDate);
-
-      if (!start || !end) {
-        return res
-          .status(400)
-          .json({ error: "startDate și endDate trebuie să fie date valide" });
-      }
-
-      const calendars = await CalendarSlot.find({
-        date: { $gte: startDate, $lte: endDate },
-      });
-
-      const data = [];
-
-      calendars.forEach((cal) => {
-        (cal.slots || []).forEach((slot) => {
-          (slot.orders || []).forEach((order) => {
-            data.push({
-              Data: cal.date,
-              Ora: slot.time,
-              Client: order.clientName,
-              Produs: order.tortName,
-              Cantitate: order.quantity,
-              "Metoda Livrare": order.deliveryMethod,
-              Adresa: order.address || "-",
-              Status: order.status,
-            });
-          });
-        });
-      });
-
-      if (data.length === 0) {
-        return res.json({ message: "Nu sunt date pentru export" });
-      }
-
-      const fields = Object.keys(data[0]);
-      const parser = new Json2CsvParser({ fields });
-      const csv = parser.parse(data);
+      const csv = rows.length
+        ? new Json2CsvParser({ withBOM: true, fields }).parse(rows)
+        : `\uFEFF${fields.join(",")}\n`;
 
       res.setHeader("Content-Type", "text/csv; charset=utf-8");
       res.setHeader(
         "Content-Disposition",
-        "attachment; filename=raport-rezervari.csv"
+        `attachment; filename="raport-rezervari_${startDate}_${endDate}.csv"`
       );
       res.status(200).send(csv);
     } catch (err) {
       console.error("Eroare /rapoarte/export/csv:", err.message);
+      if (
+        err.message.includes("YYYY-MM-DD") ||
+        err.message.includes("obligatorii") ||
+        err.message.includes("mai mica")
+      ) {
+        return res.status(400).json({ error: err.message });
+      }
       res.status(500).json({ error: "Eroare server la export CSV" });
     }
   }
 );
 
-/**
- * GET /api/rapoarte/sales/:startDate/:endDate
- * Statistici vânzări pe interval
- */
 router.get(
   "/sales/:startDate/:endDate",
   authRequired,
@@ -170,78 +237,109 @@ router.get(
   async (req, res) => {
     try {
       const { startDate, endDate } = req.params;
-
-      const start = parseDateOrNull(startDate);
-      const end = parseDateOrNull(endDate);
-
-      if (!start || !end) {
-        return res
-          .status(400)
-          .json({ error: "startDate și endDate trebuie să fie date valide" });
-      }
-
-      const comenzi = await Comanda.find({
-        createdAt: { $gte: start, $lte: end },
+      const filter = buildCreatedAtRange("createdAt", startDate, endDate, {
+        required: true,
+        fromLabel: "startDate",
+        toLabel: "endDate",
       });
+      const comenzi = await Comanda.find(filter).lean();
 
-      const totalRevenue = comenzi.reduce(
-        (sum, cmd) => sum + (cmd.totalPret || 0),
-        0
-      );
-
+      const totalRevenue = comenzi.reduce((sum, cmd) => sum + getOrderTotal(cmd), 0);
       const totalOrders = comenzi.length;
       const avgOrder = totalOrders > 0 ? totalRevenue / totalOrders : 0;
-
       const deliveryRevenue = comenzi.reduce(
-        (sum, cmd) => sum + (cmd.detaliiLivrare?.taxa || 0),
+        (sum, cmd) => sum + getOrderDeliveryFee(cmd),
         0
       );
 
-      const methodBreakdown = {
-        pickup: comenzi.filter(
-          (c) => c.detaliiLivrare?.metoda === "pickup"
-        ).length,
-        delivery: comenzi.filter(
-          (c) => c.detaliiLivrare?.metoda === "delivery"
-        ).length,
-        courier: comenzi.filter(
-          (c) => c.detaliiLivrare?.metoda === "courier"
-        ).length,
-      };
+      const methodBreakdown = { pickup: 0, delivery: 0, courier: 0 };
+      const paymentBreakdown = {};
+      const statusBreakdown = {};
+
+      comenzi.forEach((comanda) => {
+        const method = normalizeDeliveryMethod(
+          comanda.metodaLivrare || comanda.handoffMethod
+        );
+        methodBreakdown[method] = (methodBreakdown[method] || 0) + 1;
+
+        const paymentStatus =
+          comanda.paymentStatus || comanda.statusPlata || "unpaid";
+        paymentBreakdown[paymentStatus] =
+          (paymentBreakdown[paymentStatus] || 0) + 1;
+
+        const status = comanda.status || comanda.statusComanda || "plasata";
+        statusBreakdown[status] = (statusBreakdown[status] || 0) + 1;
+      });
 
       res.json({
         period: { startDate, endDate },
         totalOrders,
-        totalRevenue,
+        totalRevenue: Number(totalRevenue.toFixed(2)),
         averageOrder: Number(avgOrder.toFixed(2)),
-        deliveryRevenue,
+        deliveryRevenue: Number(deliveryRevenue.toFixed(2)),
         deliveryMethodBreakdown: methodBreakdown,
+        paymentBreakdown,
+        statusBreakdown,
         topProducts: getTopProducts(comenzi),
       });
     } catch (err) {
       console.error("Eroare /rapoarte/sales:", err.message);
-      res.status(500).json({ error: "Eroare server la raport vânzări" });
+      if (
+        err.message.includes("YYYY-MM-DD") ||
+        err.message.includes("obligatorii") ||
+        err.message.includes("mai mica")
+      ) {
+        return res.status(400).json({ error: err.message });
+      }
+      res.status(500).json({ error: "Eroare server la raport vanzari" });
     }
   }
 );
 
-/**
- * Helper: top produse (cantitate vândută)
- */
 function getTopProducts(comenzi) {
-  const products = {};
+  const products = new Map();
 
   comenzi.forEach((cmd) => {
-    (cmd.items || []).forEach((item) => {
-      const name = item.numeCustom || item.tortId || "Necunoscut";
-      products[name] = (products[name] || 0) + (item.cantitate || 0);
+    const items = getOrderItems(cmd);
+    if (items.length === 0) {
+      const fallbackName =
+        cmd.customDetails?.descriere || cmd.preferinte || cmd.tortId || "";
+      if (!fallbackName) return;
+      const entry = products.get(fallbackName) || { quantity: 0, revenue: 0 };
+      entry.quantity += 1;
+      entry.revenue += getOrderTotal(cmd);
+      products.set(fallbackName, entry);
+      return;
+    }
+
+    items.forEach((item) => {
+      const name = getItemName(item);
+      const quantity = getItemQty(item, 1);
+      const revenue =
+        item.lineTotal != null
+          ? readNumber(item.lineTotal, 0)
+          : quantity * readNumber(item.price ?? item.pret, 0);
+
+      const entry = products.get(name) || { quantity: 0, revenue: 0 };
+      entry.quantity += quantity;
+      entry.revenue += revenue;
+      products.set(name, entry);
     });
   });
 
-  return Object.entries(products)
-    .sort((a, b) => b[1] - a[1])
+  return [...products.entries()]
+    .sort((a, b) => {
+      if (b[1].quantity !== a[1].quantity) {
+        return b[1].quantity - a[1].quantity;
+      }
+      return b[1].revenue - a[1].revenue;
+    })
     .slice(0, 5)
-    .map(([product, quantity]) => ({ product, quantity }));
+    .map(([product, stats]) => ({
+      product,
+      quantity: stats.quantity,
+      revenue: Number(stats.revenue.toFixed(2)),
+    }));
 }
 
 module.exports = router;

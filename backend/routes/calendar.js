@@ -2,18 +2,35 @@
 const express = require("express");
 const router = express.Router();
 
-const CalendarPrestator = require("../models/CalendarPrestator");
 const CalendarSlotEntry = require("../models/CalendarSlotEntry");
 const CalendarDayCapacity = require("../models/CalendarDayCapacity");
 const Rezervare = require("../models/Rezervare");
 const Comanda = require("../models/Comanda");
 const { authRequired, roleCheck } = require("../middleware/auth");
-const { notifyUser, notifyAdmins } = require("../utils/notifications");
+const {
+  notifyUser,
+  notifyAdmins,
+  notifyProviderById,
+} = require("../utils/notifications");
 const {
   applyScopedPrestatorFilter,
   getScopedPrestatorId,
   hasScopedPrestatorAccess,
 } = require("../utils/providerScope");
+const {
+  findProviderById,
+  resolveProviderForRequest,
+} = require("../utils/providerDirectory");
+const { isStaffRole } = require("../utils/roles");
+const {
+  buildAvailabilityMonth,
+  buildAvailabilityRange,
+  buildDefaultRange,
+  ensureSchedulableSlot,
+  getMonthRange,
+  normalizeMonthString,
+  normalizePrestatorId,
+} = require("../services/calendarAvailability");
 
 let Utilizator = null;
 try {
@@ -21,15 +38,8 @@ try {
 } catch { }
 
 const MIN_LEAD_HOURS = Number(process.env.MIN_LEAD_HOURS || 24);
+const DELIVERY_FEE = 100;
 const GENERIC_SERVER_MESSAGE = "Eroare server.";
-
-function isStaffRole(role) {
-  return ["admin", "patiser", "prestator"].includes(String(role || ""));
-}
-
-function normalizePrestatorId(value) {
-  return String(value || "").trim();
-}
 
 function rejectOutsidePrestatorScope(req, res, prestatorId) {
   if (!hasScopedPrestatorAccess(req, prestatorId)) {
@@ -57,6 +67,45 @@ function isBeforeMinLead(dateStr, timeStr) {
   const min = new Date();
   min.setHours(min.getHours() + MIN_LEAD_HOURS);
   return target < min;
+}
+
+function getAvailabilityRangeFromQuery(query = {}) {
+  const month = normalizeMonthString(query.month);
+  if (month) {
+    return getMonthRange(month);
+  }
+
+  const from = String(query.from || "").trim();
+  const to = String(query.to || "").trim();
+  if (from || to) {
+    return {
+      from: from || to,
+      to: to || from,
+      month:
+        from &&
+        to &&
+        from.slice(0, 7) === to.slice(0, 7) &&
+        normalizeMonthString(from.slice(0, 7))
+          ? from.slice(0, 7)
+          : "",
+    };
+  }
+
+  return buildDefaultRange();
+}
+
+function sendCalendarError(res, error, fallbackMessage = GENERIC_SERVER_MESSAGE) {
+  const statusCode = Number(error?.statusCode || error?.status || 500);
+  const exactMessage =
+    String(error?.message || "").trim() || String(fallbackMessage || GENERIC_SERVER_MESSAGE).trim();
+
+  console.error("[calendar]", fallbackMessage, error);
+  res.status(statusCode).json({
+    ok: false,
+    message: exactMessage,
+    error: exactMessage,
+    code: String(error?.code || "calendar_error"),
+  });
 }
 
 async function getDayCapacityMap(prestatorId, from, to) {
@@ -94,54 +143,76 @@ async function isDayCapacityFull(prestatorId, dateStr) {
 async function availabilityHandler(req, res) {
   try {
     const prestatorId = normalizePrestatorId(req.params?.prestatorId);
-    const { from, to, hideFull } = req.query;
     if (!prestatorId) {
       return res.status(400).json({ message: "prestatorId este obligatoriu" });
     }
-
-    // Query CalendarSlotEntry (after migration, this is the single source of truth)
-    const query = { prestatorId };
-    if (from && to) query.date = { $gte: from, $lte: to };
-    else if (from) query.date = { $gte: from };
-    else if (to) query.date = { $lte: to };
-
-    const entries = await CalendarSlotEntry.find(query).lean();
-    const dayCaps = await getDayCapacityMap(prestatorId, from, to);
-    const usedByDate = new Map();
-    entries.forEach((s) => {
-      const used = Number(s.used || 0);
-      usedByDate.set(s.date, (usedByDate.get(s.date) || 0) + used);
-    });
-
-    let mapped = entries.map((s) => {
-      const capacity = Number(s.capacity || 0);
-      const used = Number(s.used || 0);
-      let free = Math.max(0, capacity - used);
-      const dayCap = dayCaps.get(s.date);
-      if (dayCap != null) {
-        const usedDay = usedByDate.get(s.date) || 0;
-        if (usedDay >= Number(dayCap || 0)) free = 0;
-      }
-      return {
-        date: s.date,
-        time: s.time,
-        capacity,
-        used,
-        free,
-      };
-    });
-
-    if (String(hideFull).toLowerCase() === "true") {
-      mapped = mapped.filter(s => s.free > 0);
+    if (!(await findProviderById(prestatorId))) {
+      return res.status(404).json({
+        ok: false,
+        message: "Prestatorul selectat nu exista.",
+        error: "Prestatorul selectat nu exista.",
+      });
     }
 
-    mapped.sort((a, b) => (a.date + a.time).localeCompare(b.date + b.time));
-    res.json({ slots: mapped });
+    console.log("Provider ID:", prestatorId);
+
+    const range = getAvailabilityRangeFromQuery(req.query);
+    const data = await buildAvailabilityRange({
+      prestatorId,
+      from: range.from,
+      to: range.to,
+      hideFull: req.query?.hideFull,
+    });
+
+    console.log("Availability result:", data);
+    res.json(data);
   } catch (e) {
-    console.error(e);
-    res.status(500).json({ message: GENERIC_SERVER_MESSAGE });
+    sendCalendarError(res, e, "Nu am putut incarca disponibilitatea prestatorului.");
   }
 }
+
+router.get("/availability", async (req, res) => {
+  try {
+    const providerId = normalizePrestatorId(
+      req.query?.providerId || req.query?.prestatorId
+    );
+    const month = normalizeMonthString(req.query?.month);
+
+    if (!providerId) {
+      return res.status(400).json({
+        ok: false,
+        message: "providerId este obligatoriu.",
+        error: "providerId este obligatoriu.",
+      });
+    }
+
+    if (!month) {
+      return res.status(400).json({
+        ok: false,
+        message: "Parametrul month trebuie sa fie in format YYYY-MM.",
+        error: "Parametrul month trebuie sa fie in format YYYY-MM.",
+      });
+    }
+    if (!(await findProviderById(providerId))) {
+      return res.status(404).json({
+        ok: false,
+        message: "Prestatorul selectat nu exista.",
+        error: "Prestatorul selectat nu exista.",
+      });
+    }
+
+    console.log("Provider ID:", providerId);
+    const data = await buildAvailabilityMonth({
+      prestatorId: providerId,
+      month,
+      hideFull: req.query?.hideFull ?? true,
+    });
+    console.log("Availability result:", data);
+    res.json(data);
+  } catch (error) {
+    sendCalendarError(res, error, "Nu am putut incarca disponibilitatea lunara.");
+  }
+});
 
 // ✅ ambele rute folosesc același handler
 router.get("/availability/:prestatorId", availabilityHandler);
@@ -167,7 +238,7 @@ router.get(
       const items = await CalendarDayCapacity.find(q).lean();
       res.json({ items });
     } catch (e) {
-      res.status(500).json({ message: "Eroare la preluare capacitate." });
+      sendCalendarError(res, e, "Eroare la preluare capacitate.");
     }
   }
 );
@@ -195,7 +266,7 @@ router.post(
       );
       res.json({ ok: true, item: doc });
     } catch (e) {
-      res.status(500).json({ message: "Eroare la salvare capacitate." });
+      sendCalendarError(res, e, "Eroare la salvare capacitate.");
     }
   }
 );
@@ -241,8 +312,7 @@ router.post(
 
     res.json({ ok: true, count: upsertedCount });
   } catch (e) {
-    console.error(e);
-    res.status(500).json({ message: e.message });
+    sendCalendarError(res, e, "Eroare la salvarea sloturilor.");
   }
 }
 );
@@ -263,10 +333,11 @@ router.post(
       customDetails?
     }
 */
-router.post("/reserve", authRequired, async (req, res) => {
+async function reserveHandler(req, res) {
   try {
     const {
       clientId: requestedClientId,
+      providerId: rawProviderId,
       prestatorId: rawPrestatorId,
       date,
       time,
@@ -281,7 +352,20 @@ router.post("/reserve", authRequired, async (req, res) => {
       tortId,
       customDetails,
     } = req.body;
-    const prestatorId = normalizePrestatorId(rawPrestatorId);
+    if (
+      rawProviderId &&
+      rawPrestatorId &&
+      normalizePrestatorId(rawProviderId) !== normalizePrestatorId(rawPrestatorId)
+    ) {
+      return res.status(400).json({
+        message: "providerId si prestatorId trebuie sa indice acelasi prestator.",
+      });
+    }
+    const prestatorId = normalizePrestatorId(
+      await resolveProviderForRequest(req, rawProviderId || rawPrestatorId)
+    );
+
+    console.log("Provider ID:", prestatorId);
 
     const role = req.user?.rol || req.user?.role;
     const isStaff = isStaffRole(role);
@@ -297,7 +381,13 @@ router.post("/reserve", authRequired, async (req, res) => {
     }
     if (!prestatorId) {
       return res.status(400).json({
-        message: "prestatorId este obligatoriu pentru rezervari.",
+        message: "Nu exista niciun prestator configurat pentru rezervari.",
+      });
+    }
+    const provider = await findProviderById(prestatorId);
+    if (!provider || provider.providerProfile?.acceptsOrders === false) {
+      return res.status(400).json({
+        message: "Prestatorul selectat nu poate primi rezervari in acest moment.",
       });
     }
     if (getScopedPrestatorId(req) && rejectOutsidePrestatorScope(req, res, prestatorId)) {
@@ -378,14 +468,20 @@ router.post("/reserve", authRequired, async (req, res) => {
           clientBudget: estimatedBudget || undefined,
           requiresManualPricing: true,
         };
-    const total = 0;
+    const deliveryFee = metoda === "livrare" ? DELIVERY_FEE : 0;
+    const subtotalValue = estimatedBudget;
+    const total = subtotalValue + deliveryFee;
 
-    // 1️⃣ Atomic reservation using CalendarSlotEntry (required after migration)
-    const slotEntry = await CalendarSlotEntry.findOne({ prestatorId, date, time });
+    // Atomic reservation using CalendarSlotEntry. Materialize a generated slot when needed.
+    const { slotEntry } = await ensureSchedulableSlot({ prestatorId, date, time });
     if (!slotEntry) {
       return res.status(404).json({
         message: "Slot indisponibil. Calendarul nu este configurat pentru acest prestator.",
       });
+    }
+
+    if (Number(slotEntry.capacity || 0) <= 0) {
+      return res.status(409).json({ message: "Slotul selectat nu este disponibil." });
     }
 
     if (slotEntry.used >= slotEntry.capacity) {
@@ -394,7 +490,11 @@ router.post("/reserve", authRequired, async (req, res) => {
 
     // Atomic increment with condition: only if used < capacity
     const upd = await CalendarSlotEntry.updateOne(
-      { _id: slotEntry._id, used: { $lt: slotEntry.capacity } },
+      {
+        _id: slotEntry._id,
+        capacity: { $gt: 0 },
+        used: { $lt: slotEntry.capacity },
+      },
       { $inc: { used: 1 } }
     );
 
@@ -417,9 +517,9 @@ router.post("/reserve", authRequired, async (req, res) => {
       clientId: effectiveClientId,
       prestatorId,
       items: safeRequestedItems,
-      subtotal: 0,
-      taxaLivrare: 0,
-      deliveryFee: 0,
+      subtotal: subtotalValue,
+      taxaLivrare: deliveryFee,
+      deliveryFee,
       total,
       totalFinal: total,
       tip: "rezervare-calendar",
@@ -432,8 +532,13 @@ router.post("/reserve", authRequired, async (req, res) => {
       deliveryWindow: deliveryWindow || "",
       notesClient: notes || "",
       notesAdmin: pricingPendingNote,
+      handoffMethod: metoda === "livrare" ? "delivery" : "pickup",
+      handoffStatus: "scheduled",
+      dataLivrare: date,
+      oraLivrare: time,
       dataRezervare: date,
       oraRezervare: time,
+      calendarSlot: { date, time },
       tortId: tortId || null,
       customDetails: customRequestDetails,
       preferinte: descriere || undefined,
@@ -460,11 +565,11 @@ router.post("/reserve", authRequired, async (req, res) => {
         date,
         timeSlot,
         handoffMethod: metoda === "livrare" ? "delivery" : "pickup",
-        deliveryFee: 0,
+        deliveryFee,
         deliveryAddress: metoda === "livrare" ? adresaLivrare : undefined,
         deliveryInstructions: deliveryInstructions || "",
         deliveryWindow: deliveryWindow || "",
-        subtotal: 0,
+        subtotal: subtotalValue,
         total,
         paymentStatus: "unpaid",
         status: "pending",
@@ -498,29 +603,63 @@ router.post("/reserve", authRequired, async (req, res) => {
       mesaj: `Rezervarea ta pentru ${date} ${time} a fost inregistrata. Pretul final va fi confirmat separat.`,
       tip: "rezervare",
       link: "/profil",
+      prestatorId,
+      actorId: prestatorId,
+      actorRole: "patiser",
+      meta: {
+        rezervareId: String(doc._id),
+        comandaId: String(comanda._id),
+        handoffMethod: metoda === "livrare" ? "delivery" : "pickup",
+        deliveryFee,
+      },
+    });
+    await notifyProviderById(prestatorId, {
+      titlu: "Rezervare noua",
+      mesaj: `Ai primit o rezervare noua pentru ${date} ${time}.`,
+      tip: "rezervare",
+      link: "/admin/calendar",
+      prestatorId,
+      actorId: effectiveClientId,
+      actorRole: "client",
+      meta: {
+        rezervareId: String(doc._id),
+        comandaId: String(comanda._id),
+        handoffMethod: metoda === "livrare" ? "delivery" : "pickup",
+        deliveryFee,
+      },
     });
     await notifyAdmins({
       titlu: "Rezervare noua",
       mesaj: `Rezervare noua pentru ${date} ${time}.`,
       tip: "rezervare",
       link: "/admin/calendar",
+      prestatorId,
+      actorId: effectiveClientId,
+      actorRole: "client",
+      meta: {
+        rezervareId: String(doc._id),
+        comandaId: String(comanda._id),
+      },
     });
 
     return res.json({
       ok: true,
+      providerId: prestatorId,
       rezervareId: doc._id,
       comandaId: comanda._id,
       slot: slotInfo,
-      fees: { delivery: 0 },
+      fees: { delivery: deliveryFee },
       total,
       clientBudget: estimatedBudget,
       requiresPriceConfirmation: true,
     });
   } catch (e) {
-    console.error(e);
-    res.status(500).json({ message: GENERIC_SERVER_MESSAGE });
+    sendCalendarError(res, e, "Rezervarea calendarului a esuat.");
   }
-});
+}
+
+router.post("/book", authRequired, reserveHandler);
+router.post("/reserve", authRequired, reserveHandler);
 
 /* ================== GET rezervări admin pe o dată ================== */
 /*
@@ -533,19 +672,40 @@ router.get(
   async (req, res) => {
   try {
     const { date } = req.params;
+    const requestedPrestatorId = normalizePrestatorId(req.query?.prestatorId);
     if (!date) {
       return res.status(400).json({ message: "Data lipsă" });
     }
 
+    if (!date) {
+      return res.status(400).json({ message: "Data lipsÄƒ" });
+    }
+    if (requestedPrestatorId && rejectOutsidePrestatorScope(req, res, requestedPrestatorId)) {
+      return;
+    }
+
     const [rezervari, comenzi] = await Promise.all([
-      Rezervare.find(applyScopedPrestatorFilter(req, { date }))
+      Rezervare.find(
+        applyScopedPrestatorFilter(
+          req,
+          requestedPrestatorId ? { date, prestatorId: requestedPrestatorId } : { date }
+        )
+      )
         .sort({ timeSlot: 1 })
         .populate("comandaId")
         .lean(),
       Comanda.find(
-        applyScopedPrestatorFilter(req, {
-          $or: [{ dataLivrare: date }, { dataRezervare: date }],
-        })
+        applyScopedPrestatorFilter(
+          req,
+          requestedPrestatorId
+            ? {
+                prestatorId: requestedPrestatorId,
+                $or: [{ dataLivrare: date }, { dataRezervare: date }],
+              }
+            : {
+                $or: [{ dataLivrare: date }, { dataRezervare: date }],
+              }
+        )
       ).lean(),
     ]);
 
@@ -665,8 +825,7 @@ router.get(
 
     res.json({ rezervari: combinat });
   } catch (e) {
-    console.error(e);
-    res.status(500).json({ message: GENERIC_SERVER_MESSAGE });
+    sendCalendarError(res, e, "Eroare la incarcarea rezervarilor din calendar.");
   }
 }
 );
@@ -682,7 +841,16 @@ router.get(
   async (req, res) => {
   try {
     const { date } = req.params;
-    const rezervari = await Rezervare.find(applyScopedPrestatorFilter(req, { date }))
+    const requestedPrestatorId = normalizePrestatorId(req.query?.prestatorId);
+    if (requestedPrestatorId && rejectOutsidePrestatorScope(req, res, requestedPrestatorId)) {
+      return;
+    }
+    const rezervari = await Rezervare.find(
+      applyScopedPrestatorFilter(
+        req,
+        requestedPrestatorId ? { date, prestatorId: requestedPrestatorId } : { date }
+      )
+    )
       .sort({ timeSlot: 1 })
       .lean();
 
@@ -728,8 +896,7 @@ router.get(
     );
     res.send(csv);
   } catch (e) {
-    console.error(e);
-    res.status(500).json({ message: GENERIC_SERVER_MESSAGE });
+    sendCalendarError(res, e, "Eroare la exportul calendarului.");
   }
   }
 );

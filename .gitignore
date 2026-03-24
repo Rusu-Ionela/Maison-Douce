@@ -14,3 +14,4 @@ backups/
 *-live.err.log
 *-live.out.log
 deploy/staging/generated/
+deploy/production/generated/

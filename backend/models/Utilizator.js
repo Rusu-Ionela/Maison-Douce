@@ -1,6 +1,7 @@
 // backend/models/Utilizator.js
 const mongoose = require("mongoose");
 const bcrypt = require("bcryptjs");
+const { normalizeUserRole, isProviderRole } = require("../utils/roles");
 
 const PointsTxnSchema = new mongoose.Schema({
     type: { type: String, enum: ["earn", "spend", "adjust"], required: true },
@@ -41,6 +42,14 @@ const UtilizatorSchema = new mongoose.Schema({
         inApp: { type: Boolean, default: true },
         push: { type: Boolean, default: true },
     },
+    providerProfile: {
+        displayName: { type: String, default: "" },
+        slug: { type: String, default: "" },
+        bio: { type: String, default: "" },
+        isPublic: { type: Boolean, default: true },
+        isDefaultProvider: { type: Boolean, default: false },
+        acceptsOrders: { type: Boolean, default: true },
+    },
 
     // reset parola (token temporar)
     resetToken: { type: String, default: "" },
@@ -66,5 +75,49 @@ UtilizatorSchema.methods.comparePassword = async function comparePassword(plain)
     if (!hash) return false;
     return bcrypt.compare(plain, hash);
 };
+
+UtilizatorSchema.pre("validate", function normalizeRoleAndProviderProfile(next) {
+    this.rol = normalizeUserRole(this.rol || this.role || "client");
+
+    if (!isProviderRole(this.rol)) {
+        if (this.providerProfile && typeof this.providerProfile === "object") {
+            this.providerProfile.displayName = this.providerProfile.displayName || "";
+            this.providerProfile.slug = this.providerProfile.slug || "";
+            this.providerProfile.bio = this.providerProfile.bio || "";
+            this.providerProfile.isDefaultProvider = false;
+        }
+        return next();
+    }
+
+    const displayName =
+        String(this.providerProfile?.displayName || "").trim() ||
+        [this.nume, this.prenume].filter(Boolean).join(" ").trim() ||
+        String(this.email || "").trim();
+    const slugSource = String(
+        this.providerProfile?.slug ||
+        displayName ||
+        this.email ||
+        this._id ||
+        ""
+    )
+        .trim()
+        .toLowerCase();
+
+    this.providerProfile = {
+        displayName,
+        slug: slugSource
+            .normalize("NFKD")
+            .replace(/[^\w\s-]/g, "")
+            .trim()
+            .replace(/\s+/g, "-")
+            .replace(/-+/g, "-"),
+        bio: String(this.providerProfile?.bio || "").trim(),
+        isPublic: this.providerProfile?.isPublic !== false,
+        isDefaultProvider: Boolean(this.providerProfile?.isDefaultProvider),
+        acceptsOrders: this.providerProfile?.acceptsOrders !== false,
+    };
+
+    next();
+});
 
 module.exports = mongoose.models.Utilizator || mongoose.model("Utilizator", UtilizatorSchema);

@@ -20,6 +20,28 @@ const SMTP_FROM =
   process.env.SMTP_FROM || (SMTP_USER ? `Maison-Douce <${SMTP_USER}>` : "Maison-Douce <no-reply@localhost>");
 const MAIL_OUTBOX_DIR = path.join(__dirname, "..", ".runtime", "mail-outbox");
 
+function normalizeId(value) {
+  return String(value || "").trim();
+}
+
+function buildNotificationDocument(userId, payload = {}) {
+  const meta =
+    payload.meta && typeof payload.meta === "object" ? payload.meta : undefined;
+
+  return {
+    userId,
+    titlu: payload.titlu || "",
+    mesaj: payload.mesaj || "",
+    tip: payload.tip || "info",
+    link: payload.link || "",
+    canal: "inapp",
+    prestatorId: normalizeId(payload.prestatorId),
+    actorId: normalizeId(payload.actorId),
+    actorRole: String(payload.actorRole || "").trim(),
+    meta,
+  };
+}
+
 function getTransport() {
   if (!hasEmailTransportConfig()) return null;
   if (SMTP_HOST) {
@@ -111,14 +133,7 @@ async function notifyUser(userId, payload) {
 
     let notif = null;
     if (inAppEnabled) {
-      notif = await Notificare.create({
-        userId,
-        titlu: payload.titlu || "",
-        mesaj: payload.mesaj || "",
-        tip: payload.tip || "info",
-        link: payload.link || "",
-        canal: "inapp",
-      });
+      notif = await Notificare.create(buildNotificationDocument(userId, payload));
     }
 
     if (emailEnabled && user.email) {
@@ -161,9 +176,19 @@ async function notifyAdmins(payload) {
   }
 }
 
+async function notifyProviderById(prestatorId, payload = {}) {
+  const providerUserId = normalizeId(prestatorId);
+  if (!providerUserId) return null;
+  return notifyUser(providerUserId, {
+    ...payload,
+    prestatorId: payload.prestatorId || providerUserId,
+  });
+}
+
 module.exports = {
   hasEmailConfig: hasEmailTransportConfig,
   notifyUser,
   notifyAdmins,
+  notifyProviderById,
   sendEmail,
 };
