@@ -6,14 +6,11 @@ import { OrdersAPI } from "../api/orders";
 import { getAvailability } from "../api/calendar";
 import SlotPicker from "../components/SlotPicker";
 import StatusBanner from "../components/StatusBanner";
+import ProviderSelector from "../components/ProviderSelector";
 import api from "/src/lib/api.js";
 import { buttons, cards, inputs, containers } from "/src/lib/tailwindComponents.js";
-import {
-  getConfiguredPrestatorId,
-  getPrestatorEnvWarningMessage,
-  hasPrestatorEnvConfig,
-} from "../lib/runtimeConfig";
 import { formatDateInput, parseDateInput } from "../lib/date";
+import { useProviderDirectory } from "../lib/providers";
 
 function buildStatus(type, message, title = "") {
   return { type, message, title };
@@ -41,7 +38,8 @@ export default function Cart() {
   const [checkoutStatus, setCheckoutStatus] = useState(buildStatus("", "", ""));
 
   const LIVRARE_FEE = 100;
-  const prestatorId = getConfiguredPrestatorId();
+  const providerState = useProviderDirectory({ user });
+  const prestatorId = providerState.activeProviderId;
 
   const addressOptions = useMemo(() => {
     const options = [];
@@ -194,7 +192,12 @@ export default function Cart() {
     }
     if (!prestatorId) {
       setCheckoutStatus(
-        buildStatus("error", getPrestatorEnvWarningMessage(), "Configurare lipsa")
+        buildStatus(
+          "error",
+          providerState.error ||
+            "Alege un prestator valid inainte de a continua checkout-ul.",
+          "Prestator lipsa"
+        )
       );
       return false;
     }
@@ -306,7 +309,7 @@ export default function Cart() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-rose-50 via-pink-50 to-white">
+    <div className="min-h-screen">
       <div className={`${containers.pageMax} space-y-6`}>
         <div className="flex items-center justify-between">
           <div>
@@ -324,9 +327,13 @@ export default function Cart() {
           message={checkoutStatus.message}
         />
         <StatusBanner
-          type="warning"
-          title="Configurare calendar"
-          message={!hasPrestatorEnvConfig() ? getPrestatorEnvWarningMessage() : ""}
+          type="error"
+          title="Prestator indisponibil"
+          message={
+            !providerState.loading && !prestatorId
+              ? providerState.error || "Nu exista prestatori publici disponibili pentru checkout."
+              : ""
+          }
         />
 
         {!items.length && (
@@ -346,7 +353,7 @@ export default function Cart() {
                   key={`${it.id}_${it.variantKey || ""}`}
                   className={`${cards.default} flex items-center gap-4`}
                 >
-                  <div className="flex h-16 w-16 items-center justify-center overflow-hidden rounded-xl bg-rose-50">
+                  <div className="flex h-16 w-16 items-center justify-center overflow-hidden rounded-xl bg-[rgba(255,249,242,0.88)]">
                     <img
                       src={it.image || "/images/placeholder.svg"}
                       alt={it.name}
@@ -392,6 +399,25 @@ export default function Cart() {
 
             <aside className={cards.elevated}>
               <h3 className="mb-3 text-xl font-semibold text-gray-900">Rezumat</h3>
+
+              <div className="mb-4">
+                <ProviderSelector
+                  providers={providerState.providers}
+                  value={prestatorId}
+                  onChange={(nextProviderId) => {
+                    providerState.setSelectedProviderId(nextProviderId);
+                    setTime("");
+                    setCheckoutStatus(buildStatus("", "", ""));
+                  }}
+                  loading={providerState.loading}
+                  disabled={!providerState.canChooseProvider}
+                  helpText={
+                    providerState.activeProvider
+                      ? `Comanda se programeaza pentru ${providerState.activeProvider.displayName}.`
+                      : "Selecteaza prestatorul pentru care vrei sa vezi sloturile."
+                  }
+                />
+              </div>
 
               <label className="mb-2 block text-sm font-semibold text-gray-700">
                 Data livrare
@@ -486,7 +512,7 @@ export default function Cart() {
                       </div>
                     )}
                     {addressMode === "saved" && selectedAddressIdx !== "" ? (
-                      <div className="rounded-lg border bg-gray-50 p-2 text-sm text-gray-600">
+                      <div className="rounded-lg border border-rose-100 bg-[rgba(255,249,242,0.88)] p-2 text-sm text-gray-600">
                         {adresa || "Selecteaza o adresa salvata."}
                       </div>
                     ) : (

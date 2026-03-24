@@ -1,4 +1,6 @@
-const STAFF_ROLES = ["admin", "patiser", "prestator"];
+import { normalizeRole } from "./roles";
+
+const STAFF_ROLES = ["admin", "patiser"];
 const ADMIN_ROLES = ["admin"];
 
 export const SITE_SECTIONS = [
@@ -13,7 +15,7 @@ export const SITE_SECTIONS = [
       { label: "Constructor", to: "/constructor" },
       { label: "Personalizeaza", to: "/personalizeaza" },
       { label: "Desen tort", to: "/desen-tort" },
-      { label: "Designer AI", to: "/designer-ai" },
+      { label: "Designer AI", to: "/designer-ai", requiresAuth: true },
       { label: "Tort Designer", to: "/tort-designer" },
       { label: "Patiser Drawing", to: "/patiser-drawing" },
       { label: "Detalii tort", to: "/catalog", matchPrefix: "/tort/", hidden: true },
@@ -60,7 +62,7 @@ export const SITE_SECTIONS = [
       { label: "Chat history", to: "/chat/history", roles: STAFF_ROLES, note: "patiser/admin" },
       { label: "Chat utilizatori", to: "/chat/utilizatori", roles: STAFF_ROLES, note: "patiser/admin" },
       { label: "Chat mesaj", to: "/chat/mesaj", requiresAuth: true },
-      { label: "Calendar prestator", to: "/prestator/calendar", requiresAuth: true },
+      { label: "Calendar prestator", to: "/prestator/calendar", roles: STAFF_ROLES },
       { label: "Profil", to: "/profil", requiresAuth: true },
       { label: "Fidelizare", to: "/fidelizare", requiresAuth: true },
       {
@@ -103,6 +105,7 @@ export const SITE_SECTIONS = [
       { label: "Monitoring", to: "/admin/monitoring", roles: ADMIN_ROLES },
       { label: "Abonamente", to: "/admin/abonamente", roles: STAFF_ROLES },
       { label: "Productie", to: "/admin/production", roles: STAFF_ROLES },
+      { label: "Retete laborator", to: "/admin/retete", roles: STAFF_ROLES },
       { label: "Contabilitate stoc", to: "/admin/contabilitate", roles: STAFF_ROLES },
       { label: "Umpluturi", to: "/admin/umpluturi", roles: STAFF_ROLES },
       { label: "Albume admin", to: "/admin/albume", roles: STAFF_ROLES },
@@ -137,6 +140,7 @@ export const TOP_NAV_LINKS = [
   { label: "Fidelizare", to: "/fidelizare", requiresAuth: true },
   { label: "Admin", to: "/admin", roles: STAFF_ROLES },
   { label: "Productie", to: "/admin/production", roles: STAFF_ROLES },
+  { label: "Retete", to: "/admin/retete", roles: STAFF_ROLES },
   { label: "Stoc studio", to: "/admin/contabilitate", roles: STAFF_ROLES },
   { label: "Umpluturi", to: "/admin/umpluturi", roles: STAFF_ROLES },
   { label: "Mesaje", to: "/admin/contact", roles: STAFF_ROLES },
@@ -146,15 +150,19 @@ export const TOP_NAV_LINKS = [
 const CONTEXT_BRIDGES = [
   {
     matchPrefix: "/admin/contabilitate",
-    targets: ["/admin/umpluturi", "/admin/production", "/admin/notificari", "/admin/comenzi"],
+    targets: ["/admin/umpluturi", "/admin/production", "/admin/retete", "/admin/notificari", "/admin/comenzi"],
   },
   {
     matchPrefix: "/admin/umpluturi",
-    targets: ["/admin/contabilitate", "/admin/production", "/admin/comenzi", "/admin/notificari"],
+    targets: ["/admin/contabilitate", "/admin/production", "/admin/retete", "/admin/comenzi", "/admin/notificari"],
   },
   {
     matchPrefix: "/admin/production",
-    targets: ["/admin/comenzi", "/admin/contabilitate", "/admin/umpluturi", "/admin/notificari"],
+    targets: ["/admin/comenzi", "/admin/contabilitate", "/admin/umpluturi", "/admin/retete", "/admin/notificari"],
+  },
+  {
+    matchPrefix: "/admin/retete",
+    targets: ["/admin/production", "/admin/contabilitate", "/admin/umpluturi", "/admin/comenzi"],
   },
   {
     matchPrefix: "/cart",
@@ -175,7 +183,7 @@ const CONTEXT_BRIDGES = [
 ];
 
 function getRole(user) {
-  return String(user?.rol || user?.role || "");
+  return normalizeRole(user?.rol || user?.role || "");
 }
 
 export function canAccessLink(item, user) {

@@ -2,6 +2,7 @@ import { createContext, useContext, useEffect, useState } from "react";
 import api from "/src/lib/api.js";
 import { authStorage } from "/src/lib/authStorage.js";
 import { appLogger } from "/src/lib/appLogger.js";
+import { normalizeRole } from "../lib/roles";
 
 const AuthContext = createContext(null);
 
@@ -9,6 +10,8 @@ function normalizeUser(user) {
   if (!user) return null;
   const normalized = { ...user };
   if (normalized.id && !normalized._id) normalized._id = normalized.id;
+  normalized.rol = normalizeRole(normalized.rol || normalized.role);
+  normalized.role = normalized.rol;
   return normalized;
 }
 

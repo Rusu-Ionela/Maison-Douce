@@ -26,7 +26,7 @@ export default function SlotPicker({ slots, date, value, onChange }) {
 
   if (!date) {
     return (
-      <div className="rounded-2xl border border-dashed border-rose-200 bg-white/80 px-4 py-5 text-sm text-gray-500">
+      <div className="rounded-[24px] border border-dashed border-rose-200 bg-ivory/80 px-4 py-5 text-sm text-[#6e665d]">
         Selecteaza mai intai o data pentru a vedea intervalele disponibile.
       </div>
     );
@@ -34,7 +34,7 @@ export default function SlotPicker({ slots, date, value, onChange }) {
 
   if (daySlots.length === 0) {
     return (
-      <div className="rounded-2xl border border-dashed border-rose-200 bg-white/80 px-4 py-5 text-sm text-gray-500">
+      <div className="rounded-[24px] border border-dashed border-rose-200 bg-ivory/80 px-4 py-5 text-sm text-[#6e665d]">
         Nu exista intervale disponibile pentru aceasta zi.
       </div>
     );
@@ -54,19 +54,19 @@ export default function SlotPicker({ slots, date, value, onChange }) {
             onClick={() => !disabled && onChange?.(slot.time)}
             title={disabled ? "Interval ocupat" : `${slot.free} locuri disponibile`}
             className={[
-              "rounded-2xl border px-3 py-3 text-left shadow-soft",
+              "rounded-[22px] border px-3 py-3 text-left shadow-soft transition duration-200",
               selected
-                ? "border-pink-400 bg-pink-600 text-white"
-                : "border-rose-200 bg-white text-gray-800",
+                ? "border-pink-500 bg-charcoal text-white"
+                : "border-rose-200 bg-[rgba(255,253,248,0.94)] text-ink",
               disabled
                 ? "cursor-not-allowed opacity-55"
-                : "hover:-translate-y-0.5 hover:border-pink-300 hover:bg-rose-50",
+                : "hover:-translate-y-0.5 hover:border-sage-deep/50 hover:bg-white",
             ].join(" ")}
           >
             <div className="text-base font-semibold">{slot.time}</div>
             <div
               className={`mt-1 text-xs font-medium ${
-                selected ? "text-pink-50" : disabled ? "text-gray-500" : "text-pink-700"
+                selected ? "text-rose-100" : disabled ? "text-[#8a8178]" : "text-pink-600"
               }`}
             >
               {getSlotCountLabel(slot)}

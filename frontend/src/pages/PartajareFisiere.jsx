@@ -2,11 +2,11 @@ import { useState } from "react";
 import { Link } from "react-router-dom";
 import api from "/src/lib/api.js";
 import { useAuth } from "../context/AuthContext";
+import { isStaffRole } from "../lib/roles";
 
 export default function PartajareFisiere() {
   const { user } = useAuth() || {};
-  const role = user?.rol || user?.role;
-  const isAdmin = role === "admin" || role === "patiser";
+  const isAdmin = isStaffRole(user?.rol || user?.role);
 
   const [files, setFiles] = useState([]);
   const [utilizatorId, setUtilizatorId] = useState("");

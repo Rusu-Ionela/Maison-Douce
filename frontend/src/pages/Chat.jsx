@@ -1,7 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import api from "/src/lib/api.js";
 import { getSocket } from "/src/lib/socket.js";
+import ProviderSelector from "../components/ProviderSelector";
 import { useAuth } from "../context/AuthContext";
+import { buildConversationRoom, useProviderDirectory } from "../lib/providers";
 import { buttons, cards, inputs } from "../lib/tailwindComponents";
 
 function messageTimestamp(message) {
@@ -101,9 +103,10 @@ export default function Chat() {
   const { user } = useAuth() || {};
   const currentUserId = String(user?._id || user?.id || "");
   const currentUserName = user?.nume || user?.name || "Client";
+  const providerState = useProviderDirectory({ user });
   const roomId = useMemo(
-    () => `user-${currentUserId || "anon"}`,
-    [currentUserId]
+    () => buildConversationRoom(currentUserId, providerState.activeProviderId),
+    [currentUserId, providerState.activeProviderId]
   );
 
   const socketRef = useRef(null);
@@ -130,6 +133,12 @@ export default function Chat() {
     let mounted = true;
 
     async function loadHistory({ silent = false } = {}) {
+      if (!roomId) {
+        setMessages([]);
+        setLoading(false);
+        setRefreshing(false);
+        return;
+      }
       if (silent) {
         setRefreshing(true);
       } else {
@@ -291,8 +300,8 @@ export default function Chat() {
   const canSend = Boolean(text.trim() || file) && !sending && !uploading;
 
   return (
-    <div className="mx-auto max-w-5xl space-y-6 px-4 py-8 sm:px-6">
-      <section className={`${cards.elevated} space-y-5`}>
+    <div className="mx-auto max-w-editorial space-y-6 px-4 py-8 sm:px-6">
+      <section className={`${cards.tinted} space-y-5`}>
         <div className="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
           <div className="max-w-3xl">
             <div className="text-xs font-semibold uppercase tracking-[0.24em] text-pink-500">
@@ -307,6 +316,21 @@ export default function Chat() {
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-3">
+            <div className="min-w-[260px]">
+              <ProviderSelector
+                providers={providerState.providers}
+                value={providerState.activeProviderId}
+                onChange={providerState.setSelectedProviderId}
+                loading={providerState.loading}
+                disabled={!providerState.canChooseProvider}
+                label="Conversatie cu"
+                helpText={
+                  providerState.activeProvider
+                    ? `Mesajele sunt trimise catre ${providerState.activeProvider.displayName}.`
+                    : "Selecteaza prestatorul cu care vrei sa discuti."
+                }
+              />
+            </div>
             <span
               className={`inline-flex rounded-full border px-3 py-1 text-sm font-semibold ${connectionClass(socketState)}`}
             >
@@ -344,18 +368,18 @@ export default function Chat() {
           {stats.map((item) => (
             <article
               key={item.label}
-              className="rounded-[24px] border border-rose-100 bg-rose-50/70 p-4"
+              className="rounded-[24px] border border-rose-100 bg-white/75 p-4 shadow-soft"
             >
               <div className="text-sm font-medium text-pink-700">{item.label}</div>
               <div className="mt-2 text-2xl font-semibold text-gray-900">{item.value}</div>
-              <div className="mt-2 text-sm text-gray-600">{item.hint}</div>
+              <div className="mt-2 text-sm text-[#655c53]">{item.hint}</div>
             </article>
           ))}
         </div>
 
         {notice.message ? (
           <div
-            className={`rounded-[20px] border px-4 py-3 text-sm ${
+            className={`rounded-[24px] border px-4 py-3 text-sm shadow-soft ${
               notice.type === "error"
                 ? "border-red-200 bg-red-50 text-red-700"
                 : notice.type === "warning"
@@ -364,6 +388,12 @@ export default function Chat() {
             }`}
           >
             {notice.message}
+          </div>
+        ) : null}
+        {!providerState.loading && !providerState.activeProviderId ? (
+          <div className="rounded-[20px] border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-700">
+            {providerState.error ||
+              "Nu exista un prestator selectat pentru aceasta conversatie."}
           </div>
         ) : null}
       </section>
@@ -376,16 +406,27 @@ export default function Chat() {
               Vezi toate mesajele si fisierele schimbate cu echipa.
             </p>
           </div>
-          <div className="text-sm text-gray-500">{roomId}</div>
+          <div className="text-sm text-gray-500">
+            {providerState.activeProvider
+              ? providerState.activeProvider.displayName
+              : roomId || "Fara room activ"}
+          </div>
         </div>
 
         <div
           ref={scrollRef}
-          className="max-h-[28rem] min-h-[22rem] space-y-3 overflow-y-auto rounded-[24px] border border-rose-100 bg-[linear-gradient(180deg,_rgba(255,250,242,0.92),_rgba(255,255,255,0.98))] p-4"
+          className="max-h-[28rem] min-h-[22rem] space-y-3 overflow-y-auto rounded-[24px] border border-rose-100 bg-[linear-gradient(180deg,_rgba(255,252,247,0.94),_rgba(246,239,228,0.92))] p-4"
         >
           {loading ? (
             <div className="flex h-full items-center justify-center text-sm text-gray-500">
               Se incarca istoricul...
+            </div>
+          ) : !roomId ? (
+            <div className="flex h-full flex-col items-center justify-center rounded-[20px] border border-dashed border-rose-200 bg-white/80 px-6 text-center text-sm text-gray-500">
+              <div className="font-semibold text-gray-900">Alege prestatorul.</div>
+              <div className="mt-2">
+                Dupa selectare, istoricul conversatiei va fi incarcat automat.
+              </div>
             </div>
           ) : messages.length ? (
             messages.map((message) => (
@@ -433,7 +474,7 @@ export default function Chat() {
             </div>
           </div>
 
-          <div className="space-y-3 rounded-[24px] border border-rose-100 bg-rose-50/60 p-4">
+          <div className="space-y-3 rounded-[24px] border border-rose-100 bg-[rgba(255,249,242,0.88)] p-4">
             <label className="block text-sm font-semibold text-gray-900">
               Atasament
               <input

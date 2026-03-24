@@ -1,108 +1,204 @@
-/* src/styles/tokens.css */
 :root {
-    /* Pastel Ladurée */
-    --cream: #fffaf2;
-    /* fundal cald */
-    --paper: #f8f3e9;
-    /* carduri */
-    --mint: #dce8d6;
-    /* verde-salvie pal pentru active */
-    --mint-deep: #c4d7c2;
-    /* hover pe active */
-    --rose: #f7e6ea;
-    /* accente roz pudrat */
-    --ink: #2d2a26;
-    /* text */
-    --gold: #c8b37c;
-    /* borduri fine */
-    --chip: #fff7ef;
-    /* pastilă nav */
-    --chip-border: #eadfcd;
-
-    --radius-xxl: 28px;
-    --radius-xl: 20px;
-    --radius-lg: 16px;
-    --shadow-soft: 0 12px 28px rgba(0, 0, 0, .06);
-
-    --font-serif: "Playfair Display", serif;
-    --font-sans: Inter, system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
-    --font-script: "Parisienne", cursive;
+  --bg-cream: #f7f1e6;
+  --bg-paper: #fbf7ef;
+  --bg-surface: rgba(255, 251, 245, 0.92);
+  --bg-surface-strong: rgba(255, 253, 248, 0.97);
+  --bg-sage: #cdd8c7;
+  --bg-sage-deep: #9daa98;
+  --accent-burgundy: #6e3f49;
+  --accent-burgundy-deep: #57303a;
+  --accent-gold: #b89b67;
+  --text-ink: #2f2924;
+  --text-muted: #665d54;
+  --text-soft: #8a8178;
+  --line-soft: rgba(104, 83, 61, 0.14);
+  --line-strong: rgba(93, 62, 46, 0.24);
+  --shadow-soft: 0 16px 40px rgba(78, 58, 46, 0.08);
+  --shadow-card: 0 28px 64px rgba(64, 49, 39, 0.12);
+  --shadow-floating: 0 34px 80px rgba(58, 42, 34, 0.16);
+  --radius-lg: 1.125rem;
+  --radius-xl: 1.5rem;
+  --radius-2xl: 2rem;
+  --space-page: clamp(1.25rem, 2vw, 2rem);
+  --font-serif: "Cormorant Garamond", Georgia, serif;
+  --font-sans: Inter, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --font-script: "Allura", cursive;
 }
 
 * {
-    box-sizing: border-box
+  box-sizing: border-box;
 }
 
 html,
 body,
 #root {
-    height: 100%
+  min-height: 100%;
 }
 
 body {
-    margin: 0;
-    font-family: var(--font-sans);
-    color: var(--ink);
-    background: var(--cream);
-    line-height: 1.6;
+  margin: 0;
+  font-family: var(--font-sans);
+  color: var(--text-ink);
+  background: var(--bg-cream);
+  line-height: 1.6;
 }
 
 a {
-    color: inherit;
-    text-decoration: none
+  color: inherit;
+  text-decoration: none;
 }
 
-/* utilitare scurte */
 .container {
-    max-width: 1180px;
-    margin: 0 auto;
-    padding: 0 16px
+  width: min(100% - 2rem, 80rem);
+  margin-inline: auto;
+}
+
+.page-shell {
+  position: relative;
+  isolation: isolate;
+}
+
+.page-shell::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: -2;
+  background:
+    radial-gradient(circle at top left, rgba(255, 255, 255, 0.96), rgba(250, 245, 236, 0.94) 28%, rgba(231, 237, 228, 0.88) 100%),
+    linear-gradient(180deg, rgba(247, 241, 230, 0.98), rgba(252, 248, 241, 0.96));
+}
+
+.page-shell::after {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background-image:
+    linear-gradient(rgba(255, 255, 255, 0.06) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.06) 1px, transparent 1px);
+  background-size: 72px 72px;
+  mask-image: radial-gradient(circle at center, black 40%, transparent 90%);
+  opacity: 0.24;
+}
+
+.eyebrow {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.65rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.32em;
+  text-transform: uppercase;
+  color: var(--accent-burgundy);
+}
+
+.eyebrow::before {
+  content: "";
+  width: 2.5rem;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, var(--accent-gold));
+}
+
+.editorial-title {
+  margin: 0;
+  font-family: var(--font-serif);
+  font-size: clamp(2.8rem, 5vw, 5rem);
+  line-height: 0.95;
+  font-weight: 600;
+  letter-spacing: -0.03em;
+  color: var(--text-ink);
+}
+
+.section-title {
+  margin: 0;
+  font-family: var(--font-serif);
+  font-size: clamp(2rem, 3vw, 3.25rem);
+  line-height: 1;
+  font-weight: 600;
+  color: var(--text-ink);
+}
+
+.section-subtitle {
+  max-width: 44rem;
+  color: var(--text-muted);
+  font-size: 1rem;
+  line-height: 1.8;
+}
+
+.lux-panel {
+  border: 1px solid var(--line-soft);
+  background: var(--bg-surface);
+  border-radius: var(--radius-2xl);
+  box-shadow: var(--shadow-soft);
+  backdrop-filter: blur(18px);
+}
+
+.lux-divider {
+  height: 1px;
+  width: 100%;
+  background: linear-gradient(90deg, transparent, rgba(184, 155, 103, 0.55), transparent);
 }
 
 .btn {
-    display: inline-flex;
-    align-items: center;
-    gap: 10px;
-    padding: 12px 20px;
-    border-radius: 999px;
-    background: #fff;
-    border: 1px solid var(--chip-border);
-    color: var(--ink);
-    box-shadow: var(--shadow-soft);
-    font-weight: 500;
-    transition: .2s transform;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.65rem;
+  min-height: 2.875rem;
+  padding: 0.75rem 1.25rem;
+  border-radius: 999px;
+  font-size: 0.95rem;
+  font-weight: 600;
+  border: 1px solid transparent;
+  transition:
+    transform 180ms ease,
+    box-shadow 180ms ease,
+    background-color 180ms ease,
+    color 180ms ease,
+    border-color 180ms ease;
 }
 
 .btn:hover {
-    transform: translateY(-1px)
+  transform: translateY(-1px);
 }
 
-.btn--mint {
-    background: var(--mint);
-    border-color: var(--gold)
+.btn--primary {
+  color: #fffaf5;
+  background: linear-gradient(180deg, var(--accent-burgundy), var(--accent-burgundy-deep));
+  box-shadow: var(--shadow-soft);
 }
 
-.btn--mint:hover {
-    background: var(--mint-deep)
+.btn--secondary {
+  color: var(--text-ink);
+  background: rgba(205, 216, 199, 0.72);
+  border-color: rgba(157, 170, 152, 0.4);
 }
 
-/* reveal cu respect pt. prefers-reduced-motion */
+.btn--outline {
+  color: var(--accent-burgundy);
+  background: rgba(255, 251, 245, 0.78);
+  border-color: var(--line-soft);
+}
+
 .reveal {
-    opacity: 0;
-    transform: translateY(18px);
-    transition: .8s ease
+  opacity: 0;
+  transform: translateY(18px);
+  transition:
+    opacity 620ms ease,
+    transform 620ms ease;
 }
 
 .reveal.show {
-    opacity: 1;
-    transform: none
+  opacity: 1;
+  transform: none;
 }
 
 @media (prefers-reduced-motion: reduce) {
-
-    .reveal,
-    .reveal.show {
-        opacity: 1;
-        transform: none
-    }
+  .reveal,
+  .reveal.show {
+    opacity: 1;
+    transform: none;
+    transition: none;
+  }
 }

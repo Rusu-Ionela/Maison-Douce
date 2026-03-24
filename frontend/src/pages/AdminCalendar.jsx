@@ -1,13 +1,11 @@
 // frontend/src/pages/AdminCalendar.jsx
 import React, { useEffect, useState } from "react";
 import StatusBanner from "../components/StatusBanner";
+import ProviderSelector from "../components/ProviderSelector";
 import api from "../lib/api.js";
-import {
-  getConfiguredPrestatorId,
-  getPrestatorEnvWarningMessage,
-  hasPrestatorEnvConfig,
-} from "../lib/runtimeConfig";
 import { formatDateInput, parseDateInput } from "../lib/date";
+import { useAuth } from "../context/AuthContext";
+import { useProviderDirectory } from "../lib/providers";
 import { buttons, inputs, cards, badges } from "../lib/tailwindComponents";
 
 function extractFilename(contentDisposition, fallback) {
@@ -20,6 +18,7 @@ function extractFilename(contentDisposition, fallback) {
 }
 
 export default function AdminCalendar() {
+  const { user } = useAuth() || {};
   const [selectedDate, setSelectedDate] = useState(new Date());
   const [reservations, setReservations] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -30,7 +29,8 @@ export default function AdminCalendar() {
   const [dayCapacity, setDayCapacity] = useState("");
   const [savingCapacity, setSavingCapacity] = useState(false);
 
-  const prestatorId = getConfiguredPrestatorId();
+  const providerState = useProviderDirectory({ user });
+  const prestatorId = providerState.activeProviderId;
   const dateStr = formatDateInput(selectedDate);
 
   useEffect(() => {
@@ -48,7 +48,9 @@ export default function AdminCalendar() {
           api.get(`/calendar/availability/${prestatorId}`, {
             params: { from: dateStr, to: dateStr },
           }),
-          api.get(`/calendar/admin/${dateStr}`),
+          api.get(`/calendar/admin/${dateStr}`, {
+            params: { prestatorId },
+          }),
           api.get(`/calendar/day-capacity/${prestatorId}`, {
             params: { from: dateStr, to: dateStr },
           }),
@@ -80,7 +82,9 @@ export default function AdminCalendar() {
   const addTimeSlot = async () => {
     try {
       if (!prestatorId) {
-        setError(getPrestatorEnvWarningMessage());
+        setError(
+          providerState.error || "Selecteaza un prestator pentru a configura calendarul."
+        );
         return;
       }
       if (!newSlotTime) {
@@ -104,7 +108,9 @@ export default function AdminCalendar() {
   const blockSlot = async (time) => {
     try {
       if (!prestatorId) {
-        setError(getPrestatorEnvWarningMessage());
+        setError(
+          providerState.error || "Selecteaza un prestator pentru a configura calendarul."
+        );
         return;
       }
       await api.post(`/calendar/availability/${prestatorId}`, {
@@ -122,7 +128,9 @@ export default function AdminCalendar() {
     setSavingCapacity(true);
     try {
       if (!prestatorId) {
-        setError(getPrestatorEnvWarningMessage());
+        setError(
+          providerState.error || "Selecteaza un prestator pentru a configura calendarul."
+        );
         return;
       }
       await api.post(`/calendar/day-capacity/${prestatorId}`, {
@@ -140,7 +148,9 @@ export default function AdminCalendar() {
   const updateReservationStatus = async (id, status) => {
     try {
       await api.patch(`/rezervari/${id}/status`, { status });
-      const res = await api.get(`/calendar/admin/${dateStr}`);
+      const res = await api.get(`/calendar/admin/${dateStr}`, {
+        params: { prestatorId },
+      });
       const rez = res.data?.rezervari || res.data || [];
       setReservations(rez);
     } catch (err) {
@@ -152,6 +162,7 @@ export default function AdminCalendar() {
   const onExport = async () => {
     try {
       const res = await api.get(`/calendar/admin/${dateStr}/export`, {
+        params: { prestatorId },
         responseType: "blob",
       });
       const blob = new Blob([res.data], {
@@ -181,6 +192,20 @@ export default function AdminCalendar() {
           <h1 className="text-4xl font-bold text-gray-900 mb-6">Calendar Admin</h1>
 
           <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-center">
+            <div className="min-w-[260px]">
+              <ProviderSelector
+                providers={providerState.providers}
+                value={prestatorId}
+                onChange={providerState.setSelectedProviderId}
+                loading={providerState.loading}
+                disabled={!providerState.canChooseProvider}
+                helpText={
+                  providerState.activeProvider
+                    ? `Afisezi calendarul pentru ${providerState.activeProvider.displayName}.`
+                    : "Selecteaza prestatorul pentru care administrezi calendarul."
+                }
+              />
+            </div>
             <div>
               <label className="block text-sm font-semibold text-gray-700 mb-2">Selecteaza data</label>
               <input
@@ -249,9 +274,13 @@ export default function AdminCalendar() {
           </div>
         )}
         <StatusBanner
-          type="warning"
-          title="Configurare calendar"
-          message={!hasPrestatorEnvConfig() ? getPrestatorEnvWarningMessage() : ""}
+          type="error"
+          title="Prestator indisponibil"
+          message={
+            !providerState.loading && !prestatorId
+              ? providerState.error || "Nu exista prestatori disponibili pentru administrare."
+              : ""
+          }
           className="mb-6"
         />
 

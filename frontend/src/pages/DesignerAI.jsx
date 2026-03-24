@@ -1,99 +1,388 @@
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import api from "/src/lib/api.js";
+import ProviderSelector from "../components/ProviderSelector";
+import { useAuth } from "../context/AuthContext";
+import { useProviderDirectory } from "../lib/providers";
+import { buttons, cards, inputs } from "../lib/tailwindComponents";
 
-const PALETTE = ["#f7c9d4", "#f6e3cc", "#d9e7c6", "#e6d8f5", "#f2d4e7"];
+const PROMPT_EXAMPLES = [
+  "tort elegant cu doua etaje, flori albe si accente aurii",
+  "mini deserturi pastel pentru candy bar de botez",
+  "tort modern cu capsuni, crema vanilie si macarons roz",
+];
 
-function escapeXml(value) {
-  return String(value || "")
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&apos;");
-}
-
-function buildPreviewSvg(prompt) {
-  const accent = PALETTE[Math.floor(Math.random() * PALETTE.length)];
-  const text = escapeXml(String(prompt || "tort personalizat").slice(0, 80));
-  const svg = `
-    <svg xmlns="http://www.w3.org/2000/svg" width="480" height="320" viewBox="0 0 480 320">
-      <defs>
-        <linearGradient id="g1" x1="0" x2="1" y1="0" y2="1">
-          <stop offset="0%" stop-color="${accent}" />
-          <stop offset="100%" stop-color="#ffffff" />
-        </linearGradient>
-      </defs>
-      <rect width="480" height="320" fill="#fffaf7"/>
-      <rect x="90" y="70" width="300" height="60" rx="18" fill="url(#g1)" stroke="#e7c2cf"/>
-      <rect x="110" y="140" width="260" height="50" rx="16" fill="#f7e7f0" stroke="#e7c2cf"/>
-      <rect x="130" y="195" width="220" height="45" rx="14" fill="${accent}" stroke="#e7c2cf"/>
-      <circle cx="240" cy="55" r="18" fill="${accent}" stroke="#e7c2cf"/>
-      <text x="240" y="290" text-anchor="middle" font-size="14" fill="#6b7280" font-family="Georgia, serif">
-        ${text}
-      </text>
-    </svg>
-  `;
-  return `data:image/svg+xml;utf8,${encodeURIComponent(svg)}`;
+function formatDateTime(value) {
+  const date = new Date(value || Date.now());
+  if (Number.isNaN(date.getTime())) return "-";
+  return date.toLocaleString("ro-RO", {
+    day: "2-digit",
+    month: "short",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
 }
 
 export default function DesignerAI() {
+  const { user, isAuthenticated } = useAuth() || {};
+  const providerState = useProviderDirectory({ user });
   const [prompt, setPrompt] = useState(
     "tort 2 etaje, crema vanilie, decor trandafiri roz"
   );
-  const [img, setImg] = useState("");
+  const [result, setResult] = useState(null);
+  const [history, setHistory] = useState([]);
   const [loading, setLoading] = useState(false);
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const [notice, setNotice] = useState({ type: "", message: "" });
 
-  const [source, setSource] = useState("");
+  const activeProviderId = providerState.activeProviderId;
+  const activeProviderName =
+    providerState.activeProvider?.displayName || "prestatorul selectat";
+
+  useEffect(() => {
+    if (!isAuthenticated || !activeProviderId) {
+      setHistory([]);
+      return;
+    }
+
+    let cancelled = false;
+    setHistoryLoading(true);
+
+    api
+      .get("/ai/history", {
+        params: { prestatorId: activeProviderId },
+      })
+      .then((response) => {
+        if (cancelled) return;
+        setHistory(Array.isArray(response.data?.items) ? response.data.items : []);
+      })
+      .catch((error) => {
+        if (cancelled) return;
+        setNotice({
+          type: "error",
+          message:
+            error?.response?.data?.message || "Nu am putut incarca istoricul AI.",
+        });
+      })
+      .finally(() => {
+        if (!cancelled) setHistoryLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [activeProviderId, isAuthenticated]);
+
+  const metrics = useMemo(
+    () => [
+      {
+        label: "Prestator activ",
+        value: providerState.activeProvider ? activeProviderName : "-",
+        hint: "Preview-ul si istoricul sunt legate de prestatorul selectat.",
+      },
+      {
+        label: "Istoric AI",
+        value: history.length,
+        hint: "Ultimele generari salvate pentru utilizatorul conectat.",
+      },
+      {
+        label: "Stare",
+        value: loading ? "Generez..." : result?.mode === "mock" ? "Mock local" : "Pregatit",
+        hint: result?.source ? `Ultima sursa: ${result.source}` : "Genereaza primul preview.",
+      },
+    ],
+    [activeProviderName, history.length, loading, providerState.activeProvider, result]
+  );
 
   const generate = async () => {
+    if (!prompt.trim()) {
+      setNotice({ type: "error", message: "Introdu un prompt inainte de generare." });
+      return;
+    }
+    if (!activeProviderId) {
+      setNotice({
+        type: "error",
+        message:
+          providerState.error ||
+          "Selecteaza un prestator valid inainte de a genera imaginea.",
+      });
+      return;
+    }
+
     setLoading(true);
-    setSource("");
+    setNotice({ type: "", message: "" });
+
     try {
-      const res = await api.post("/ai/generate-cake", { prompt });
-      const url = res?.data?.imageUrl;
-      if (url) {
-        setImg(url);
-        setSource(res?.data?.source || "ai");
-        return;
+      const res = await api.post("/ai/generate-cake", {
+        prompt: prompt.trim(),
+        prestatorId: activeProviderId,
+      });
+      const payload = {
+        prompt: prompt.trim(),
+        imageUrl: res?.data?.imageUrl || "",
+        source: res?.data?.source || "",
+        mode: res?.data?.mode || "",
+        createdAt: res?.data?.historyEntry?.createdAt || new Date().toISOString(),
+      };
+      setResult(payload);
+
+      if (res?.data?.historyEntry) {
+        setHistory((current) => [res.data.historyEntry, ...current].slice(0, 25));
       }
-      const next = buildPreviewSvg(prompt);
-      setImg(next);
-      setSource("local");
-    } catch (e) {
-      console.warn("AI generate failed, fallback to local:", e?.message || e);
-      const next = buildPreviewSvg(prompt);
-      setImg(next);
-      setSource("local");
+
+      setNotice({
+        type: "success",
+        message:
+          payload.mode === "mock"
+            ? "A fost generat un preview local. Configureaza cheia AI pentru imagini reale."
+            : "Imaginea a fost generata cu succes.",
+      });
+    } catch (error) {
+      setNotice({
+        type: "error",
+        message:
+          error?.response?.data?.message ||
+          "Nu am putut genera imaginea pe baza promptului introdus.",
+      });
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <div className="max-w-xl mx-auto p-4">
-      <h1 className="text-xl mb-2">Designer AI - preview tort</h1>
-      <textarea
-        className="border w-full p-2 h-24"
-        value={prompt}
-        onChange={(e) => setPrompt(e.target.value)}
-      />
-      <button onClick={generate} className="border px-4 py-2 rounded mt-2">
-        {loading ? "Generez..." : "Genereaza"}
-      </button>
-      {img && (
-        <div className="mt-4">
-          <img
-            src={img}
-            alt="previzualizare tort"
-            className="rounded shadow"
+    <div className="mx-auto max-w-editorial space-y-6 px-4 py-8 sm:px-6">
+      <section className={`${cards.tinted} space-y-5`}>
+        <div className="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
+          <div className="max-w-3xl">
+            <div className="text-xs font-semibold uppercase tracking-[0.24em] text-pink-500">
+              Prompt to image
+            </div>
+            <h1 className="mt-3 font-serif text-3xl font-semibold text-gray-900">
+              Designer AI pentru concepte de tort
+            </h1>
+            <p className="mt-3 text-base leading-7 text-gray-600">
+              Scrie promptul clientului, genereaza un preview si verifica rapid cum
+              arata conceptul pentru {activeProviderName}.
+            </p>
+          </div>
+          <div className="min-w-[280px]">
+            <ProviderSelector
+              providers={providerState.providers}
+              value={activeProviderId}
+              onChange={providerState.setSelectedProviderId}
+              loading={providerState.loading}
+              disabled={!providerState.canChooseProvider}
+              label="Prestator activ"
+              helpText={
+                providerState.activeProvider
+                  ? `Imaginile se salveaza in istoricul pentru ${activeProviderName}.`
+                  : "Selecteaza prestatorul pentru care vrei sa generezi preview-ul."
+              }
+            />
+          </div>
+        </div>
+
+        <div className="grid gap-4 md:grid-cols-3">
+          {metrics.map((item) => (
+            <article
+              key={item.label}
+              className="rounded-[24px] border border-rose-100 bg-white/75 p-4 shadow-soft"
+            >
+              <div className="text-sm font-medium text-pink-700">{item.label}</div>
+              <div className="mt-2 text-2xl font-semibold text-gray-900">{item.value}</div>
+              <div className="mt-2 text-sm text-[#655c53]">{item.hint}</div>
+            </article>
+          ))}
+        </div>
+
+        {!activeProviderId && !providerState.loading ? (
+          <div className="rounded-[20px] border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-700">
+            {providerState.error ||
+              "Nu exista niciun prestator disponibil pentru generarea imaginilor."}
+          </div>
+        ) : null}
+
+        {notice.message ? (
+          <div
+            className={`rounded-[24px] border px-4 py-3 text-sm shadow-soft ${
+              notice.type === "error"
+                ? "border-red-200 bg-red-50 text-red-700"
+                : notice.type === "success"
+                ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+                : "border-rose-200 bg-rose-50 text-pink-700"
+            }`}
+          >
+            {notice.message}
+          </div>
+        ) : null}
+      </section>
+
+      <div className="grid gap-6 xl:grid-cols-[1.05fr,0.95fr]">
+        <section className={`${cards.elevated} space-y-4`}>
+          <div>
+            <h2 className="text-xl font-semibold text-gray-900">Prompt nou</h2>
+            <p className="mt-1 text-sm text-gray-600">
+              Foloseste descrieri clare despre stil, culori, etaje, flori, toppere sau
+              tipul de desert.
+            </p>
+          </div>
+
+          <textarea
+            className={`${inputs.default} min-h-[180px] resize-y`}
+            value={prompt}
+            onChange={(event) => setPrompt(event.target.value)}
+            placeholder="Exemplu: tort elegant cu 2 etaje, crema vanilie, flori pastel si accente aurii"
           />
-          {source && (
-            <div className="text-xs text-gray-500 mt-1">
-              Sursa: {source === "openai" ? "AI" : source}
+
+          <div className="flex flex-wrap gap-2">
+            {PROMPT_EXAMPLES.map((example) => (
+              <button
+                key={example}
+                type="button"
+                className={buttons.outline}
+                onClick={() => setPrompt(example)}
+              >
+                {example}
+              </button>
+            ))}
+          </div>
+
+          <div className="flex flex-wrap gap-3">
+            <button
+              type="button"
+              onClick={generate}
+              className={buttons.primary}
+              disabled={loading || !prompt.trim() || !activeProviderId}
+            >
+              {loading ? "Generez preview..." : "Genereaza imagine"}
+            </button>
+            <button
+              type="button"
+              className={buttons.outline}
+              onClick={() => {
+                setPrompt("");
+                setResult(null);
+                setNotice({ type: "", message: "" });
+              }}
+            >
+              Reseteaza
+            </button>
+          </div>
+        </section>
+
+        <section className={`${cards.elevated} space-y-4`}>
+          <div>
+            <h2 className="text-xl font-semibold text-gray-900">Preview generat</h2>
+            <p className="mt-1 text-sm text-gray-600">
+              Rezultatul foloseste integrarea AI disponibila sau fallback-ul local din backend.
+            </p>
+          </div>
+
+          {result?.imageUrl ? (
+            <div className="space-y-3">
+              <div className="overflow-hidden rounded-[24px] border border-rose-100 bg-[rgba(255,249,242,0.88)] p-3">
+                <img
+                  src={result.imageUrl}
+                  alt={`Preview generat pentru promptul: ${result.prompt}`}
+                  className="w-full rounded-[18px] object-cover shadow-soft"
+                />
+              </div>
+              <div className="grid gap-3 rounded-[24px] border border-rose-100 bg-white/80 p-4 text-sm text-gray-700">
+                <div>
+                  <span className="font-semibold text-gray-900">Prompt:</span> {result.prompt}
+                </div>
+                <div>
+                  <span className="font-semibold text-gray-900">Sursa:</span>{" "}
+                  {result.source === "openai" ? "OpenAI" : result.source || result.mode || "-"}
+                </div>
+                <div>
+                  <span className="font-semibold text-gray-900">Generat:</span>{" "}
+                  {formatDateTime(result.createdAt)}
+                </div>
+              </div>
+            </div>
+          ) : (
+            <div className="flex min-h-[20rem] flex-col items-center justify-center rounded-[24px] border border-dashed border-rose-200 bg-white/70 px-6 text-center text-sm text-gray-500">
+              <div className="font-semibold text-gray-900">Nu exista preview generat.</div>
+              <div className="mt-2">
+                Introdu un prompt si genereaza prima imagine pentru a verifica fluxul AI.
+              </div>
             </div>
           )}
+        </section>
+      </div>
+
+      <section className={`${cards.elevated} space-y-4`}>
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+          <div>
+            <h2 className="text-xl font-semibold text-gray-900">Istoric generari</h2>
+            <p className="mt-1 text-sm text-gray-600">
+              Ultimele prompturi salvate pentru utilizatorul conectat si prestatorul activ.
+            </p>
+          </div>
+          <div className="text-sm text-gray-500">
+            {providerState.activeProvider
+              ? activeProviderName
+              : "Fara prestator selectat"}
+          </div>
         </div>
-      )}
+
+        {historyLoading ? (
+          <div className="rounded-[24px] border border-dashed border-rose-200 bg-white/70 px-4 py-10 text-sm text-gray-500">
+            Se incarca istoricul AI...
+          </div>
+        ) : history.length ? (
+          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+            {history.map((item) => (
+              <article
+                key={item._id}
+                className="rounded-[24px] border border-rose-100 bg-white/92 p-4 shadow-soft"
+              >
+                <div className="overflow-hidden rounded-[18px] border border-rose-100 bg-[rgba(255,249,242,0.88)]">
+                  {item.imageUrl ? (
+                    <img
+                      src={item.imageUrl}
+                      alt={`Istoric AI pentru promptul: ${item.prompt}`}
+                      className="h-48 w-full object-cover"
+                    />
+                  ) : (
+                    <div className="flex h-48 items-center justify-center text-sm text-gray-500">
+                      Imagine indisponibila
+                    </div>
+                  )}
+                </div>
+                <div className="mt-3 text-sm font-semibold text-gray-900">
+                  {item.prompt}
+                </div>
+                <div className="mt-2 text-xs text-gray-500">
+                  {formatDateTime(item.createdAt)} | {item.source || item.status || "-"}
+                </div>
+                <div className="mt-3 flex gap-2">
+                  <button
+                    type="button"
+                    className={buttons.outline}
+                    onClick={() => {
+                      setPrompt(item.prompt || "");
+                      setResult({
+                        prompt: item.prompt || "",
+                        imageUrl: item.imageUrl || "",
+                        source: item.source || "",
+                        mode: item.status || "",
+                        createdAt: item.createdAt,
+                      });
+                    }}
+                  >
+                    Refoloseste
+                  </button>
+                </div>
+              </article>
+            ))}
+          </div>
+        ) : (
+          <div className="rounded-[24px] border border-dashed border-rose-200 bg-white/70 px-4 py-10 text-sm text-gray-500">
+            Nu exista inca generari salvate pentru prestatorul selectat.
+          </div>
+        )}
+      </section>
     </div>
   );
 }

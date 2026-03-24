@@ -1,13 +1,10 @@
 import { useEffect, useMemo, useState } from "react";
 import api from "/src/lib/api.js";
 import StatusBanner from "../components/StatusBanner";
+import ProviderSelector from "../components/ProviderSelector";
 import { useAuth } from "../context/AuthContext";
-import {
-  getPrestatorCalendarOwnerId,
-  getPrestatorEnvWarningMessage,
-  isPrestatorCalendarFallback,
-} from "../lib/runtimeConfig";
 import { addDays, formatDateInput, getTodayDateInput } from "../lib/date";
+import { useProviderDirectory } from "../lib/providers";
 
 function toDateStr(d) {
   return formatDateInput(d);
@@ -31,7 +28,8 @@ export default function CalendarPrestator() {
   const [loading, setLoading] = useState(false);
   const [msg, setMsg] = useState("");
 
-  const prestatorId = getPrestatorCalendarOwnerId(user);
+  const providerState = useProviderDirectory({ user });
+  const prestatorId = providerState.activeProviderId;
 
   const visibleSlots = useMemo(
     () => slots.filter((s) => s.date === date),
@@ -42,6 +40,10 @@ export default function CalendarPrestator() {
     let cancelled = false;
 
     (async () => {
+      if (!prestatorId) {
+        if (!cancelled) setSlots([]);
+        return;
+      }
       try {
         const nextSlots = await fetchAvailability(prestatorId);
         if (!cancelled) {
@@ -62,6 +64,10 @@ export default function CalendarPrestator() {
 
   const addSlot = async () => {
     setMsg("");
+    if (!prestatorId) {
+      setMsg(providerState.error || "Selecteaza un prestator valid.");
+      return;
+    }
     if (!date || !time) {
       setMsg("Completeaza data si ora.");
       return;
@@ -90,16 +96,28 @@ export default function CalendarPrestator() {
         </p>
       </div>
       <StatusBanner
-        type="warning"
-        title="Configurare calendar"
+        type="error"
+        title="Prestator indisponibil"
         message={
-          isPrestatorCalendarFallback(user)
-            ? getPrestatorEnvWarningMessage()
+          !providerState.loading && !prestatorId
+            ? providerState.error || "Nu exista prestator activ pentru acest calendar."
             : ""
         }
       />
 
       <div className="bg-white border rounded-lg p-4 space-y-3">
+        <ProviderSelector
+          providers={providerState.providers}
+          value={prestatorId}
+          onChange={providerState.setSelectedProviderId}
+          loading={providerState.loading}
+          disabled={!providerState.canChooseProvider}
+          helpText={
+            providerState.activeProvider
+              ? `Configurezi sloturile pentru ${providerState.activeProvider.displayName}.`
+              : "Selecteaza prestatorul pentru care vrei sa configurezi intervalele."
+          }
+        />
         <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
           <label className="text-sm font-semibold text-gray-700">
             Data

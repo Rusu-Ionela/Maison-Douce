@@ -1,27 +1,34 @@
 import { useEffect, useMemo, useState } from "react";
-import { useMutation, useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import Calendar from "react-calendar";
 import "react-calendar/dist/Calendar.css";
 import { useNavigate } from "react-router-dom";
-import { getAvailability, reserveSlot } from "../api/calendar";
+import { bookSlot, getAvailability } from "../api/calendar";
 import SlotPicker from "../components/SlotPicker";
 import StatusBanner from "../components/StatusBanner";
+import ProviderSelector from "../components/ProviderSelector";
 import { useAuth } from "../context/AuthContext";
-import {
-  getConfiguredPrestatorId,
-  getMinLeadHours,
-  getPrestatorEnvWarningMessage,
-  hasPrestatorEnvConfig,
-} from "../lib/runtimeConfig";
-import { addDays, formatDateInput, parseDateInput } from "../lib/date";
+import { getMinLeadHours } from "../lib/runtimeConfig";
+import { formatDateInput, parseDateInput } from "../lib/date";
+import { useProviderDirectory } from "../lib/providers";
 import { buttons, cards, containers, inputs } from "../lib/tailwindComponents";
 import { getApiErrorMessage } from "../lib/serverState";
 
 const DELIVERY_FEE = 100;
-const AVAILABILITY_DAYS_AHEAD = 60;
 
 function toDateStr(date) {
   return formatDateInput(date);
+}
+
+function toMonthStr(date) {
+  return toDateStr(date).slice(0, 7);
+}
+
+function toMonthStart(date) {
+  const next = new Date(date);
+  next.setDate(1);
+  next.setHours(12, 0, 0, 0);
+  return next;
 }
 
 function readCalendarValue(value) {
@@ -66,11 +73,17 @@ function getSlotSummary(slots) {
 export default function CalendarClient() {
   const { user } = useAuth() || {};
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
 
   const [calendarDate, setCalendarDate] = useState(() => {
     const today = new Date();
     today.setHours(12, 0, 0, 0);
     return today;
+  });
+  const [activeMonthDate, setActiveMonthDate] = useState(() => {
+    const today = new Date();
+    today.setHours(12, 0, 0, 0);
+    return toMonthStart(today);
   });
   const [time, setTime] = useState("");
   const [metoda, setMetoda] = useState("ridicare");
@@ -86,18 +99,11 @@ export default function CalendarClient() {
   const [status, setStatus] = useState({ type: "", message: "" });
   const [success, setSuccess] = useState(null);
 
-  const prestatorId = getConfiguredPrestatorId();
+  const providerState = useProviderDirectory({ user });
+  const prestatorId = providerState.activeProviderId;
   const selectedDate = calendarDate ? toDateStr(calendarDate) : "";
+  const activeMonth = useMemo(() => toMonthStr(activeMonthDate), [activeMonthDate]);
   const leadHours = getMinLeadHours();
-
-  const availabilityRange = useMemo(() => {
-    const from = new Date();
-    const to = addDays(from, AVAILABILITY_DAYS_AHEAD) || from;
-    return {
-      from: toDateStr(from),
-      to: toDateStr(to),
-    };
-  }, []);
 
   const addressOptions = useMemo(() => {
     const options = [];
@@ -153,24 +159,20 @@ export default function CalendarClient() {
   }, [leadHours]);
 
   const availabilityQuery = useQuery({
-    queryKey: [
-      "calendar-availability",
-      prestatorId,
-      availabilityRange.from,
-      availabilityRange.to,
-    ],
+    queryKey: ["calendar-availability-month", prestatorId, activeMonth],
     queryFn: () =>
       getAvailability(prestatorId, {
-        from: availabilityRange.from,
-        to: availabilityRange.to,
-        hideFull: false,
+        month: activeMonth,
+        hideFull: true,
       }),
-    enabled: Boolean(prestatorId),
+    enabled: Boolean(prestatorId && activeMonth),
+    placeholderData: (previous) => previous,
   });
 
   const reserveMutation = useMutation({
-    mutationFn: reserveSlot,
+    mutationFn: bookSlot,
     onSuccess: (data) => {
+      setTime("");
       setSuccess({
         comandaId: data?.comandaId || "",
         rezervareId: data?.rezervareId || "",
@@ -183,6 +185,9 @@ export default function CalendarClient() {
             ? "Rezervarea a fost trimisa. Pretul final va fi confirmat de echipa inainte de plata."
             : "Rezervare creata. Poti continua direct la plata.",
       });
+      queryClient.invalidateQueries({
+        queryKey: ["calendar-availability-month", prestatorId],
+      });
     },
     onError: (error) => {
       setStatus({
@@ -192,15 +197,34 @@ export default function CalendarClient() {
     },
   });
 
-  const slots = useMemo(
-    () => (Array.isArray(availabilityQuery.data?.slots) ? availabilityQuery.data.slots : []),
-    [availabilityQuery.data]
+  const monthlyAvailability = useMemo(() => availabilityQuery.data || {}, [availabilityQuery.data]);
+  const availableDates = useMemo(
+    () => new Set(Array.isArray(monthlyAvailability.availableDates) ? monthlyAvailability.availableDates : []),
+    [monthlyAvailability]
+  );
+  const slotDetailsByDate = useMemo(
+    () =>
+      monthlyAvailability.slotDetailsByDate &&
+      typeof monthlyAvailability.slotDetailsByDate === "object"
+        ? monthlyAvailability.slotDetailsByDate
+        : {},
+    [monthlyAvailability]
   );
 
   const daySlots = useMemo(() => {
     if (!selectedDate) return [];
 
-    let filtered = slots.filter((slot) => slot.date === selectedDate);
+    const mappedSlots = Array.isArray(slotDetailsByDate[selectedDate])
+      ? slotDetailsByDate[selectedDate].map((slot) => ({
+          date: selectedDate,
+          time: slot.time,
+          capacity: Number(slot.capacity ?? 0),
+          used: Number(slot.used ?? 0),
+          free: Number(slot.free ?? 0),
+        }))
+      : [];
+
+    let filtered = mappedSlots;
     const minDateStr = toDateStr(minDateTime);
 
     if (selectedDate === minDateStr) {
@@ -211,23 +235,28 @@ export default function CalendarClient() {
     return filtered.sort((left, right) =>
       String(left.time || "").localeCompare(String(right.time || ""))
     );
-  }, [minDateTime, selectedDate, slots]);
-
-  const availableDates = useMemo(() => {
-    const result = new Map();
-    slots.forEach((slot) => {
-      if (Number(slot?.free ?? 0) > 0) {
-        result.set(slot.date, true);
-      }
-    });
-    return result;
-  }, [slots]);
+  }, [minDateTime, selectedDate, slotDetailsByDate]);
 
   const availableSummary = useMemo(() => getSlotSummary(daySlots), [daySlots]);
   const selectedSlot = useMemo(
     () => daySlots.find((slot) => String(slot.time || "") === String(time || "")) || null,
     [daySlots, time]
   );
+  const availableDaysCount = useMemo(
+    () => (Array.isArray(monthlyAvailability.availableDates) ? monthlyAvailability.availableDates.length : 0),
+    [monthlyAvailability]
+  );
+  const isCalendarLoading = availabilityQuery.isLoading || availabilityQuery.isFetching;
+  const availabilityInfoMessage = !prestatorId
+    ? "Selecteaza un patiser pentru a vedea disponibilitatea."
+    : String(monthlyAvailability.message || "").trim();
+
+  useEffect(() => {
+    if (!time) return;
+    if (!daySlots.some((slot) => String(slot.time || "") === String(time || ""))) {
+      setTime("");
+    }
+  }, [daySlots, time]);
 
   const subtotalValue = Number(subtotal || 0);
 
@@ -235,6 +264,7 @@ export default function CalendarClient() {
     const next = toSafeDate(value);
     if (!next) return;
     setCalendarDate(next);
+    setActiveMonthDate(toMonthStart(next));
     setTime("");
     setSuccess(null);
   };
@@ -288,7 +318,9 @@ export default function CalendarClient() {
     if (!prestatorId) {
       setStatus({
         type: "error",
-        message: getPrestatorEnvWarningMessage(),
+        message:
+          providerState.error ||
+          "Alege un prestator valid inainte de a continua cu rezervarea.",
       });
       return;
     }
@@ -324,7 +356,7 @@ export default function CalendarClient() {
 
     reserveMutation.mutate({
       clientId: user._id,
-      prestatorId,
+      providerId: prestatorId,
       date: selectedDate,
       time,
       metoda,
@@ -343,9 +375,9 @@ export default function CalendarClient() {
   const reservationBusy = reserveMutation.isPending;
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-rose-50 via-pink-50 to-white">
+    <div className="min-h-screen">
       <div className={`${containers.pageMax} max-w-7xl space-y-6`}>
-        <header className="rounded-[32px] border border-rose-100 bg-white/88 p-6 shadow-card backdrop-blur">
+        <header className={`${cards.tinted} p-6`}>
           <div className="flex flex-col gap-5 xl:flex-row xl:items-end xl:justify-between">
             <div className="max-w-3xl space-y-3">
               <p className="text-xs font-semibold uppercase tracking-[0.24em] text-pink-500">
@@ -360,39 +392,55 @@ export default function CalendarClient() {
               </p>
             </div>
             <div className="grid gap-3 sm:grid-cols-3">
-              <div className="rounded-[24px] border border-rose-100 bg-rose-50/80 px-4 py-3">
+              <div className="rounded-[24px] border border-rose-100 bg-white/75 px-4 py-3 shadow-soft">
                 <div className="text-xs font-semibold uppercase tracking-[0.16em] text-pink-500">
-                  Disponibil azi
+                  Zile disponibile
                 </div>
                 <div className="mt-2 text-2xl font-semibold text-gray-900">
-                  {availableSummary.available}
+                  {availableDaysCount}
                 </div>
-                <div className="text-sm text-gray-600">sloturi libere pentru ziua selectata</div>
+                <div className="text-sm text-gray-600">zile active in luna afisata</div>
               </div>
-              <div className="rounded-[24px] border border-rose-100 bg-white px-4 py-3">
+              <div className="rounded-[24px] border border-rose-100 bg-white/75 px-4 py-3 shadow-soft">
                 <div className="text-xs font-semibold uppercase tracking-[0.16em] text-pink-500">
                   Lead time
                 </div>
                 <div className="mt-2 text-2xl font-semibold text-gray-900">{leadHours}h</div>
                 <div className="text-sm text-gray-600">timp minim de pregatire</div>
               </div>
-              <div className="rounded-[24px] border border-rose-100 bg-white px-4 py-3">
+              <div className="rounded-[24px] border border-rose-100 bg-white/75 px-4 py-3 shadow-soft">
                 <div className="text-xs font-semibold uppercase tracking-[0.16em] text-pink-500">
                   Adrese salvate
                 </div>
                 <div className="mt-2 text-2xl font-semibold text-gray-900">
                   {addressOptions.length}
                 </div>
-                <div className="text-sm text-gray-600">gata de reutilizat</div>
+                <div className="text-sm text-gray-600">
+                  {providerState.activeProvider
+                    ? providerState.activeProvider.displayName
+                    : "alege prestatorul activ"}
+                </div>
               </div>
             </div>
           </div>
         </header>
 
         <StatusBanner
-          type="warning"
-          title="Configurare calendar"
-          message={!hasPrestatorEnvConfig() ? getPrestatorEnvWarningMessage() : ""}
+          type="error"
+          title="Prestator indisponibil"
+          message={
+            !providerState.loading && !prestatorId
+              ? providerState.error || "Selecteaza un patiser pentru a vedea disponibilitatea."
+              : ""
+          }
+        />
+        <StatusBanner
+          type="info"
+          message={
+            prestatorId && availabilityInfoMessage && !availabilityQuery.error
+              ? availabilityInfoMessage
+              : ""
+          }
         />
         <StatusBanner
           type={status.type || "info"}
@@ -416,21 +464,38 @@ export default function CalendarClient() {
               <div>
                 <h2 className="text-xl font-semibold text-gray-900">Disponibilitate</h2>
                 <p className="text-sm text-gray-600">
-                  Zilele active au sloturi disponibile si pot fi selectate direct.
+                  Selecteaza un patiser, apoi alege o zi evidentiata pentru a vedea intervalele libere.
                 </p>
               </div>
-              <div className="rounded-full border border-rose-200 bg-rose-50 px-3 py-1 text-xs font-semibold text-pink-700">
-                {formatLongDate(calendarDate)}
+              <div className="rounded-full border border-rose-200 bg-white px-3 py-1 text-xs font-semibold text-pink-700 shadow-soft">
+                {activeMonth}
               </div>
             </div>
 
-            <div className="rounded-[28px] border border-rose-100 bg-[linear-gradient(180deg,_rgba(255,255,255,0.98),_rgba(252,244,246,0.96))] p-4 shadow-soft">
+            <div
+              className={`rounded-[28px] border border-rose-100 bg-[linear-gradient(180deg,_rgba(255,255,255,0.98),_rgba(246,239,228,0.94))] p-4 shadow-soft transition-all duration-300 ${
+                isCalendarLoading ? "opacity-75" : "opacity-100"
+              }`}
+            >
               <Calendar
+                activeStartDate={activeMonthDate}
                 value={calendarDate}
                 onChange={selectCalendarDate}
+                onActiveStartDateChange={({ activeStartDate, view }) => {
+                  if (view === "month" && activeStartDate) {
+                    setActiveMonthDate(toMonthStart(activeStartDate));
+                  }
+                }}
                 minDate={minDateTime}
                 tileDisabled={tileDisabled}
                 tileClassName={tileClassName}
+                tileContent={({ date, view }) =>
+                  view === "month" && availableDates.has(toDateStr(date)) ? (
+                    <div className="mt-1 flex justify-center">
+                      <span className="h-1.5 w-1.5 rounded-full bg-pink-500" />
+                    </div>
+                  ) : null
+                }
                 className="calendar-shell"
               />
             </div>
@@ -442,7 +507,7 @@ export default function CalendarClient() {
                   {availableSummary.total}
                 </div>
                 <div className="text-sm text-gray-600">
-                  dintre care {availableSummary.available} disponibile pentru rezervare
+                  dintre care {availableSummary.available} sunt inca disponibile
                 </div>
               </div>
               <div className="rounded-[24px] border border-rose-100 bg-white px-4 py-4">
@@ -487,10 +552,28 @@ export default function CalendarClient() {
             </div>
 
             <form onSubmit={handleReserve} className="space-y-5">
-              <div className="grid gap-4 md:grid-cols-2">
-                <label className="text-sm font-semibold text-gray-700">
-                  Data selectata
-                  <input
+            <div className="grid gap-4 md:grid-cols-2">
+              <ProviderSelector
+                providers={providerState.providers}
+                value={prestatorId}
+                onChange={(nextProviderId) => {
+                  providerState.setSelectedProviderId(nextProviderId);
+                  setTime("");
+                  setSuccess(null);
+                  setStatus({ type: "", message: "" });
+                }}
+                loading={providerState.loading}
+                disabled={!providerState.canChooseProvider}
+                label="Prestator"
+                helpText={
+                  providerState.activeProvider
+                    ? `Calendarul afiseaza doar disponibilitatea pentru ${providerState.activeProvider.displayName}.`
+                    : "Selecteaza un patiser pentru a incarca datele si intervalele disponibile."
+                }
+              />
+              <label className="text-sm font-semibold text-gray-700">
+                Data selectata
+                <input
                     type="date"
                     value={selectedDate}
                     min={toDateStr(minDateTime)}
@@ -504,20 +587,29 @@ export default function CalendarClient() {
                   />
                 </label>
 
-                <div>
+                <div
+                  key={`${prestatorId || "none"}_${selectedDate}_${activeMonth}`}
+                  className="transition-all duration-300"
+                >
                   <div className="text-sm font-semibold text-gray-700">Interval orar</div>
                   <div className="mt-2">
-                    <SlotPicker
-                      slots={daySlots}
-                      date={selectedDate}
-                      value={time}
-                      onChange={(nextTime) => {
-                        setTime(nextTime);
-                        setSuccess(null);
-                      }}
-                    />
+                    {!prestatorId ? (
+                      <div className="rounded-2xl border border-dashed border-rose-200 bg-white/80 px-4 py-5 text-sm text-gray-500">
+                        Selecteaza un patiser pentru a vedea disponibilitatea.
+                      </div>
+                    ) : (
+                      <SlotPicker
+                        slots={daySlots}
+                        date={selectedDate}
+                        value={time}
+                        onChange={(nextTime) => {
+                          setTime(nextTime);
+                          setSuccess(null);
+                        }}
+                      />
+                    )}
                   </div>
-                  {availabilityQuery.isLoading || availabilityQuery.isFetching ? (
+                  {isCalendarLoading ? (
                     <div className="mt-3 text-sm text-gray-500">
                       Se sincronizeaza disponibilitatea calendarului...
                     </div>
@@ -527,7 +619,7 @@ export default function CalendarClient() {
 
               <div className="grid gap-4 lg:grid-cols-[1fr_0.9fr]">
                 <div className="space-y-4">
-                  <div className="rounded-[26px] border border-rose-100 bg-rose-50/70 p-4">
+                  <div className="rounded-[26px] border border-rose-100 bg-[rgba(255,249,242,0.88)] p-4">
                     <div className="text-sm font-semibold text-gray-900">Mod de predare</div>
                     <div className="mt-3 grid gap-3 md:grid-cols-2">
                       <button
@@ -555,8 +647,7 @@ export default function CalendarClient() {
                       >
                         <div className="font-semibold">Livrare</div>
                         <div className="mt-1 text-sm text-gray-600">
-                          Taxa de livrare porneste de la {DELIVERY_FEE} MDL si
-                          se confirma dupa analiza cererii.
+                          Livrare prin curier pentru {DELIVERY_FEE} MDL.
                         </div>
                       </button>
                     </div>
@@ -692,7 +783,7 @@ export default function CalendarClient() {
                 </div>
 
                 <aside className="space-y-4">
-                  <div className="rounded-[26px] border border-rose-100 bg-[linear-gradient(180deg,_rgba(255,255,255,0.98),_rgba(253,244,246,0.92))] p-5 shadow-soft">
+                  <div className="rounded-[26px] border border-rose-100 bg-[linear-gradient(180deg,_rgba(255,255,255,0.98),_rgba(246,239,228,0.92))] p-5 shadow-soft">
                     <div className="text-xs font-semibold uppercase tracking-[0.2em] text-pink-500">
                       Rezumat
                     </div>
@@ -731,12 +822,20 @@ export default function CalendarClient() {
                         <div className="flex items-center justify-between">
                           <span>Taxa livrare</span>
                           <span className="font-semibold text-gray-900">
-                            Se confirma dupa analiza
+                            {metoda === "livrare"
+                              ? `${DELIVERY_FEE.toFixed(2)} MDL`
+                              : "0.00 MDL"}
                           </span>
                         </div>
-                        <div className="rounded-2xl bg-rose-50 px-3 py-3 text-sm text-gray-700">
-                          Pretul final si disponibilitatea pentru livrare vor fi
-                          confirmate de echipa dupa analiza cererii.
+                        <div className="flex items-center justify-between">
+                          <span>Total estimat rezervare</span>
+                          <span className="font-semibold text-gray-900">
+                            {(subtotalValue + (metoda === "livrare" ? DELIVERY_FEE : 0)).toFixed(2)} MDL
+                          </span>
+                        </div>
+                        <div className="rounded-2xl bg-[rgba(255,249,242,0.88)] px-3 py-3 text-sm text-gray-700">
+                          Pretul final poate fi ajustat dupa analiza, dar taxa de
+                          predare este salvata imediat in rezervare.
                         </div>
                       </div>
                     </div>

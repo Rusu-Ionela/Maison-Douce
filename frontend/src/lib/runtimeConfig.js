@@ -63,8 +63,8 @@ export function isPrestatorCalendarFallback(user) {
 
 export function getPrestatorEnvWarningMessage() {
   return (
-    "VITE_PRESTATOR_ID nu este configurat. Rezervarile si comenzile cu slot sunt " +
-    "dezactivate pana cand aplicatia este configurata pentru prestatorul corect."
+    "VITE_PRESTATOR_ID nu este configurat ca fallback. Aplicatia va incerca sa " +
+    "foloseasca lista reala de prestatori din baza de date."
   );
 }
 

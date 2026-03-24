@@ -7,8 +7,8 @@
 :root {
   color-scheme: light;
   font-family: var(--font-sans);
-  background-color: var(--cream);
-  color: var(--ink);
+  background-color: var(--bg-cream);
+  color: var(--text-ink);
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
@@ -21,17 +21,16 @@
 }
 
 html {
-  background-color: var(--cream);
+  background-color: var(--bg-cream);
   scroll-behavior: smooth;
 }
 
 body {
-  margin: 0;
   min-height: 100vh;
   background:
-    radial-gradient(circle at top, rgba(255, 255, 255, 0.92), rgba(255, 250, 242, 0.94) 28%, rgba(247, 230, 234, 0.78) 100%),
-    linear-gradient(180deg, rgba(255, 250, 242, 0.98), rgba(248, 243, 233, 0.92));
-  color: var(--ink);
+    radial-gradient(circle at top left, rgba(255, 255, 255, 0.95), rgba(250, 245, 236, 0.94) 28%, rgba(232, 237, 230, 0.86) 100%),
+    linear-gradient(180deg, rgba(247, 241, 230, 0.98), rgba(252, 248, 241, 0.94));
+  color: var(--text-ink);
 }
 
 #root {
@@ -49,7 +48,9 @@ button {
   cursor: pointer;
 }
 
-img {
+img,
+picture,
+svg {
   display: block;
   max-width: 100%;
 }
@@ -57,6 +58,21 @@ img {
 a {
   color: inherit;
   text-decoration: none;
+}
+
+h1,
+h2,
+h3,
+h4,
+h5,
+h6 {
+  font-family: var(--font-serif);
+  letter-spacing: -0.02em;
+  color: var(--text-ink);
+}
+
+p {
+  color: inherit;
 }
 
 a,
@@ -69,17 +85,68 @@ select {
     background-color 180ms ease,
     border-color 180ms ease,
     box-shadow 180ms ease,
-    transform 180ms ease;
+    transform 180ms ease,
+    opacity 180ms ease;
 }
 
 :focus-visible {
-  outline: 2px solid rgba(219, 93, 137, 0.9);
+  outline: 2px solid rgba(110, 63, 73, 0.92);
   outline-offset: 3px;
+  box-shadow: 0 0 0 5px rgba(205, 216, 199, 0.35);
 }
 
 ::selection {
-  background: rgba(247, 198, 210, 0.55);
-  color: var(--ink);
+  background: rgba(184, 155, 103, 0.24);
+  color: var(--text-ink);
+}
+
+::-webkit-scrollbar {
+  width: 12px;
+  height: 12px;
+}
+
+::-webkit-scrollbar-track {
+  background: rgba(255, 251, 245, 0.76);
+}
+
+::-webkit-scrollbar-thumb {
+  border: 3px solid rgba(255, 251, 245, 0.92);
+  border-radius: 999px;
+  background: rgba(142, 102, 91, 0.42);
+}
+
+.text-balance {
+  text-wrap: balance;
+}
+
+.glass-cream {
+  background: rgba(255, 251, 245, 0.82);
+  backdrop-filter: blur(18px);
+}
+
+.section-frame {
+  border: 1px solid var(--line-soft);
+  border-radius: 2rem;
+  background: rgba(255, 252, 247, 0.82);
+  box-shadow: var(--shadow-soft);
+}
+
+.flip-perspective {
+  perspective: 1800px;
+}
+
+.flip-3d {
+  transform-style: preserve-3d;
+  will-change: transform;
+}
+
+.flip-face {
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+}
+
+.flip-face-back {
+  transform: rotateY(180deg);
 }
 
 .calendar-shell.react-calendar {
@@ -91,17 +158,18 @@ select {
 
 .calendar-shell .react-calendar__navigation {
   display: flex;
-  gap: 10px;
-  margin-bottom: 14px;
+  gap: 0.75rem;
+  margin-bottom: 1rem;
 }
 
 .calendar-shell .react-calendar__navigation button {
-  min-width: 44px;
-  border: 0;
+  min-width: 2.8rem;
+  border: 1px solid rgba(93, 62, 46, 0.14);
   border-radius: 999px;
-  background: rgba(255, 255, 255, 0.9);
-  color: var(--ink);
+  background: rgba(255, 251, 245, 0.9);
+  color: var(--text-ink);
   font-weight: 600;
+  box-shadow: var(--shadow-soft);
 }
 
 .calendar-shell .react-calendar__navigation button:disabled {
@@ -109,11 +177,11 @@ select {
 }
 
 .calendar-shell .react-calendar__month-view__weekdays {
-  margin-bottom: 8px;
+  margin-bottom: 0.75rem;
   text-transform: uppercase;
-  font-size: 11px;
-  letter-spacing: 0.08em;
-  color: #8c6a74;
+  font-size: 0.68rem;
+  letter-spacing: 0.14em;
+  color: var(--text-soft);
 }
 
 .calendar-shell .react-calendar__month-view__weekdays__weekday abbr {
@@ -121,20 +189,20 @@ select {
 }
 
 .calendar-shell .react-calendar__tile {
-  margin: 3px 0;
-  min-height: 54px;
+  margin: 0.15rem 0;
+  min-height: 3.5rem;
   border: 0;
   background: transparent;
-  color: var(--ink);
+  color: var(--text-ink);
 }
 
 .calendar-shell .react-calendar__tile:enabled:hover,
 .calendar-shell .react-calendar__tile:enabled:focus {
-  background: rgba(252, 228, 234, 0.85);
+  background: rgba(205, 216, 199, 0.34);
 }
 
 .calendar-shell .react-calendar__tile--now {
-  box-shadow: inset 0 0 0 1px rgba(219, 93, 137, 0.22);
+  box-shadow: inset 0 0 0 1px rgba(110, 63, 73, 0.18);
 }
 
 .calendar-shell .react-calendar__tile--active {

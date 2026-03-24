@@ -1,7 +1,9 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import StatusBanner from "../components/StatusBanner";
 import { useAuth } from "../context/AuthContext";
+import { buttons, cards, inputs } from "../lib/tailwindComponents";
+import api from "../lib/api";
 
 export default function Register() {
   const nav = useNavigate();
@@ -16,8 +18,50 @@ export default function Register() {
   });
   const [role, setRole] = useState("client");
   const [inviteCode, setInviteCode] = useState("");
+  const [inviteInfo, setInviteInfo] = useState({
+    loading: false,
+    message: "",
+    code: "",
+    source: "",
+  });
   const [err, setErr] = useState("");
   const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    if (role !== "patiser") {
+      return undefined;
+    }
+
+    let isCancelled = false;
+    setInviteInfo((current) => ({ ...current, loading: true }));
+
+    api
+      .get("/utilizatori/provider-invite-info")
+      .then((response) => {
+        if (isCancelled) return;
+        setInviteInfo({
+          loading: false,
+          message: response.data?.message || "",
+          code: response.data?.code || "",
+          source: response.data?.source || "",
+        });
+      })
+      .catch(() => {
+        if (isCancelled) return;
+        setInviteInfo({
+          loading: false,
+          message: import.meta.env.DEV
+            ? "In mediul local, codul implicit pentru test este PATISER-INVITE."
+            : "Solicita codul de invitatie de la administrator.",
+          code: import.meta.env.DEV ? "PATISER-INVITE" : "",
+          source: import.meta.env.DEV ? "default" : "",
+        });
+      });
+
+    return () => {
+      isCancelled = true;
+    };
+  }, [role]);
 
   async function onSubmit(event) {
     event.preventDefault();
@@ -49,44 +93,44 @@ export default function Register() {
       });
       nav("/calendar", { replace: true });
     } catch (error) {
-      setErr(error?.response?.data?.message || "Eroare la inregistrare.");
+      const message = error?.response?.data?.message || "Eroare la inregistrare.";
+      const hint = error?.response?.data?.hint || "";
+      setErr([message, hint].filter(Boolean).join(" "));
     } finally {
       setLoading(false);
     }
   }
 
   return (
-    <div className="min-h-screen bg-[linear-gradient(180deg,_rgba(255,247,241,0.96),_rgba(251,236,239,0.92),_rgba(255,255,255,1))] px-4 py-12">
-      <div className="mx-auto grid max-w-5xl gap-8 lg:grid-cols-[0.95fr,1.05fr]">
-        <section className="rounded-[32px] border border-rose-100 bg-white/90 p-8 shadow-xl shadow-rose-100/60 backdrop-blur">
-          <p className="text-sm font-semibold uppercase tracking-[0.24em] text-pink-500">
-            Cont nou
+    <div className="min-h-screen px-4 py-12 md:px-6">
+      <div className="mx-auto grid max-w-editorial gap-8 xl:grid-cols-[0.95fr_1.05fr]">
+        <section className={`${cards.tinted} overflow-hidden p-8 md:p-10`}>
+          <div className="eyebrow">Cont Maison-Douce</div>
+          <div className="mt-5">
+            <div className="font-script text-4xl text-pink-500">Create your account</div>
+            <h1 className="mt-2 font-serif text-4xl font-semibold text-ink md:text-5xl">
+              Creeaza un cont pentru comenzi, livrari si experiente personalizate.
+            </h1>
+          </div>
+          <p className="mt-5 text-base leading-8 text-[#655c53]">
+            Profilul tau salveaza preferintele, adresele si istoricul comenzilor. Pentru rolul
+            de patiser este necesar codul de invitatie primit din sistem.
           </p>
-          <h1 className="mt-4 font-serif text-4xl text-gray-900">
-            Creeaza un cont Maison-Douce
-          </h1>
-          <p className="mt-4 text-base leading-7 text-gray-600">
-            Contul iti salveaza preferintele, istoricul comenzilor si adresele
-            de livrare. Pentru rolul de patiser este necesar codul de invitatie.
-          </p>
-          <div className="mt-8 space-y-3 text-sm text-gray-600">
-            <div className="rounded-2xl border border-rose-100 bg-rose-50/70 p-4">
+          <div className="mt-8 space-y-3 text-sm text-[#655c53]">
+            <div className="rounded-[24px] border border-rose-100 bg-white/75 p-4 shadow-soft">
               Profilul de client este activ imediat dupa inregistrare.
             </div>
-            <div className="rounded-2xl border border-rose-100 bg-white p-4">
+            <div className="rounded-[24px] border border-rose-100 bg-white/75 p-4 shadow-soft">
               Parola trebuie sa aiba minim 8 caractere.
             </div>
           </div>
         </section>
 
-        <section className="rounded-[32px] border border-rose-100 bg-white p-8 shadow-xl shadow-rose-100/70">
+        <section className={`${cards.elevated} p-8`}>
           <div className="mb-6">
-            <h2 className="text-2xl font-semibold text-gray-900">
-              Datele contului
-            </h2>
-            <p className="mt-2 text-sm text-gray-600">
-              Completeaza formularul o singura data. Restul il poti actualiza
-              ulterior din profil.
+            <h2 className="text-2xl font-semibold text-ink">Datele contului</h2>
+            <p className="mt-2 text-sm leading-7 text-[#655c53]">
+              Completeaza formularul o singura data. Restul il poti actualiza ulterior din profil.
             </p>
           </div>
 
@@ -94,10 +138,10 @@ export default function Register() {
 
           <form onSubmit={onSubmit} className="space-y-4">
             <div className="grid gap-4 md:grid-cols-2">
-              <label className="block text-sm font-semibold text-gray-700">
+              <label className="block text-sm font-semibold text-[#4f463e]">
                 Nume
                 <input
-                  className="mt-2 w-full rounded-2xl border border-rose-200 bg-rose-50/40 px-4 py-3 outline-none transition focus:border-pink-400 focus:bg-white"
+                  className={`mt-2 ${inputs.default}`}
                   placeholder="Nume"
                   value={form.name}
                   onChange={(event) =>
@@ -106,10 +150,10 @@ export default function Register() {
                   autoComplete="name"
                 />
               </label>
-              <label className="block text-sm font-semibold text-gray-700">
+              <label className="block text-sm font-semibold text-[#4f463e]">
                 Telefon
                 <input
-                  className="mt-2 w-full rounded-2xl border border-rose-200 bg-rose-50/40 px-4 py-3 outline-none transition focus:border-pink-400 focus:bg-white"
+                  className={`mt-2 ${inputs.default}`}
                   placeholder="Telefon"
                   value={form.telefon}
                   onChange={(event) =>
@@ -120,10 +164,10 @@ export default function Register() {
               </label>
             </div>
 
-            <label className="block text-sm font-semibold text-gray-700">
+            <label className="block text-sm font-semibold text-[#4f463e]">
               Email
               <input
-                className="mt-2 w-full rounded-2xl border border-rose-200 bg-rose-50/40 px-4 py-3 outline-none transition focus:border-pink-400 focus:bg-white"
+                className={`mt-2 ${inputs.default}`}
                 placeholder="Email"
                 type="email"
                 value={form.email}
@@ -134,10 +178,10 @@ export default function Register() {
               />
             </label>
 
-            <label className="block text-sm font-semibold text-gray-700">
+            <label className="block text-sm font-semibold text-[#4f463e]">
               Adresa
               <input
-                className="mt-2 w-full rounded-2xl border border-rose-200 bg-rose-50/40 px-4 py-3 outline-none transition focus:border-pink-400 focus:bg-white"
+                className={`mt-2 ${inputs.default}`}
                 placeholder="Adresa"
                 value={form.adresa}
                 onChange={(event) =>
@@ -148,10 +192,10 @@ export default function Register() {
             </label>
 
             <div className="grid gap-4 md:grid-cols-2">
-              <label className="block text-sm font-semibold text-gray-700">
+              <label className="block text-sm font-semibold text-[#4f463e]">
                 Parola
                 <input
-                  className="mt-2 w-full rounded-2xl border border-rose-200 bg-rose-50/40 px-4 py-3 outline-none transition focus:border-pink-400 focus:bg-white"
+                  className={`mt-2 ${inputs.default}`}
                   placeholder="Parola"
                   type="password"
                   value={form.password}
@@ -161,10 +205,10 @@ export default function Register() {
                   autoComplete="new-password"
                 />
               </label>
-              <label className="block text-sm font-semibold text-gray-700">
+              <label className="block text-sm font-semibold text-[#4f463e]">
                 Confirma parola
                 <input
-                  className="mt-2 w-full rounded-2xl border border-rose-200 bg-rose-50/40 px-4 py-3 outline-none transition focus:border-pink-400 focus:bg-white"
+                  className={`mt-2 ${inputs.default}`}
                   placeholder="Confirma parola"
                   type="password"
                   value={form.confirm}
@@ -176,42 +220,77 @@ export default function Register() {
               </label>
             </div>
 
-            <label className="block text-sm font-semibold text-gray-700">
+            <label className="block text-sm font-semibold text-[#4f463e]">
               Rol
               <select
                 value={role}
                 onChange={(event) => setRole(event.target.value)}
-                className="mt-2 w-full rounded-2xl border border-rose-200 bg-rose-50/40 px-4 py-3 outline-none transition focus:border-pink-400 focus:bg-white"
+                className={`mt-2 ${inputs.default}`}
               >
                 <option value="client">Client</option>
                 <option value="patiser">Patiser</option>
               </select>
             </label>
 
-            {role === "patiser" && (
-              <label className="block text-sm font-semibold text-gray-700">
-                Cod invitatie patiser
-                <input
-                  className="mt-2 w-full rounded-2xl border border-rose-200 bg-rose-50/40 px-4 py-3 outline-none transition focus:border-pink-400 focus:bg-white"
-                  placeholder="Introdu codul primit"
-                  value={inviteCode}
-                  onChange={(event) => setInviteCode(event.target.value)}
-                />
-              </label>
-            )}
+            {role === "patiser" ? (
+              <div className="space-y-3">
+                <label className="block text-sm font-semibold text-[#4f463e]">
+                  Cod invitatie patiser
+                  <input
+                    className={`mt-2 ${inputs.default}`}
+                    placeholder="Introdu codul primit"
+                    value={inviteCode}
+                    onChange={(event) => setInviteCode(event.target.value)}
+                    autoComplete="one-time-code"
+                  />
+                </label>
 
-            <button
-              type="submit"
-              disabled={loading}
-              className="w-full rounded-full bg-pink-600 px-5 py-3 text-sm font-semibold text-white transition hover:bg-pink-700 disabled:opacity-60"
-            >
+                <div className="rounded-[24px] border border-rose-100 bg-[rgba(255,249,242,0.88)] p-4 text-sm leading-7 text-[#655c53]">
+                  <div className="font-semibold text-ink">De unde iei codul?</div>
+                  <p className="mt-2">
+                    {inviteInfo.loading
+                      ? "Se verifica informatia pentru codul de invitatie..."
+                      : inviteInfo.message ||
+                        "Solicita codul de invitatie de la administrator."}
+                  </p>
+
+                  {inviteInfo.code ? (
+                    <div className="mt-3 rounded-[18px] border border-rose-100 bg-white/80 px-4 py-3">
+                      <div className="text-xs font-semibold uppercase tracking-[0.18em] text-[#8d775c]">
+                        Cod disponibil acum
+                      </div>
+                      <div className="mt-1 font-mono text-sm text-ink">
+                        {inviteInfo.code}
+                      </div>
+                      <div className="mt-1 text-xs text-[#8a8178]">
+                        {inviteInfo.source === "default"
+                          ? "Codul implicit de dezvoltare este activ."
+                          : "Codul este configurat din backend."}
+                      </div>
+                    </div>
+                  ) : null}
+
+                  {inviteInfo.code ? (
+                    <button
+                      type="button"
+                      onClick={() => setInviteCode(inviteInfo.code)}
+                      className={`mt-3 ${buttons.outline}`}
+                    >
+                      Completeaza automat codul
+                    </button>
+                  ) : null}
+                </div>
+              </div>
+            ) : null}
+
+            <button type="submit" disabled={loading} className={`w-full ${buttons.primary}`}>
               {loading ? "Se creeaza contul..." : "Inregistreaza-te"}
             </button>
           </form>
 
-          <p className="mt-6 text-sm text-gray-600">
+          <p className="mt-6 text-sm text-[#655c53]">
             Ai deja cont?{" "}
-            <Link to="/login" className="font-semibold text-pink-600 underline">
+            <Link to="/login" className="font-semibold text-pink-700 underline">
               Autentifica-te
             </Link>
           </p>

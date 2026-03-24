@@ -1,109 +1,21 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Circle, Layer, Rect, Stage, Text } from "react-konva";
 import api from "/src/lib/api.js";
+import CakePreview2DStage from "../components/CakePreview2DStage";
 import StatusBanner from "../components/StatusBanner";
 import { useAuth } from "../context/AuthContext";
 import { buttons, cards, inputs } from "../lib/tailwindComponents";
-
-const OPTIONS = {
-  blat: [
-    { id: "vanilie", label: "Vanilie", price: 80, color: "#f6d7c3" },
-    { id: "ciocolata", label: "Ciocolata", price: 90, color: "#d9b3a8" },
-    { id: "redvelvet", label: "Red Velvet", price: 100, color: "#e7a3ad" },
-  ],
-  crema: [
-    { id: "vanilie", label: "Vanilie", price: 60, color: "#fff1e6" },
-    { id: "pistachio", label: "Pistachio", price: 80, color: "#d9e7c6" },
-    { id: "fructe", label: "Fructe", price: 75, color: "#f2d4e7" },
-  ],
-  umplutura: [
-    { id: "capsuni", label: "Capsuni", price: 40 },
-    { id: "fructe-padure", label: "Fructe de padure", price: 45 },
-    { id: "oreo", label: "Oreo", price: 35 },
-  ],
-  decor: [
-    { id: "minimal", label: "Minimal", price: 30, color: "#ffd6e0" },
-    { id: "lambeth", label: "Lambeth", price: 70, color: "#f7c7d9" },
-    { id: "floral", label: "Floral", price: 60, color: "#f6d7e3" },
-  ],
-  topping: [
-    { id: "perle", label: "Perle", price: 20 },
-    { id: "fructe", label: "Fructe proaspete", price: 30 },
-    { id: "ciocolata", label: "Ciocolata", price: 25 },
-  ],
-  culori: [
-    { id: "#f6d7c3", label: "Ivoire" },
-    { id: "#f2c9e5", label: "Rose" },
-    { id: "#e8e2f2", label: "Lavanda" },
-    { id: "#f7e6c4", label: "Champagne" },
-  ],
-  font: [
-    { id: "Georgia", label: "Elegant Serif" },
-    { id: "Garamond", label: "Classic" },
-    { id: "Times New Roman", label: "Formal" },
-  ],
-};
-
-const PRESETS = [
-  {
-    id: "classic",
-    label: "Clasic elegant",
-    description: "Vanilie, decor fin si tonuri luminoase.",
-    values: {
-      blat: "vanilie",
-      crema: "vanilie",
-      umplutura: "capsuni",
-      decor: "minimal",
-      topping: "perle",
-      culoare: "#f6d7c3",
-      font: "Georgia",
-    },
-  },
-  {
-    id: "romantic",
-    label: "Romantic",
-    description: "Red velvet, note florale si nuante rose.",
-    values: {
-      blat: "redvelvet",
-      crema: "fructe",
-      umplutura: "fructe-padure",
-      decor: "floral",
-      topping: "fructe",
-      culoare: "#f2c9e5",
-      font: "Garamond",
-    },
-  },
-  {
-    id: "statement",
-    label: "Statement",
-    description: "Chocolate-forward, contrast puternic si mesaj central.",
-    values: {
-      blat: "ciocolata",
-      crema: "pistachio",
-      umplutura: "oreo",
-      decor: "lambeth",
-      topping: "ciocolata",
-      culoare: "#e8e2f2",
-      font: "Times New Roman",
-    },
-  },
-];
-
-const BASE_PRET = 250;
-const BASE_ORE = 24;
-const DEFAULT_OPTIONS = {
-  blat: OPTIONS.blat[0].id,
-  crema: OPTIONS.crema[0].id,
-  umplutura: OPTIONS.umplutura[0].id,
-  decor: OPTIONS.decor[0].id,
-  topping: OPTIONS.topping[0].id,
-  culoare: OPTIONS.culori[0].id,
-  font: OPTIONS.font[0].id,
-};
-
-function findOption(section, optionId) {
-  return (OPTIONS[section] || []).find((item) => item.id === optionId) || null;
-}
+import {
+  BASE_PREP_HOURS,
+  BASE_PRICE,
+  CAKE_OPTIONS,
+  CAKE_PRESETS,
+  DEFAULT_CAKE_OPTIONS,
+  PREVIEW_MODES,
+  buildCakePreviewModel,
+  findCakeOption,
+  getCakeDesignSummary,
+  getRecommendedPreviewModeForField,
+} from "../lib/cakePreview2D";
 
 function OptionPill({
   option,
@@ -118,10 +30,10 @@ function OptionPill({
       type="button"
       onClick={onClick}
       className={[
-        "rounded-[22px] border px-4 py-3 text-left shadow-soft",
+        "rounded-[22px] border px-4 py-3 text-left shadow-soft transition",
         active
-          ? "border-pink-400 bg-pink-600 text-white"
-          : "border-rose-200 bg-white text-gray-800 hover:-translate-y-0.5 hover:border-pink-300 hover:bg-rose-50",
+          ? "border-sage-deep/40 bg-charcoal text-white"
+          : "border-rose-200 bg-white text-gray-800 hover:-translate-y-0.5 hover:border-sage-deep/40 hover:bg-white",
         className,
       ].join(" ")}
     >
@@ -135,7 +47,7 @@ function OptionPill({
         <div className="min-w-0">
           <div className="font-semibold">{option.label}</div>
           {showPrice ? (
-            <div className={`text-xs ${active ? "text-pink-50" : "text-pink-700"}`}>
+            <div className={`text-xs ${active ? "text-rose-100" : "text-pink-700"}`}>
               +{option.price || 0} MDL
             </div>
           ) : null}
@@ -149,16 +61,44 @@ function SummaryRow({ label, value, emphasize = false }) {
   return (
     <div className="flex items-start justify-between gap-3">
       <span className="text-sm text-gray-600">{label}</span>
-      <span className={`text-right ${emphasize ? "text-lg font-semibold text-gray-900" : "font-semibold text-gray-900"}`}>
+      <span
+        className={`text-right ${
+          emphasize ? "text-lg font-semibold text-gray-900" : "font-semibold text-gray-900"
+        }`}
+      >
         {value}
       </span>
     </div>
   );
 }
 
+function PreviewModeToggle({ activeMode, onChange }) {
+  return (
+    <div className="inline-flex rounded-full border border-rose-200 bg-white/90 p-1 shadow-soft">
+      {PREVIEW_MODES.map((mode) => (
+        <button
+          key={mode.id}
+          type="button"
+          onClick={() => onChange(mode.id)}
+          className={`rounded-full px-4 py-2 text-sm font-semibold transition ${
+            activeMode === mode.id
+              ? "bg-charcoal text-white shadow-soft"
+              : "text-[#5f564d] hover:bg-sage/35"
+          }`}
+        >
+          {mode.label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
 export default function CakeConstructor2D({ designId: propDesignId }) {
-  const stageRef = useRef(null);
+  const exteriorStageRef = useRef(null);
+  const sectionStageRef = useRef(null);
   const previewRef = useRef(null);
+  const hintTimerRef = useRef(null);
+  const manualModeLockRef = useRef(0);
   const { user } = useAuth() || {};
 
   const [loading, setLoading] = useState(false);
@@ -166,15 +106,17 @@ export default function CakeConstructor2D({ designId: propDesignId }) {
   const [busyAction, setBusyAction] = useState("");
   const [previewWidth, setPreviewWidth] = useState(560);
   const [status, setStatus] = useState({ type: "", text: "" });
+  const [previewMode, setPreviewMode] = useState("exterior");
+  const [previewHint, setPreviewHint] = useState("");
 
-  const [blat, setBlat] = useState(DEFAULT_OPTIONS.blat);
-  const [crema, setCrema] = useState(DEFAULT_OPTIONS.crema);
-  const [umplutura, setUmplutura] = useState(DEFAULT_OPTIONS.umplutura);
-  const [decor, setDecor] = useState(DEFAULT_OPTIONS.decor);
-  const [topping, setTopping] = useState(DEFAULT_OPTIONS.topping);
-  const [culoare, setCuloare] = useState(DEFAULT_OPTIONS.culoare);
+  const [blat, setBlat] = useState(DEFAULT_CAKE_OPTIONS.blat);
+  const [crema, setCrema] = useState(DEFAULT_CAKE_OPTIONS.crema);
+  const [umplutura, setUmplutura] = useState(DEFAULT_CAKE_OPTIONS.umplutura);
+  const [decor, setDecor] = useState(DEFAULT_CAKE_OPTIONS.decor);
+  const [topping, setTopping] = useState(DEFAULT_CAKE_OPTIONS.topping);
+  const [culoare, setCuloare] = useState(DEFAULT_CAKE_OPTIONS.culoare);
   const [mesaj, setMesaj] = useState("");
-  const [font, setFont] = useState(DEFAULT_OPTIONS.font);
+  const [font, setFont] = useState(DEFAULT_CAKE_OPTIONS.font);
 
   useEffect(() => {
     const element = previewRef.current;
@@ -192,6 +134,14 @@ export default function CakeConstructor2D({ designId: propDesignId }) {
   }, []);
 
   useEffect(() => {
+    return () => {
+      if (hintTimerRef.current) {
+        window.clearTimeout(hintTimerRef.current);
+      }
+    };
+  }, []);
+
+  useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const requestedId = propDesignId || params.get("designId");
     if (!requestedId) return;
@@ -206,13 +156,13 @@ export default function CakeConstructor2D({ designId: propDesignId }) {
         if (cancelled || !data) return;
 
         if (data.options) {
-          setBlat(data.options.blat || DEFAULT_OPTIONS.blat);
-          setCrema(data.options.crema || DEFAULT_OPTIONS.crema);
-          setUmplutura(data.options.umplutura || DEFAULT_OPTIONS.umplutura);
-          setDecor(data.options.decor || DEFAULT_OPTIONS.decor);
-          setTopping(data.options.topping || DEFAULT_OPTIONS.topping);
-          setCuloare(data.options.culoare || DEFAULT_OPTIONS.culoare);
-          setFont(data.options.font || DEFAULT_OPTIONS.font);
+          setBlat(data.options.blat || DEFAULT_CAKE_OPTIONS.blat);
+          setCrema(data.options.crema || DEFAULT_CAKE_OPTIONS.crema);
+          setUmplutura(data.options.umplutura || DEFAULT_CAKE_OPTIONS.umplutura);
+          setDecor(data.options.decor || DEFAULT_CAKE_OPTIONS.decor);
+          setTopping(data.options.topping || DEFAULT_CAKE_OPTIONS.topping);
+          setCuloare(data.options.culoare || DEFAULT_CAKE_OPTIONS.culoare);
+          setFont(data.options.font || DEFAULT_CAKE_OPTIONS.font);
         }
 
         if (data.mesaj) {
@@ -222,7 +172,7 @@ export default function CakeConstructor2D({ designId: propDesignId }) {
         if (!cancelled) {
           setStatus({
             type: "error",
-            text: "Nu am putut incarca designul salvat.",
+            text: "Nu am putut încărca designul salvat.",
           });
         }
       } finally {
@@ -238,24 +188,35 @@ export default function CakeConstructor2D({ designId: propDesignId }) {
   }, [propDesignId]);
 
   const stageWidth = Math.max(320, previewWidth);
-  const stageHeight = Math.round(stageWidth * 0.7);
+  const stageHeight = Math.round(stageWidth * 0.72);
 
   const selectedOptions = useMemo(
     () => ({
-      blat: findOption("blat", blat),
-      crema: findOption("crema", crema),
-      umplutura: findOption("umplutura", umplutura),
-      decor: findOption("decor", decor),
-      topping: findOption("topping", topping),
-      culoare: findOption("culori", culoare),
-      font: findOption("font", font),
+      blat: findCakeOption("blat", blat),
+      crema: findCakeOption("crema", crema),
+      umplutura: findCakeOption("umplutura", umplutura),
+      decor: findCakeOption("decor", decor),
+      topping: findCakeOption("topping", topping),
+      culoare: findCakeOption("culori", culoare),
+      font: findCakeOption("font", font),
     }),
     [blat, crema, umplutura, decor, topping, culoare, font]
   );
 
+  const previewModel = useMemo(
+    () =>
+      buildCakePreviewModel({
+        stageWidth,
+        stageHeight,
+        selectedOptions,
+        message: mesaj,
+      }),
+    [mesaj, selectedOptions, stageHeight, stageWidth]
+  );
+
   const total = useMemo(() => {
     return (
-      BASE_PRET +
+      BASE_PRICE +
       (selectedOptions.blat?.price || 0) +
       (selectedOptions.crema?.price || 0) +
       (selectedOptions.umplutura?.price || 0) +
@@ -264,61 +225,91 @@ export default function CakeConstructor2D({ designId: propDesignId }) {
     );
   }, [selectedOptions]);
 
-  const timpOre = useMemo(() => BASE_ORE + (mesaj.trim() ? 4 : 0), [mesaj]);
-
-  const previewMessage = useMemo(() => {
-    const trimmed = mesaj.trim();
-    if (!trimmed) return "";
-    return trimmed.length > 22 ? `${trimmed.slice(0, 22)}...` : trimmed;
-  }, [mesaj]);
-
-  const layerSpecs = useMemo(() => {
-    return [
-      {
-        id: "blat",
-        label: selectedOptions.blat?.label || "Blat",
-        color: selectedOptions.blat?.color || "#f6d7c3",
-        height: Math.round(stageHeight * 0.18),
-      },
-      {
-        id: "crema",
-        label: selectedOptions.crema?.label || "Crema",
-        color: selectedOptions.crema?.color || "#fff1e6",
-        height: Math.round(stageHeight * 0.12),
-      },
-      {
-        id: "decor",
-        label: selectedOptions.decor?.label || "Decor",
-        color: culoare || selectedOptions.decor?.color || "#ffd6e0",
-        height: Math.round(stageHeight * 0.1),
-      },
-    ];
-  }, [culoare, selectedOptions, stageHeight]);
-
-  const toppingDecor = useMemo(() => {
-    const colors = {
-      perle: "#fff4de",
-      fructe: "#d84f71",
-      ciocolata: "#7a4f43",
-    };
-
-    return Array.from({ length: 6 }, (_, index) => ({
-      x: stageWidth * 0.34 + index * (stageWidth * 0.055),
-      y: stageHeight * 0.24 + (index % 2 === 0 ? 0 : 6),
-      radius: topping === "fructe" ? 7 : topping === "ciocolata" ? 6 : 5,
-      color: colors[topping] || "#fff4de",
-    }));
-  }, [stageHeight, stageWidth, topping]);
-
-  const designSummary = useMemo(
-    () => [
-      `Blat ${selectedOptions.blat?.label || ""}`,
-      `crema ${selectedOptions.crema?.label || ""}`,
-      `umplutura ${selectedOptions.umplutura?.label || ""}`,
-      `decor ${selectedOptions.decor?.label || ""}`,
-    ].join(", "),
+  const timpOre = useMemo(() => BASE_PREP_HOURS + (mesaj.trim() ? 4 : 0), [mesaj]);
+  const designSummary = useMemo(() => getCakeDesignSummary(selectedOptions), [selectedOptions]);
+  const layerSummary = useMemo(
+    () =>
+      [
+        selectedOptions.blat?.label,
+        selectedOptions.crema?.label,
+        selectedOptions.umplutura?.label,
+      ]
+        .filter(Boolean)
+        .join(" • "),
     [selectedOptions]
   );
+
+  const exteriorFooter = useMemo(
+    () =>
+      [
+        selectedOptions.decor?.label,
+        selectedOptions.culoare?.label,
+        selectedOptions.topping?.label,
+      ]
+        .filter(Boolean)
+        .join(" • "),
+    [selectedOptions]
+  );
+
+  const activeModeMeta = PREVIEW_MODES.find((mode) => mode.id === previewMode) || PREVIEW_MODES[0];
+
+  const showPreviewHint = (text) => {
+    setPreviewHint(text);
+    if (hintTimerRef.current) {
+      window.clearTimeout(hintTimerRef.current);
+    }
+    hintTimerRef.current = window.setTimeout(() => {
+      setPreviewHint("");
+    }, 2600);
+  };
+
+  const handleGuidedPreview = (field) => {
+    const recommendedMode = getRecommendedPreviewModeForField(field);
+    const now = Date.now();
+
+    if (previewMode !== recommendedMode && now > manualModeLockRef.current) {
+      setPreviewMode(recommendedMode);
+      showPreviewHint(
+        recommendedMode === "section"
+          ? "Am trecut în Secțiune ca să vezi clar blatul, crema și umplutura."
+          : "Am trecut pe Exterior ca să vezi finisajul final al tortului."
+      );
+      return;
+    }
+
+    if (previewMode !== recommendedMode) {
+      showPreviewHint(
+        recommendedMode === "section"
+          ? "Vezi interiorul în Secțiune."
+          : "Vezi exteriorul final."
+      );
+      return;
+    }
+
+    showPreviewHint(
+      recommendedMode === "section" ? "Interiorul a fost actualizat." : "Exteriorul a fost actualizat."
+    );
+  };
+
+  const handleOptionChange = (field, setter, value) => {
+    setter(value);
+    handleGuidedPreview(field);
+  };
+
+  const handleMessageChange = (event) => {
+    setMesaj(event.target.value);
+    handleGuidedPreview("mesaj");
+  };
+
+  const handleModeToggle = (nextMode) => {
+    manualModeLockRef.current = Date.now() + 10000;
+    setPreviewMode(nextMode);
+    showPreviewHint(
+      nextMode === "section"
+        ? "Secțiunea evidențiază compoziția internă a tortului."
+        : "Exteriorul evidențiază finisajul final și decorul."
+    );
+  };
 
   const applyPreset = (values) => {
     setBlat(values.blat);
@@ -328,17 +319,21 @@ export default function CakeConstructor2D({ designId: propDesignId }) {
     setTopping(values.topping);
     setCuloare(values.culoare);
     setFont(values.font);
+    setPreviewMode("exterior");
+    showPreviewHint("Preset-ul a fost aplicat. Exteriorul final a fost actualizat.");
     setStatus({
       type: "info",
-      text: "Preset-ul a fost aplicat. Ajusteaza liber detaliile daca vrei.",
+      text: "Preset-ul a fost aplicat. Poți trece în Secțiune pentru a verifica imediat straturile.",
     });
   };
 
   const exportImage = () => {
-    if (!stageRef.current) {
-      throw new Error("Preview-ul nu este pregatit pentru export.");
+    const activeStage =
+      previewMode === "section" ? sectionStageRef.current : exteriorStageRef.current;
+    if (!activeStage) {
+      throw new Error("Preview-ul nu este pregătit pentru export.");
     }
-    return stageRef.current.toDataURL({ pixelRatio: 2 });
+    return activeStage.toDataURL({ pixelRatio: 2 });
   };
 
   const runAction = async (action, handler) => {
@@ -393,7 +388,7 @@ export default function CakeConstructor2D({ designId: propDesignId }) {
   const addToCart = () => {
     setStatus({
       type: "warning",
-      text: "Designurile personalizate nu intra direct in checkout public. Salveaza draftul sau trimite cererea catre patiser pentru confirmarea pretului.",
+      text: "Designurile personalizate nu intră direct în checkout-ul public. Salvează draftul sau trimite cererea către patiser pentru confirmarea finală a prețului.",
     });
   };
 
@@ -403,11 +398,11 @@ export default function CakeConstructor2D({ designId: propDesignId }) {
         const uri = exportImage();
         const link = document.createElement("a");
         link.href = uri;
-        link.download = `design-tort-${Date.now()}.png`;
+        link.download = `design-tort-${previewMode}-${Date.now()}.png`;
         link.click();
       });
     } catch {
-      setStatus({ type: "error", text: "Exportul imaginii a esuat." });
+      setStatus({ type: "error", text: "Exportul imaginii a eșuat." });
     }
   };
 
@@ -415,7 +410,7 @@ export default function CakeConstructor2D({ designId: propDesignId }) {
     if (!user?._id) {
       setStatus({
         type: "warning",
-        text: "Autentifica-te pentru a trimite designul catre patiser.",
+        text: "Autentifică-te pentru a trimite designul către patiser.",
       });
       return;
     }
@@ -428,7 +423,7 @@ export default function CakeConstructor2D({ designId: propDesignId }) {
         await api.post("/comenzi-personalizate", {
           clientId: user._id,
           numeClient: user?.nume || user?.name || "Client",
-          preferinte: mesaj || "Comanda personalizata",
+          preferinte: mesaj || "Comandă personalizată",
           imagine: exportImage(),
           designId: nextId,
           options: { blat, crema, umplutura, decor, topping, culoare, font },
@@ -438,26 +433,26 @@ export default function CakeConstructor2D({ designId: propDesignId }) {
 
         setStatus({
           type: "success",
-          text: "Designul a fost trimis catre patiser.",
+          text: "Designul a fost trimis către patiser.",
         });
       });
     } catch {
       setStatus({
         type: "error",
-        text: "Nu am putut trimite designul catre patiser.",
+        text: "Nu am putut trimite designul către patiser.",
       });
     }
   };
 
   return (
-    <div className="grid grid-cols-1 gap-6 xl:grid-cols-[1.05fr_0.95fr]">
+    <div className="grid grid-cols-1 gap-6 xl:grid-cols-[1.08fr_0.92fr]">
       <section className="space-y-6">
         <div className={`${cards.elevated} space-y-4`}>
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div>
               <h2 className="text-xl font-semibold text-gray-900">Preset-uri rapide</h2>
               <p className="text-sm text-gray-600">
-                Pleci de la o directie vizuala clara si apoi finisezi detaliile.
+                Alegi o direcție de atelier și vezi instant cum se schimbă compoziția, frosting-ul și topping-ul.
               </p>
             </div>
             {designId ? (
@@ -468,15 +463,15 @@ export default function CakeConstructor2D({ designId: propDesignId }) {
           </div>
 
           <div className="grid gap-3 md:grid-cols-3">
-            {PRESETS.map((preset) => (
+            {CAKE_PRESETS.map((preset) => (
               <button
                 key={preset.id}
                 type="button"
                 onClick={() => applyPreset(preset.values)}
-                className="rounded-[24px] border border-rose-200 bg-white px-4 py-4 text-left shadow-soft hover:-translate-y-0.5 hover:border-pink-300 hover:bg-rose-50"
+                className="rounded-[24px] border border-rose-200 bg-white px-4 py-4 text-left shadow-soft transition hover:-translate-y-0.5 hover:border-sage-deep/40 hover:bg-white"
               >
                 <div className="font-semibold text-gray-900">{preset.label}</div>
-                <div className="mt-2 text-sm text-gray-600">{preset.description}</div>
+                <div className="mt-2 text-sm leading-6 text-gray-600">{preset.description}</div>
               </button>
             ))}
           </div>
@@ -484,141 +479,115 @@ export default function CakeConstructor2D({ designId: propDesignId }) {
 
         <div ref={previewRef} className={`${cards.elevated} space-y-4`}>
           <div className="flex flex-wrap items-start justify-between gap-3">
-            <div>
-              <h2 className="text-xl font-semibold text-gray-900">Preview 2D</h2>
+            <div className="space-y-2">
+              <h2 className="text-xl font-semibold text-gray-900">Preview premium 2D</h2>
               <p className="text-sm text-gray-600">
-                Renderul se adapteaza automat la latimea ecranului si ramane exportabil.
+                Exteriorul vinde tortul, iar Secțiunea explică clar straturile și compoziția lui.
               </p>
             </div>
-            <div className="rounded-full border border-rose-200 bg-rose-50 px-3 py-1 text-xs font-semibold text-pink-700">
-              Responsive canvas
-            </div>
+            <PreviewModeToggle activeMode={previewMode} onChange={handleModeToggle} />
           </div>
 
-          <StatusBanner
-            type={status.type || "info"}
-            message={status.text}
-          />
+          <div className="flex flex-wrap items-center justify-between gap-3 rounded-[22px] border border-rose-100 bg-[rgba(255,249,242,0.88)] px-4 py-3">
+            <div>
+              <div className="text-xs font-semibold uppercase tracking-[0.18em] text-[#bf6a86]">
+                Mod activ
+              </div>
+              <div className="mt-1 text-base font-semibold text-[#2f2126]">
+                {activeModeMeta.label}
+              </div>
+              <div className="text-sm text-[#6e5661]">{activeModeMeta.description}</div>
+            </div>
+            {previewHint ? (
+              <div className="rounded-full border border-rose-200 bg-white px-3 py-2 text-sm text-[#6d625a] shadow-soft transition">
+                {previewHint}
+              </div>
+            ) : (
+              <div className="rounded-full border border-white/80 bg-white/80 px-3 py-2 text-sm text-[#6d625a]">
+                {previewMode === "section" ? "Focus pe interior" : "Focus pe finisajul final"}
+              </div>
+            )}
+          </div>
 
-          <div className="overflow-hidden rounded-[28px] border border-rose-100 bg-[radial-gradient(circle_at_top,_rgba(255,255,255,0.98),_rgba(252,243,246,0.96),_rgba(244,229,234,0.9))] p-3 shadow-soft">
-            <Stage
-              width={stageWidth}
-              height={stageHeight}
-              ref={stageRef}
-              style={{ display: "block", margin: "0 auto" }}
-            >
-              <Layer>
-                <Rect
-                  x={0}
-                  y={0}
-                  width={stageWidth}
-                  height={stageHeight}
-                  fill="#fff8f5"
+          <StatusBanner type={status.type || "info"} message={status.text} />
+
+          <div className="overflow-hidden rounded-[28px] border border-rose-100 bg-[radial-gradient(circle_at_top,_rgba(255,255,255,0.98),_rgba(249,244,236,0.96),_rgba(231,237,228,0.86))] p-3 shadow-soft">
+            <div className="relative mx-auto" style={{ height: stageHeight }}>
+              <div
+                className={`absolute inset-0 flex items-center justify-center transition-all duration-500 ${
+                  previewMode === "exterior"
+                    ? "translate-y-0 scale-100 opacity-100"
+                    : "-translate-y-2 scale-[0.985] opacity-0 pointer-events-none"
+                }`}
+              >
+                <CakePreview2DStage
+                  stageRef={exteriorStageRef}
+                  stageWidth={stageWidth}
+                  stageHeight={stageHeight}
+                  mode="exterior"
+                  model={previewModel}
+                  footerText={exteriorFooter}
                 />
-                <Rect
-                  x={stageWidth * 0.18}
-                  y={stageHeight * 0.78}
-                  width={stageWidth * 0.64}
-                  height={stageHeight * 0.06}
-                  fill="#eadfd6"
-                  cornerRadius={999}
+              </div>
+
+              <div
+                className={`absolute inset-0 flex items-center justify-center transition-all duration-500 ${
+                  previewMode === "section"
+                    ? "translate-y-0 scale-100 opacity-100"
+                    : "translate-y-2 scale-[0.985] opacity-0 pointer-events-none"
+                }`}
+              >
+                <CakePreview2DStage
+                  stageRef={sectionStageRef}
+                  stageWidth={stageWidth}
+                  stageHeight={stageHeight}
+                  mode="section"
+                  model={previewModel}
+                  footerText={layerSummary}
                 />
-
-                {(() => {
-                  const cakeWidth = stageWidth * 0.42;
-                  const cakeX = (stageWidth - cakeWidth) / 2;
-                  let currentBottom = stageHeight * 0.77;
-
-                  return layerSpecs.map((layer) => {
-                    const y = currentBottom - layer.height;
-                    const node = (
-                      <Rect
-                        key={layer.id}
-                        x={cakeX}
-                        y={y}
-                        width={cakeWidth}
-                        height={layer.height}
-                        fill={layer.color}
-                        cornerRadius={layer.height / 2}
-                        shadowColor="rgba(94, 60, 74, 0.12)"
-                        shadowBlur={8}
-                        shadowOffsetY={4}
-                      />
-                    );
-                    currentBottom = y - 8;
-                    return node;
-                  });
-                })()}
-
-                <Rect
-                  x={stageWidth * 0.29}
-                  y={stageHeight * 0.21}
-                  width={stageWidth * 0.42}
-                  height={stageHeight * 0.02}
-                  fill="#ffffff"
-                  opacity={0.7}
-                  cornerRadius={999}
-                />
-
-                {toppingDecor.map((item, index) => (
-                  <Circle
-                    key={`${topping}_${index}`}
-                    x={item.x}
-                    y={item.y}
-                    radius={item.radius}
-                    fill={item.color}
-                    shadowColor="rgba(0,0,0,0.08)"
-                    shadowBlur={2}
-                  />
-                ))}
-
-                <Text
-                  x={stageWidth * 0.12}
-                  y={stageHeight * 0.08}
-                  width={stageWidth * 0.76}
-                  text={previewMessage || "Mesajul tau va aparea aici"}
-                  align="center"
-                  fontSize={previewMessage ? 18 : 15}
-                  fontFamily={font}
-                  fill={previewMessage ? "#4b3540" : "#9c7b86"}
-                />
-
-                <Text
-                  x={stageWidth * 0.08}
-                  y={stageHeight * 0.9}
-                  width={stageWidth * 0.84}
-                  text={designSummary}
-                  align="center"
-                  fontSize={13}
-                  fill="#7f6170"
-                />
-              </Layer>
-            </Stage>
+              </div>
+            </div>
           </div>
 
           <div className="grid gap-3 md:grid-cols-3">
-            <div className="rounded-[22px] border border-rose-100 bg-rose-50/70 px-4 py-3">
+            <div className="rounded-[22px] border border-rose-100 bg-[rgba(255,249,242,0.9)] px-4 py-3">
               <div className="text-xs font-semibold uppercase tracking-[0.16em] text-pink-500">
-                Stil
+                Accent acum
               </div>
               <div className="mt-2 text-lg font-semibold text-gray-900">
-                {selectedOptions.decor?.label}
+                {previewMode === "section"
+                  ? selectedOptions.umplutura?.label
+                  : selectedOptions.decor?.label}
               </div>
-              <div className="text-sm text-gray-600">{selectedOptions.culoare?.label}</div>
+              <div className="text-sm text-gray-600">
+                {previewMode === "section"
+                  ? "straturile sunt evidențiate în prim-plan"
+                  : `${selectedOptions.culoare?.label || "Ivoire"} și ${selectedOptions.topping?.label || "Perle"}`}
+              </div>
             </div>
+
             <div className="rounded-[22px] border border-rose-100 bg-white px-4 py-3">
               <div className="text-xs font-semibold uppercase tracking-[0.16em] text-pink-500">
-                Timp estimat
+                Compoziție
               </div>
-              <div className="mt-2 text-lg font-semibold text-gray-900">{timpOre} ore</div>
-              <div className="text-sm text-gray-600">include 4 ore extra pentru mesaj</div>
+              <div className="mt-2 text-lg font-semibold text-gray-900">
+                {previewMode === "section" ? layerSummary : exteriorFooter}
+              </div>
+              <div className="text-sm text-gray-600">
+                {previewMode === "section"
+                  ? "blat, cremă și umplutură"
+                  : "stil, culoare și topping"}
+              </div>
             </div>
+
             <div className="rounded-[22px] border border-rose-100 bg-white px-4 py-3">
               <div className="text-xs font-semibold uppercase tracking-[0.16em] text-pink-500">
-                Ready for export
+                Export curent
               </div>
-              <div className="mt-2 text-lg font-semibold text-gray-900">PNG la 2x</div>
-              <div className="text-sm text-gray-600">bun pentru confirmare si productie</div>
+              <div className="mt-2 text-lg font-semibold text-gray-900">
+                {activeModeMeta.shortLabel}
+              </div>
+              <div className="text-sm text-gray-600">PNG la 2x pentru confirmare și producție</div>
             </div>
           </div>
         </div>
@@ -627,9 +596,9 @@ export default function CakeConstructor2D({ designId: propDesignId }) {
       <aside className="space-y-6">
         <div className={`${cards.elevated} space-y-5`}>
           <div>
-            <h2 className="text-xl font-semibold text-gray-900">Compozitie</h2>
+            <h2 className="text-xl font-semibold text-gray-900">Compoziție</h2>
             <p className="text-sm text-gray-600">
-              Controlezi fiecare strat, culoarea dominanta si mesajul final.
+              Controlezi separat interiorul tortului, frosting-ul exterior, culoarea dominantă și mesajul.
             </p>
           </div>
 
@@ -637,12 +606,12 @@ export default function CakeConstructor2D({ designId: propDesignId }) {
             <div>
               <div className="mb-3 text-sm font-semibold text-gray-700">Blat</div>
               <div className="grid gap-3 sm:grid-cols-3">
-                {OPTIONS.blat.map((option) => (
+                {CAKE_OPTIONS.blat.map((option) => (
                   <OptionPill
                     key={option.id}
                     option={option}
                     active={blat === option.id}
-                    onClick={() => setBlat(option.id)}
+                    onClick={() => handleOptionChange("blat", setBlat, option.id)}
                     showPrice
                     swatch={option.color}
                   />
@@ -651,14 +620,14 @@ export default function CakeConstructor2D({ designId: propDesignId }) {
             </div>
 
             <div>
-              <div className="mb-3 text-sm font-semibold text-gray-700">Crema</div>
+              <div className="mb-3 text-sm font-semibold text-gray-700">Cremă</div>
               <div className="grid gap-3 sm:grid-cols-3">
-                {OPTIONS.crema.map((option) => (
+                {CAKE_OPTIONS.crema.map((option) => (
                   <OptionPill
                     key={option.id}
                     option={option}
                     active={crema === option.id}
-                    onClick={() => setCrema(option.id)}
+                    onClick={() => handleOptionChange("crema", setCrema, option.id)}
                     showPrice
                     swatch={option.color}
                   />
@@ -667,14 +636,14 @@ export default function CakeConstructor2D({ designId: propDesignId }) {
             </div>
 
             <div>
-              <div className="mb-3 text-sm font-semibold text-gray-700">Umplutura</div>
+              <div className="mb-3 text-sm font-semibold text-gray-700">Umplutură</div>
               <div className="grid gap-3 sm:grid-cols-3">
-                {OPTIONS.umplutura.map((option) => (
+                {CAKE_OPTIONS.umplutura.map((option) => (
                   <OptionPill
                     key={option.id}
                     option={option}
                     active={umplutura === option.id}
-                    onClick={() => setUmplutura(option.id)}
+                    onClick={() => handleOptionChange("umplutura", setUmplutura, option.id)}
                     showPrice
                   />
                 ))}
@@ -682,14 +651,14 @@ export default function CakeConstructor2D({ designId: propDesignId }) {
             </div>
 
             <div>
-              <div className="mb-3 text-sm font-semibold text-gray-700">Decor</div>
+              <div className="mb-3 text-sm font-semibold text-gray-700">Stil exterior</div>
               <div className="grid gap-3 sm:grid-cols-3">
-                {OPTIONS.decor.map((option) => (
+                {CAKE_OPTIONS.decor.map((option) => (
                   <OptionPill
                     key={option.id}
                     option={option}
                     active={decor === option.id}
-                    onClick={() => setDecor(option.id)}
+                    onClick={() => handleOptionChange("decor", setDecor, option.id)}
                     showPrice
                     swatch={option.color}
                   />
@@ -700,12 +669,12 @@ export default function CakeConstructor2D({ designId: propDesignId }) {
             <div>
               <div className="mb-3 text-sm font-semibold text-gray-700">Topping</div>
               <div className="grid gap-3 sm:grid-cols-3">
-                {OPTIONS.topping.map((option) => (
+                {CAKE_OPTIONS.topping.map((option) => (
                   <OptionPill
                     key={option.id}
                     option={option}
                     active={topping === option.id}
-                    onClick={() => setTopping(option.id)}
+                    onClick={() => handleOptionChange("topping", setTopping, option.id)}
                     showPrice
                   />
                 ))}
@@ -713,14 +682,14 @@ export default function CakeConstructor2D({ designId: propDesignId }) {
             </div>
 
             <div>
-              <div className="mb-3 text-sm font-semibold text-gray-700">Culoare dominanta</div>
+              <div className="mb-3 text-sm font-semibold text-gray-700">Culoare dominantă</div>
               <div className="grid gap-3 sm:grid-cols-2">
-                {OPTIONS.culori.map((option) => (
+                {CAKE_OPTIONS.culori.map((option) => (
                   <OptionPill
                     key={option.id}
                     option={option}
                     active={culoare === option.id}
-                    onClick={() => setCuloare(option.id)}
+                    onClick={() => handleOptionChange("culoare", setCuloare, option.id)}
                     swatch={option.id}
                   />
                 ))}
@@ -730,12 +699,12 @@ export default function CakeConstructor2D({ designId: propDesignId }) {
             <div>
               <div className="mb-3 text-sm font-semibold text-gray-700">Font mesaj</div>
               <div className="grid gap-3 sm:grid-cols-3">
-                {OPTIONS.font.map((option) => (
+                {CAKE_OPTIONS.font.map((option) => (
                   <OptionPill
                     key={option.id}
                     option={option}
                     active={font === option.id}
-                    onClick={() => setFont(option.id)}
+                    onClick={() => handleOptionChange("font", setFont, option.id)}
                   />
                 ))}
               </div>
@@ -745,8 +714,8 @@ export default function CakeConstructor2D({ designId: propDesignId }) {
               Mesaj pe tort
               <input
                 value={mesaj}
-                onChange={(event) => setMesaj(event.target.value)}
-                placeholder="Ex: La multi ani, Mara!"
+                onChange={handleMessageChange}
+                placeholder="Ex: La mulți ani, Mara!"
                 className={`mt-2 ${inputs.default}`}
               />
             </label>
@@ -755,29 +724,39 @@ export default function CakeConstructor2D({ designId: propDesignId }) {
 
         <div className={`${cards.elevated} space-y-4`}>
           <div>
-            <h2 className="text-xl font-semibold text-gray-900">Estimare si actiuni</h2>
+            <h2 className="text-xl font-semibold text-gray-900">Estimare și acțiuni</h2>
             <p className="text-sm text-gray-600">
-              Salvezi draftul, il exporti pentru confirmare sau il trimiti direct in fluxul de comanda.
+              Prețul estimat rămâne sincronizat cu selecția curentă și cu modul de preview activ.
             </p>
           </div>
 
-          <div className="rounded-[26px] border border-rose-100 bg-[linear-gradient(180deg,_rgba(255,255,255,0.98),_rgba(253,244,246,0.92))] p-5 shadow-soft">
+          <div className="rounded-[26px] border border-rose-100 bg-[linear-gradient(180deg,_rgba(255,255,255,0.98),_rgba(246,239,228,0.92))] p-5 shadow-soft">
             <div className="space-y-3">
-              <SummaryRow label="Pret de baza" value={`${BASE_PRET} MDL`} />
+              <SummaryRow label="Preț de bază" value={`${BASE_PRICE} MDL`} />
               <SummaryRow label="Blat" value={`+${selectedOptions.blat?.price || 0} MDL`} />
-              <SummaryRow label="Crema" value={`+${selectedOptions.crema?.price || 0} MDL`} />
-              <SummaryRow label="Umplutura" value={`+${selectedOptions.umplutura?.price || 0} MDL`} />
+              <SummaryRow label="Cremă" value={`+${selectedOptions.crema?.price || 0} MDL`} />
+              <SummaryRow
+                label="Umplutură"
+                value={`+${selectedOptions.umplutura?.price || 0} MDL`}
+              />
               <SummaryRow label="Decor" value={`+${selectedOptions.decor?.price || 0} MDL`} />
-              <SummaryRow label="Topping" value={`+${selectedOptions.topping?.price || 0} MDL`} />
+              <SummaryRow
+                label="Topping"
+                value={`+${selectedOptions.topping?.price || 0} MDL`}
+              />
               <div className="border-t border-rose-100 pt-3">
                 <SummaryRow label="Total estimat" value={`${total} MDL`} emphasize />
               </div>
               <SummaryRow label="Timp estimat" value={`${timpOre} ore`} />
+              <SummaryRow
+                label="Mod export curent"
+                value={activeModeMeta.label}
+              />
             </div>
           </div>
 
-          <div className="rounded-[24px] border border-rose-100 bg-rose-50/70 px-4 py-4 text-sm text-gray-700">
-            <div className="font-semibold text-gray-900">Compozitia curenta</div>
+          <div className="rounded-[24px] border border-rose-100 bg-[rgba(255,249,242,0.9)] px-4 py-4 text-sm text-gray-700">
+            <div className="font-semibold text-gray-900">Compoziția curentă</div>
             <div className="mt-2 leading-6">{designSummary}</div>
           </div>
 
@@ -788,24 +767,27 @@ export default function CakeConstructor2D({ designId: propDesignId }) {
               disabled={busyAction !== ""}
               onClick={handleSaveDraft}
             >
-              {busyAction === "save" ? "Se salveaza..." : "Salveaza draft"}
+              {busyAction === "save" ? "Se salvează..." : "Salvează draft"}
             </button>
+
             <button
               type="button"
               className={buttons.primary}
               disabled={busyAction !== ""}
               onClick={addToCart}
             >
-              Pret confirmat manual
+              Preț confirmat manual
             </button>
+
             <button
               type="button"
               className={buttons.secondary}
               disabled={busyAction !== ""}
               onClick={downloadExportImage}
             >
-              {busyAction === "export" ? "Se exporta..." : "Export PNG"}
+              {busyAction === "export" ? "Se exportă..." : "Export PNG"}
             </button>
+
             <button
               type="button"
               className={buttons.success}
@@ -817,13 +799,11 @@ export default function CakeConstructor2D({ designId: propDesignId }) {
           </div>
 
           <div className="rounded-[24px] border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
-            Comenzile personalizate se confirma manual. Pentru lansarea publica,
-            designul nu se poate plati direct din cos pana cand pretul final nu
-            este validat de patiser.
+            Comenzile personalizate se confirmă manual. Designul se poate salva, exporta și trimite spre validare înainte de prețul final.
           </div>
 
           {loading ? (
-            <div className="text-sm text-gray-500">Se incarca designul salvat...</div>
+            <div className="text-sm text-gray-500">Se încarcă designul salvat...</div>
           ) : null}
         </div>
       </aside>

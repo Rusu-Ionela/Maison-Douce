@@ -3,9 +3,16 @@ import AdminShell, {
   AdminMetricGrid,
   AdminPanel,
 } from "../components/AdminShell";
+import ProviderSelector from "../components/ProviderSelector";
 import api from "/src/lib/api.js";
 import { getSocket } from "../lib/socket";
 import { useAuth } from "../context/AuthContext";
+import {
+  formatConversationLabel,
+  parseConversationRoom,
+  useProviderDirectory,
+} from "../lib/providers";
+import { isStaffRole, normalizeRole } from "../lib/roles";
 import { buttons, inputs } from "../lib/tailwindComponents";
 
 function messageTimestamp(message) {
@@ -51,13 +58,6 @@ function mergeMessages(current, incoming) {
   return next.sort((left, right) => messageTimestamp(left) - messageTimestamp(right));
 }
 
-function formatRoomLabel(room) {
-  if (!room) return "Conversatie";
-  if (!room.startsWith("user-")) return room;
-  const suffix = room.replace("user-", "");
-  return `Client #${suffix.slice(-6) || suffix}`;
-}
-
 function summarizeRooms(messages) {
   const map = new Map();
 
@@ -66,7 +66,6 @@ function summarizeRooms(messages) {
 
     const summary = {
       room: message.room,
-      label: formatRoomLabel(message.room),
       last: message.text || (message.fileUrl ? "Fisier atasat" : "Mesaj"),
       at: messageTimestamp(message),
       author: message.utilizator || "Client",
@@ -86,7 +85,6 @@ function upsertRoomSummary(current, message) {
 
   const summary = {
     room: message.room,
-    label: formatRoomLabel(message.room),
     last: message.text || (message.fileUrl ? "Fisier atasat" : "Mesaj"),
     at: messageTimestamp(message),
     author: message.utilizator || "Client",
@@ -95,6 +93,13 @@ function upsertRoomSummary(current, message) {
   const next = current.filter((item) => item.room !== summary.room);
   next.unshift(summary);
   return next.sort((left, right) => right.at - left.at);
+}
+
+function matchesProvider(room, providerId) {
+  const normalizedProviderId = String(providerId || "").trim();
+  if (!normalizedProviderId) return true;
+  const details = parseConversationRoom(room);
+  return details.type === "provider-client" && details.prestatorId === normalizedProviderId;
 }
 
 function connectionClass(state) {
@@ -149,10 +154,11 @@ function MessageBubble({ message, currentUserId }) {
 
 export default function ChatUtilizatori() {
   const { user } = useAuth() || {};
-  const role = user?.rol || user?.role;
-  const isAdmin = role === "admin" || role === "patiser";
+  const normalizedRole = normalizeRole(user?.rol || user?.role);
+  const isStaffUser = isStaffRole(normalizedRole);
   const currentUserId = String(user?._id || user?.id || "");
   const currentUserName = user?.nume || user?.name || "Admin";
+  const providerState = useProviderDirectory({ user, enabled: isStaffUser });
 
   const socketRef = useRef(null);
   const activeRoomRef = useRef("");
@@ -175,6 +181,11 @@ export default function ChatUtilizatori() {
 
   activeRoomRef.current = activeRoom;
 
+  const visibleRooms = useMemo(
+    () => rooms.filter((item) => matchesProvider(item.room, providerState.activeProviderId)),
+    [providerState.activeProviderId, rooms]
+  );
+
   useEffect(() => {
     scrollRef.current?.scrollTo({
       top: scrollRef.current.scrollHeight,
@@ -183,7 +194,7 @@ export default function ChatUtilizatori() {
   }, [messages]);
 
   useEffect(() => {
-    if (!isAdmin) return undefined;
+    if (!isStaffUser) return undefined;
     let mounted = true;
 
     async function loadRooms() {
@@ -191,9 +202,7 @@ export default function ChatUtilizatori() {
       try {
         const res = await api.get("/mesaje-chat");
         if (!mounted) return;
-        const list = summarizeRooms(Array.isArray(res.data) ? res.data : []);
-        setRooms(list);
-        setActiveRoom((current) => current || list[0]?.room || "");
+        setRooms(summarizeRooms(Array.isArray(res.data) ? res.data : []));
       } catch (error) {
         if (!mounted) return;
         setRooms([]);
@@ -247,8 +256,6 @@ export default function ChatUtilizatori() {
           [message.room]: (current[message.room] || 0) + 1,
         }));
       }
-
-      setActiveRoom((current) => current || message.room);
     };
 
     setSocketState(socket.connected ? "online" : "connecting");
@@ -272,10 +279,20 @@ export default function ChatUtilizatori() {
       socket.off("connect_error", handleConnectError);
       socket.off("receiveMessage", handleReceive);
     };
-  }, [currentUserId, isAdmin]);
+  }, [currentUserId, isStaffUser]);
 
   useEffect(() => {
-    if (!isAdmin || !activeRoom) return undefined;
+    if (!visibleRooms.length) {
+      setActiveRoom("");
+      return;
+    }
+    if (!visibleRooms.some((item) => item.room === activeRoom)) {
+      setActiveRoom(visibleRooms[0].room);
+    }
+  }, [activeRoom, visibleRooms]);
+
+  useEffect(() => {
+    if (!isStaffUser || !activeRoom) return undefined;
     let mounted = true;
     const socket = socketRef.current;
 
@@ -313,7 +330,7 @@ export default function ChatUtilizatori() {
     return () => {
       mounted = false;
     };
-  }, [activeRoom, isAdmin]);
+  }, [activeRoom, isStaffUser]);
 
   const uploadFile = async () => {
     if (!file) return null;
@@ -334,11 +351,7 @@ export default function ChatUtilizatori() {
 
     try {
       const roomsResponse = await api.get("/mesaje-chat");
-      const roomList = summarizeRooms(Array.isArray(roomsResponse.data) ? roomsResponse.data : []);
-      setRooms(roomList);
-      if (!activeRoom && roomList.length) {
-        setActiveRoom(roomList[0].room);
-      }
+      setRooms(summarizeRooms(Array.isArray(roomsResponse.data) ? roomsResponse.data : []));
 
       if (activeRoom) {
         const messagesResponse = await api.get(
@@ -370,7 +383,7 @@ export default function ChatUtilizatori() {
         text: text.trim() || (fileUrl ? "Fisier atasat" : ""),
         room: activeRoom,
         utilizator: currentUserName,
-        rol: role || "admin",
+        rol: normalizedRole || "admin",
         authorId: currentUserId || undefined,
         fileUrl,
         fileName: file?.name || "",
@@ -402,17 +415,25 @@ export default function ChatUtilizatori() {
   };
 
   const metrics = useMemo(() => {
-    const unreadRooms = Object.values(unreadByRoom).filter((count) => count > 0).length;
+    const unreadRooms = Object.entries(unreadByRoom).filter(
+      ([room, count]) => count > 0 && matchesProvider(room, providerState.activeProviderId)
+    ).length;
     return [
       {
         label: "Conversatii",
-        value: rooms.length,
-        hint: "Room-uri active salvate in istoric.",
+        value: visibleRooms.length,
+        hint:
+          providerState.activeProvider
+            ? `Vizibile pentru ${providerState.activeProvider.displayName}.`
+            : "Room-uri active salvate in istoric.",
         tone: "rose",
       },
       {
         label: "Room selectat",
-        value: activeRoom ? formatRoomLabel(activeRoom) : "-",
+        value:
+          activeRoom && activeRoom !== "-"
+            ? formatConversationLabel(activeRoom, providerState.providers)
+            : "-",
         hint: activeRoom || "Selecteaza o conversatie din lista.",
         tone: "sage",
       },
@@ -429,14 +450,22 @@ export default function ChatUtilizatori() {
         tone: "slate",
       },
     ];
-  }, [activeRoom, messages.length, rooms.length, unreadByRoom]);
+  }, [
+    activeRoom,
+    messages.length,
+    providerState.activeProvider,
+    providerState.activeProviderId,
+    providerState.providers,
+    unreadByRoom,
+    visibleRooms.length,
+  ]);
 
   const activeRoomMeta = useMemo(
-    () => rooms.find((item) => item.room === activeRoom) || null,
-    [activeRoom, rooms]
+    () => visibleRooms.find((item) => item.room === activeRoom) || null,
+    [activeRoom, visibleRooms]
   );
 
-  if (!isAdmin) {
+  if (!isStaffUser) {
     return (
       <div className="mx-auto max-w-xl px-4 py-10">
         <div className="rounded-[28px] border border-rose-100 bg-white p-6 shadow-card">
@@ -456,6 +485,21 @@ export default function ChatUtilizatori() {
       description="Administreaza rapid conversatiile active, vezi cine asteapta raspuns si raspunde direct dintr-un workspace unic."
       actions={
         <>
+          <div className="min-w-[280px]">
+            <ProviderSelector
+              providers={providerState.providers}
+              value={providerState.activeProviderId}
+              onChange={providerState.setSelectedProviderId}
+              loading={providerState.loading}
+              disabled={!providerState.canChooseProvider}
+              label="Prestator activ"
+              helpText={
+                providerState.activeProvider
+                  ? `Conversatiile sunt filtrate pentru ${providerState.activeProvider.displayName}.`
+                  : "Selecteaza prestatorul pentru care vrei sa vezi conversatiile."
+              }
+            />
+          </div>
           <span
             className={`inline-flex rounded-full border px-3 py-2 text-sm font-semibold ${connectionClass(socketState)}`}
           >
@@ -497,9 +541,9 @@ export default function ChatUtilizatori() {
             <div className="rounded-[24px] border border-dashed border-rose-200 px-4 py-10 text-sm text-gray-500">
               Se incarca lista conversatiilor...
             </div>
-          ) : rooms.length ? (
+          ) : visibleRooms.length ? (
             <div className="space-y-3">
-              {rooms.map((room) => {
+              {visibleRooms.map((room) => {
                 const unread = unreadByRoom[room.room] || 0;
                 const isActive = room.room === activeRoom;
 
@@ -516,7 +560,9 @@ export default function ChatUtilizatori() {
                   >
                     <div className="flex flex-wrap items-start justify-between gap-3">
                       <div>
-                        <div className="text-sm font-semibold text-gray-900">{room.label}</div>
+                        <div className="text-sm font-semibold text-gray-900">
+                          {formatConversationLabel(room.room, providerState.providers)}
+                        </div>
                         <div className="mt-1 text-xs text-gray-500">{room.room}</div>
                       </div>
                       <div className="flex items-center gap-2">
@@ -538,13 +584,19 @@ export default function ChatUtilizatori() {
             </div>
           ) : (
             <div className="rounded-[24px] border border-dashed border-rose-200 bg-rose-50/40 px-4 py-10 text-sm text-gray-500">
-              Nu exista inca nicio conversatie salvata.
+              {providerState.activeProvider
+                ? "Nu exista conversatii pentru prestatorul selectat."
+                : "Nu exista inca nicio conversatie salvata."}
             </div>
           )}
         </AdminPanel>
 
         <AdminPanel
-          title={activeRoom ? formatRoomLabel(activeRoom) : "Mesaje"}
+          title={
+            activeRoom
+              ? formatConversationLabel(activeRoom, providerState.providers)
+              : "Mesaje"
+          }
           description={
             activeRoomMeta
               ? `Ultimul mesaj: ${formatDateTime(activeRoomMeta.at)}`

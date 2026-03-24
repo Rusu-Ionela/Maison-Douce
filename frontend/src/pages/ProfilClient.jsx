@@ -12,7 +12,7 @@ import {
   getApiErrorMessage,
   queryKeys,
 } from "../lib/serverState";
-import { getConfiguredPrestatorId } from "../lib/runtimeConfig";
+import { useProviderDirectory } from "../lib/providers";
 import { getPushSubscription, subscribePush, unsubscribePush } from "/src/lib/push.js";
 import RecenzieComanda from "./RecenzieComanda";
 
@@ -102,6 +102,7 @@ export default function ProfilClient() {
   const queryClient = useQueryClient();
   const { user, syncUser, logout } = useAuth() || {};
   const userId = user?._id;
+  const providerState = useProviderDirectory({ user });
 
   const [profile, setProfile] = useState(emptyProfile);
   const [status, setStatus] = useState({ type: "", message: "" });
@@ -236,9 +237,10 @@ export default function ProfilClient() {
       MONGO_ID_PATTERN.test(String(item?.prestatorId || ""))
     )?.prestatorId;
     if (MONGO_ID_PATTERN.test(String(fromOrders || ""))) return String(fromOrders);
-    const configuredPrestatorId = getConfiguredPrestatorId();
-    return MONGO_ID_PATTERN.test(configuredPrestatorId) ? configuredPrestatorId : "";
-  }, [orders]);
+    return MONGO_ID_PATTERN.test(String(providerState.activeProviderId || ""))
+      ? String(providerState.activeProviderId)
+      : "";
+  }, [orders, providerState.activeProviderId]);
 
   const addAddress = () => {
     if (!newAddress.address.trim()) {
@@ -341,7 +343,7 @@ export default function ProfilClient() {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-rose-50 via-pink-50 to-white">
+    <div className="min-h-screen">
       <div className={`${containers.pageMax} max-w-7xl space-y-6`}>
         <header className="rounded-[32px] border border-rose-100 bg-white/88 p-6 shadow-card backdrop-blur">
           <div className="flex flex-col gap-5 xl:flex-row xl:items-end xl:justify-between">
@@ -368,7 +370,7 @@ export default function ProfilClient() {
         </header>
 
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-          <article className="rounded-[24px] border border-rose-100 bg-rose-50/80 px-4 py-4 shadow-soft">
+          <article className="rounded-[24px] border border-rose-100 bg-white/75 px-4 py-4 shadow-soft">
             <div className="text-xs font-semibold uppercase tracking-[0.16em] text-pink-500">Completare profil</div>
             <div className="mt-2 text-3xl font-semibold text-gray-900">{completion(profile)}%</div>
             <div className="mt-1 text-sm text-gray-600">date utile pentru livrare si asistenta</div>
@@ -500,7 +502,7 @@ export default function ProfilClient() {
                     {changePasswordMutation.isPending ? "Se actualizeaza..." : "Actualizeaza parola"}
                   </button>
                 </form>
-                <form onSubmit={submitDeactivateAccount} className="rounded-[26px] border border-rose-200 bg-rose-50 px-5 py-5 shadow-soft space-y-4">
+                <form onSubmit={submitDeactivateAccount} className="rounded-[26px] border border-rose-200 bg-[rgba(255,249,242,0.88)] px-5 py-5 shadow-soft space-y-4">
                   <h3 className="text-lg font-semibold text-rose-900">Dezactiveaza contul</h3>
                   <p className="text-sm text-rose-800">Status cont: {profile.activ === false ? "dezactivat" : "activ"}. Ultima schimbare parola: {formatDateTime(profile.lastPasswordChangeAt)}.</p>
                   <input type="password" value={deactivateForm.currentPassword} onChange={(event) => setDeactivateForm((current) => ({ ...current, currentPassword: event.target.value }))} placeholder="Parola curenta" className={inputs.default} autoComplete="current-password" aria-label="Parola curenta pentru dezactivare" />
@@ -549,7 +551,7 @@ export default function ProfilClient() {
                           ) : null}
                         </div>
                       </div>
-                      <div className="grid gap-3 rounded-[24px] border border-rose-100 bg-rose-50/70 p-4 md:grid-cols-2">
+                      <div className="grid gap-3 rounded-[24px] border border-rose-100 bg-[rgba(255,249,242,0.88)] p-4 md:grid-cols-2">
                         <div><div className="text-sm text-gray-500">Metoda predare</div><div className="font-semibold text-gray-900">{order.metodaLivrare || "ridicare"}</div></div>
                         <div><div className="text-sm text-gray-500">Total</div><div className="font-semibold text-gray-900">{getOrderDisplayTotal(order) > 0 ? money(getOrderDisplayTotal(order)) : "Se confirma dupa analiza"}</div></div>
                       </div>

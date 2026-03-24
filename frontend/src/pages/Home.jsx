@@ -1,22 +1,134 @@
-import React, { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { ProductsAPI } from "/src/api/products.js";
 import api from "/src/lib/api.js";
 import { useAuth } from "/src/context/AuthContext.jsx";
+import { buttons, cards, containers } from "../lib/tailwindComponents";
+import { getStorefrontCatalogItems } from "../lib/storefrontCatalog";
 
-const iconics = [
-  { img: "/images/image.png", title: "Tort personalizat pentru bebelus", price: "57 EUR" },
-  { img: "/images/easther cake.jpg", title: "Tort personalizat de Paste", price: "60 EUR" },
-  { img: "/images/lambeth.jpg", title: "Tort in stil Lambeth", price: "26 EUR" },
-  { img: "/images/royalcake.jpg", title: "Tort Royal", price: "170 EUR" },
+const SIGNATURES = [
+  {
+    image: "/images/royalcake.jpg",
+    title: "Colectia de ceremonie",
+    description: "Etaje elegante, detalii florale si finisaje discrete pentru receptii si nunti.",
+  },
+  {
+    image: "/images/lambeth.jpg",
+    title: "Linii vintage",
+    description: "Piping generos, tonuri de ivoire si volum decorativ pentru aniversari memorabile.",
+  },
+  {
+    image: "/images/capusuni in ciocolata.jpg",
+    title: "Cadouri Maison",
+    description: "Mini deserturi, cutii rafinate si accente fructate pentru gesturi atent gandite.",
+  },
 ];
 
-const tailor = [
-  { img: "/images/umplutura bicuiti.jpg", title: "Pistachio" },
-  { img: "/images/umplutura bounty.jpg", title: "Rose" },
-  { img: "/images/umplutura lemon.jpg", title: "Lemon" },
-  { img: "/images/umplutura ferero rochen.jpg", title: "Vanilla" },
+const ATELIER_NOTES = [
+  "Retete lucrate in loturi mici, cu texturi echilibrate si ingrediente premium.",
+  "Consultanta pentru evenimente, personalizare completa si timp clar de productie.",
+  "Flux integrat: catalog, constructor, calendar, chat si urmarirea comenzilor.",
 ];
+
+const priceFormatter = new Intl.NumberFormat("ro-MD");
+
+function formatPrice(value) {
+  return `${priceFormatter.format(Number(value || 0))} MDL`;
+}
+
+function useReveal() {
+  useEffect(() => {
+    const io = new IntersectionObserver(
+      (entries) => entries.forEach((entry) => entry.isIntersecting && entry.target.classList.add("show")),
+      { threshold: 0.15 }
+    );
+
+    document.querySelectorAll(".reveal").forEach((el) => io.observe(el));
+    return () => io.disconnect();
+  }, []);
+}
+
+function SectionHeader({ eyebrow, title, description, ctaTo = "", ctaLabel = "" }) {
+  return (
+    <div className="mb-8 flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
+      <div className="space-y-3">
+        {eyebrow ? <div className="eyebrow">{eyebrow}</div> : null}
+        <div>
+          <h2 className="section-title">{title}</h2>
+          {description ? <p className="section-subtitle mt-3">{description}</p> : null}
+        </div>
+      </div>
+      {ctaTo && ctaLabel ? (
+        <Link to={ctaTo} className={buttons.outline}>
+          {ctaLabel}
+        </Link>
+      ) : null}
+    </div>
+  );
+}
+
+function CatalogCard({ item, actionLabel = "Vezi detalii", actionTo }) {
+  if (!item) return null;
+
+  return (
+    <article className="group overflow-hidden rounded-[30px] border border-rose-100 bg-[rgba(255,252,247,0.94)] shadow-soft transition duration-300 hover:-translate-y-1.5 hover:shadow-card">
+      <div className="relative aspect-[4/3] overflow-hidden bg-brand-wash">
+        <img
+          src={item.imagine}
+          alt={item.nume}
+          loading="lazy"
+          decoding="async"
+          className="h-full w-full object-cover transition duration-700 group-hover:scale-105"
+        />
+        <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-[#2c2521]/75 via-[#2c2521]/20 to-transparent px-4 pb-4 pt-10 text-white">
+          <div className="text-xs uppercase tracking-[0.22em] text-white/72">
+            {item.categoryLabel || "Maison-Douce"}
+          </div>
+          <div className="mt-2 flex items-end justify-between gap-3">
+            <div className="font-serif text-2xl">{item.nume}</div>
+            <div className="text-sm font-semibold">{formatPrice(item.pret)}</div>
+          </div>
+        </div>
+      </div>
+      <div className="space-y-4 p-5">
+        <p className="text-sm leading-6 text-[#655c53]">
+          {item.descriere || item.fillingSummary || "Desert artizanal pentru comenzi premium."}
+        </p>
+        {item.displayTags?.length ? (
+          <div className="flex flex-wrap gap-2 text-xs text-[#786f66]">
+            {item.displayTags.slice(0, 3).map((tag) => (
+              <span
+                key={`${item._id}_${tag}`}
+                className="rounded-full border border-rose-100 bg-white px-3 py-1.5"
+              >
+                {tag}
+              </span>
+            ))}
+          </div>
+        ) : null}
+        <Link to={actionTo || `/tort/${item._id}`} className={buttons.outline}>
+          {actionLabel}
+        </Link>
+      </div>
+    </article>
+  );
+}
+
+function ReviewCard({ review }) {
+  return (
+    <article className={`${cards.default} reveal`}>
+      <div className="text-xs font-semibold uppercase tracking-[0.24em] text-pink-600">
+        {`Rating ${Number(review?.stele || 5)}/5`}
+      </div>
+      <p className="mt-4 text-base leading-7 text-[#5e554d]">
+        {review?.comentariu || "Experienta dulce, echilibrata si atent lucrata."}
+      </p>
+      <div className="mt-5 text-sm text-[#8a8178]">
+        {review?.data ? new Date(review.data).toLocaleDateString("ro-RO") : "Client Maison-Douce"}
+      </div>
+    </article>
+  );
+}
 
 export default function Home() {
   const { user } = useAuth();
@@ -27,10 +139,12 @@ export default function Home() {
   const [promotii, setPromotii] = useState([]);
   const [recenzii, setRecenzii] = useState([]);
 
+  useReveal();
+
   useEffect(() => {
-    document.title = "Maison-Douce - Torturi artizanale";
+    document.title = "Maison-Douce | Torturi artizanale";
     const desc =
-      "Torturi personalizate, deserturi artizanale si livrare rapida. Descopera catalogul Maison-Douce.";
+      "Maison-Douce este o patiserie artizanala cu torturi premium, constructor 2D, calendar de rezervari si experiente personalizate pentru evenimente.";
     let meta = document.querySelector('meta[name="description"]');
     if (!meta) {
       meta = document.createElement("meta");
@@ -49,9 +163,9 @@ export default function Home() {
           preferCategorie: "torturi",
           excludePurchased: true,
         });
-        setRecs(data?.recomandate || []);
-      } catch (e) {
-        console.warn("AI recommendations failed", e?.message);
+        setRecs(getStorefrontCatalogItems(data?.recomandate || []).slice(0, 3));
+      } catch (error) {
+        console.warn("AI recommendations failed", error?.message);
         setRecs([]);
       } finally {
         setLoadingRec(false);
@@ -72,9 +186,9 @@ export default function Home() {
           api.get("/recenzii/recent", { params: { limit: 4 } }),
         ]);
         if (!alive) return;
-        setPopular(pop?.items || []);
-        setNoutati(nou?.items || []);
-        setPromotii(promo?.items || []);
+        setPopular(getStorefrontCatalogItems(pop?.items || []).slice(0, 4));
+        setNoutati(getStorefrontCatalogItems(nou?.items || []).slice(0, 4));
+        setPromotii(getStorefrontCatalogItems(promo?.items || []).slice(0, 4));
         setRecenzii(Array.isArray(rev?.data) ? rev.data : []);
       } catch {
         if (!alive) return;
@@ -89,454 +203,227 @@ export default function Home() {
     };
   }, []);
 
-  useEffect(() => {
-    const io = new IntersectionObserver(
-      (entries) => entries.forEach((e) => e.isIntersecting && e.target.classList.add("show")),
-      { threshold: 0.15 }
-    );
-    document.querySelectorAll(".reveal").forEach((el) => {
-      io.observe(el);
-    });
-    return () => io.disconnect();
-  }, []);
+  const metrics = useMemo(
+    () => [
+      { label: "Comenzi la cerere", value: "48h+", note: "timp de productie pentru majoritatea colectiilor" },
+      { label: "Designer personal", value: "2 moduri", note: "Exterior si Sectiune pentru validare rapida" },
+      { label: "Livrare si pickup", value: "MDL 100", note: "programare direct din calendarul activ" },
+    ],
+    []
+  );
 
   return (
-    <div className="bg-cream min-h-screen">
-      {/* HERO */}
-      <header className="bg-[radial-gradient(circle_at_top_left,_rgba(255,255,255,0.95),_rgba(255,244,241,0.92),_rgba(247,230,234,0.84))]">
-        <div className="max-w-6xl mx-auto px-4 py-16 md:py-24 flex flex-col md:flex-row items-center gap-10 reveal">
-          <div className="flex-1 space-y-4">
-            <p className="uppercase tracking-[0.2em] text-sm text-pink-600">Arta delicateselor</p>
-            <h1 className="font-serif text-4xl md:text-5xl font-bold text-gray-900 leading-tight">
-              DESERTURI<br />PERSONALIZATE
-            </h1>
-            <p className="max-w-xl text-lg text-gray-600">
-              Atelier artizanal cu torturi create la comanda, design coerent si
-              livrare organizata pentru evenimente personale sau corporate.
-            </p>
-            <div className="flex gap-3">
-              <Link to="/catalog" className="inline-flex items-center rounded-full bg-pink-600 px-5 py-3 text-sm font-semibold text-white shadow-soft hover:-translate-y-0.5 hover:bg-pink-700">
-                Comanda online
+    <div className="min-h-screen pb-16">
+      <section className="px-4 pt-6 md:px-6 md:pt-10">
+        <div className="mx-auto grid max-w-editorial gap-6 xl:grid-cols-[1.1fr_0.9fr]">
+          <div className={`${cards.elevated} reveal overflow-hidden p-8 md:p-10`}>
+            <div className="eyebrow">Parisian luxury patisserie</div>
+            <div className="mt-5 max-w-3xl space-y-5">
+              <div className="font-script text-4xl text-pink-500 md:text-5xl">
+                Collection Maison
+              </div>
+              <h1 className="editorial-title text-balance">
+                Torturi artizanale, compuse cu rafinament si prezentate ca intr-un salon de patiserie.
+              </h1>
+              <p className="max-w-2xl text-base leading-8 text-[#625a52] md:text-lg">
+                Maison-Douce reuneste catalogul premium, constructorul 2D, designerul AI si calendarul de rezervari intr-o experienta coerenta pentru comenzi reale in Moldova.
+              </p>
+            </div>
+            <div className="mt-8 flex flex-wrap gap-3">
+              <Link to="/catalog" className={buttons.primary}>
+                Descopera catalogul
               </Link>
-              <Link to="/constructor" className="inline-flex items-center rounded-full border border-rose-200 bg-white/85 px-5 py-3 text-sm font-semibold text-pink-700 shadow-soft hover:border-rose-300 hover:bg-rose-50">
-                Creeaza tortul tau
+              <Link to="/constructor" className={buttons.outline}>
+                Creeaza un tort
               </Link>
             </div>
+            <div className="mt-10 grid gap-3 md:grid-cols-3">
+              {metrics.map((metric) => (
+                <article
+                  key={metric.label}
+                  className="rounded-[24px] border border-rose-100 bg-white/70 p-4 shadow-soft"
+                >
+                  <div className="text-xs font-semibold uppercase tracking-[0.2em] text-pink-600">
+                    {metric.label}
+                  </div>
+                  <div className="mt-3 text-3xl font-semibold text-ink">{metric.value}</div>
+                  <div className="mt-2 text-sm leading-6 text-[#7b736a]">{metric.note}</div>
+                </article>
+              ))}
+            </div>
           </div>
-          <div className="flex-1">
-            <div className="rounded-3xl overflow-hidden shadow-xl border border-pink-100">
+
+          <div className="grid gap-6 reveal">
+            <div className="overflow-hidden rounded-[34px] border border-rose-100 bg-white/80 shadow-card">
               <img
                 src="/images/royalcake.jpg"
-                alt="Tort pastel"
+                alt="Tort Maison-Douce"
                 loading="eager"
                 decoding="async"
                 fetchpriority="high"
-                className="w-full h-full object-cover"
+                className="h-full min-h-[24rem] w-full object-cover"
               />
             </div>
+            <div className="grid gap-4 md:grid-cols-2">
+              {ATELIER_NOTES.map((note) => (
+                <article
+                  key={note}
+                  className="rounded-[24px] border border-rose-100 bg-[rgba(255,252,247,0.9)] p-4 shadow-soft"
+                >
+                  <div className="text-xs font-semibold uppercase tracking-[0.18em] text-pink-600">
+                    Atelier
+                  </div>
+                  <p className="mt-3 text-sm leading-7 text-[#60574f]">{note}</p>
+                </article>
+              ))}
+            </div>
           </div>
         </div>
-      </header>
+      </section>
 
-      {/* RECOMANDATE AI */}
-      <section className="max-w-6xl mx-auto px-4 py-12 md:py-16">
-        <div className="mb-8 reveal show flex items-center justify-between gap-3">
-          <div>
-            <p className="text-pink-500 font-semibold uppercase tracking-wide">Selectie asistata</p>
-            <h2 className="font-serif text-3xl font-bold text-gray-900">Recomandate pentru tine</h2>
-            <p className="text-gray-600">Sugestii calculate din preferinte, trenduri si istoricul contului.</p>
-          </div>
-          <Link to="/catalog" className="inline-flex items-center rounded-full border border-rose-200 bg-white px-4 py-2 text-sm font-semibold text-pink-700 shadow-soft hover:border-rose-300 hover:bg-rose-50">
-            Vezi catalogul
-          </Link>
-        </div>
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-          {loadingRec &&
-            Array.from({ length: 3 }).map((_, i) => (
-              <div key={i} className="reveal bg-white rounded-2xl shadow-md p-4 border border-rose-100 animate-pulse h-44" />
-            ))}
-
-          {!loadingRec && recs.length === 0 && (
-            <div className="reveal col-span-full bg-white border border-rose-100 rounded-2xl p-6 text-gray-700">
-              Nu exista inca suficiente date pentru recomandari personalizate. Dupa primele interactiuni, selectia devine mai precisa.
+      <section className={`${containers.pageMax} space-y-12`}>
+        <div className="reveal">
+          <SectionHeader
+            eyebrow="Selectie asistata"
+            title="Recomandari construite pentru profilul tau"
+            description="Daca avem deja context despre preferinte si comenzi, selectia devine mai precisa. Daca nu, pastram aceeasi prezentare premium, fara stari seci."
+            ctaTo="/catalog"
+            ctaLabel="Vezi toata colectia"
+          />
+          {loadingRec ? (
+            <div className="grid gap-6 md:grid-cols-3">
+              {Array.from({ length: 3 }).map((_, index) => (
+                <div
+                  key={index}
+                  className="h-[26rem] animate-pulse rounded-[30px] border border-rose-100 bg-white/70 shadow-soft"
+                />
+              ))}
+            </div>
+          ) : recs.length ? (
+            <div className="grid gap-6 md:grid-cols-3">
+              {recs.map((item) => (
+                <CatalogCard key={item._id} item={item} />
+              ))}
+            </div>
+          ) : (
+            <div className={`${cards.default} text-sm leading-7 text-[#615850]`}>
+              Inca nu exista suficiente semnale pentru recomandari AI personalizate. Catalogul complet ramane disponibil, iar dupa primele interactiuni selectia va deveni mai relevanta.
             </div>
           )}
+        </div>
 
-          {!loadingRec &&
-            recs.map((r) => (
+        <div className="reveal">
+          <SectionHeader
+            eyebrow="Campanie Maison"
+            title="Trei directii de stil pentru deserturi de ocazie"
+            description="O estetica editoriala, cu imagini mari, texte scurte si o ritmare mai apropiata de un lookbook decat de un simplu listing."
+          />
+          <div className="grid gap-6 xl:grid-cols-3">
+            {SIGNATURES.map((item) => (
               <article
-                key={r._id}
-                data-cy="rec-card"
-                className="reveal bg-white rounded-2xl shadow-md overflow-hidden border border-rose-100 hover:shadow-lg transition"
+                key={item.title}
+                className="overflow-hidden rounded-[32px] border border-rose-100 bg-[rgba(255,252,247,0.94)] shadow-soft"
               >
-                <div className="h-44 w-full bg-[linear-gradient(135deg,_rgba(255,250,242,1),_rgba(251,236,239,1),_rgba(247,230,234,0.9))] flex items-center justify-center">
-                  <span className="text-pink-500 font-semibold text-lg">{r.nume}</span>
+                <div className="aspect-[4/3] overflow-hidden">
+                  <img
+                    src={item.image}
+                    alt={item.title}
+                    loading="lazy"
+                    decoding="async"
+                    className="h-full w-full object-cover transition duration-700 hover:scale-105"
+                  />
                 </div>
-                <div className="p-4 space-y-2">
-                  <div className="flex items-center justify-between">
-                    <h3 className="font-semibold text-gray-900">{r.nume}</h3>
-                    {r.pret ? <span className="text-pink-600 font-bold">{r.pret} MDL</span> : null}
-                  </div>
-                  <p className="text-gray-600 text-sm overflow-hidden text-ellipsis">
-                    {r.descriere || "Deliciu maison personalizat"}
-                  </p>
-                  {r.reasons?.length ? (
-                    <div className="flex flex-wrap gap-2">
-                      {r.reasons.slice(0, 3).map((reason, idx) => (
-                        <span key={idx} className="px-3 py-1 rounded-full bg-rose-50 text-pink-700 text-xs font-semibold">
-                          {reason}
-                        </span>
-                      ))}
-                    </div>
-                  ) : null}
-                  <div className="pt-2 flex gap-2">
-                    <Link to={`/tort/${r._id}`} className="inline-flex items-center rounded-full bg-pink-600 px-3 py-2 text-sm font-semibold text-white hover:bg-pink-700">
-                      Detalii
-                    </Link>
-                    <Link to="/constructor" className="inline-flex items-center rounded-full border border-rose-200 bg-white px-3 py-2 text-sm font-semibold text-pink-700 hover:bg-rose-50">
-                      Personalizeaza
-                    </Link>
-                  </div>
+                <div className="space-y-3 p-6">
+                  <h3 className="font-serif text-3xl text-ink">{item.title}</h3>
+                  <p className="text-sm leading-7 text-[#625a52]">{item.description}</p>
                 </div>
               </article>
             ))}
-        </div>
-      </section>
-
-      {/* DESPRE */}
-      <section className="max-w-6xl mx-auto px-4 py-12 md:py-16">
-        <div className="grid md:grid-cols-2 gap-10 items-center">
-          <div className="reveal space-y-3">
-            <p className="text-pink-500 font-semibold uppercase tracking-wide">La Maison</p>
-            <h2 className="font-serif text-3xl font-bold text-gray-900">Despre mine</h2>
-            <p className="text-gray-700 leading-relaxed">
-              Maison Douce se inspira din rafinamentul secolului XVIII: cutii pastel, panglici aurii si deserturi fine.
-              Fiecare tort este creat manual, cu atentie la detalii si ingrediente de top.
-            </p>
-            <Link to="/despre" className="inline-flex items-center rounded-full border border-rose-200 bg-white px-4 py-2 text-sm font-semibold text-pink-700 shadow-soft hover:bg-rose-50">
-              Afla povestea
-            </Link>
           </div>
+        </div>
+
+        <div className="grid gap-10 xl:grid-cols-2">
           <div className="reveal">
-            <div className="rounded-[32px] overflow-hidden shadow-lg border border-rose-100">
-              <img
-                src="/images/despre mine.jpg"
-                alt="Ionela Rusu"
-                loading="lazy"
-                decoding="async"
-                className="w-full h-full object-cover"
-              />
+            <SectionHeader
+              eyebrow="Cele mai dorite"
+              title="Semnaturile care revin cel mai des in comenzi"
+              description="Produse cu prezentare coerenta, preturi in MDL si imagini pregatite pentru un storefront real."
+              ctaTo="/catalog"
+              ctaLabel="Explora catalogul"
+            />
+            <div className="grid gap-6">
+              {popular.slice(0, 2).map((item) => (
+                <CatalogCard key={item._id} item={item} />
+              ))}
             </div>
           </div>
-        </div>
-      </section>
 
-      {/* ICONICS */}
-      <section className="max-w-6xl mx-auto px-4 py-12 md:py-16">
-        <div className="mb-8 reveal">
-          <h2 className="font-serif text-3xl font-bold text-gray-900">Semnaturi Maison</h2>
-          <p className="text-gray-600">Selectia noastra de deserturi preferate</p>
-        </div>
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-          {iconics.map((p, i) => (
-            <article key={i} className="reveal bg-white rounded-2xl shadow-md overflow-hidden border border-rose-100">
-              <div className="h-48 w-full overflow-hidden">
-                <img
-                  src={p.img}
-                  alt={p.title}
-                  loading="lazy"
-                  decoding="async"
-                  className="h-full w-full object-cover"
-                />
-              </div>
-              <div className="p-4">
-                <h3 className="font-semibold text-gray-900">{p.title}</h3>
-                <div className="text-pink-600 font-bold mt-1">{p.price}</div>
-              </div>
-            </article>
-          ))}
-        </div>
-      </section>
-
-      {/* POPULARE */}
-      <section className="max-w-6xl mx-auto px-4 py-12 md:py-16">
-        <div className="mb-8 reveal flex items-center justify-between">
-          <div>
-            <h2 className="font-serif text-3xl font-bold text-gray-900">Cele mai populare</h2>
-            <p className="text-gray-600">Preferatele clientilor Maison Douce</p>
-          </div>
-          <Link to="/catalog" className="inline-flex items-center rounded-full border border-rose-200 bg-white px-4 py-2 text-sm font-semibold text-pink-700 shadow-soft hover:bg-rose-50">
-            Vezi tot
-          </Link>
-        </div>
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-          {popular.map((p) => (
-            <article key={p._id} className="reveal bg-white rounded-2xl shadow-md overflow-hidden border border-rose-100">
-              <div className="h-40 w-full overflow-hidden">
-                <img
-                  src={p.imagine || "/images/placeholder.svg"}
-                  alt={p.nume}
-                  loading="lazy"
-                  decoding="async"
-                  className="h-full w-full object-cover"
-                />
-              </div>
-              <div className="p-4">
-                <h3 className="font-semibold text-gray-900">{p.nume}</h3>
-                <div className="text-pink-600 font-bold mt-1">{p.pret ? `${p.pret} MDL` : "Pret la cerere"}</div>
-                <Link to={`/tort/${p._id}`} className="text-pink-600 text-sm font-semibold mt-2 inline-block">
-                  Detalii
-                </Link>
-              </div>
-            </article>
-          ))}
-        </div>
-      </section>
-
-      {/* NOUTATI */}
-      <section className="max-w-6xl mx-auto px-4 py-12 md:py-16">
-        <div className="mb-8 reveal flex items-center justify-between">
-          <div>
-            <h2 className="font-serif text-3xl font-bold text-gray-900">Noutati</h2>
-            <p className="text-gray-600">Selectii recente, cu stiluri noi</p>
-          </div>
-          <Link to="/catalog" className="inline-flex items-center rounded-full border border-rose-200 bg-white px-4 py-2 text-sm font-semibold text-pink-700 shadow-soft hover:bg-rose-50">
-            Descopera
-          </Link>
-        </div>
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-          {noutati.map((p) => (
-            <article key={p._id} className="reveal bg-white rounded-2xl shadow-md overflow-hidden border border-rose-100">
-              <div className="h-40 w-full overflow-hidden">
-                <img
-                  src={p.imagine || "/images/placeholder.svg"}
-                  alt={p.nume}
-                  loading="lazy"
-                  decoding="async"
-                  className="h-full w-full object-cover"
-                />
-              </div>
-              <div className="p-4">
-                <h3 className="font-semibold text-gray-900">{p.nume}</h3>
-                <div className="text-pink-600 font-bold mt-1">{p.pret ? `${p.pret} MDL` : "Pret la cerere"}</div>
-              </div>
-            </article>
-          ))}
-        </div>
-      </section>
-
-      {/* PROMOTII */}
-      <section className="max-w-6xl mx-auto px-4 py-12 md:py-16">
-        <div className="mb-8 reveal flex items-center justify-between">
-          <div>
-            <h2 className="font-serif text-3xl font-bold text-gray-900">Promotii</h2>
-            <p className="text-gray-600">Preturi speciale pentru selectii sezoniere</p>
-          </div>
-          <Link to="/catalog" className="inline-flex items-center rounded-full border border-rose-200 bg-white px-4 py-2 text-sm font-semibold text-pink-700 shadow-soft hover:bg-rose-50">
-            Vezi promotii
-          </Link>
-        </div>
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-          {promotii.length === 0 && (
-            <div className="reveal col-span-full bg-white border border-rose-100 rounded-2xl p-6 text-gray-700">
-              Momentan nu sunt promotii active.
-            </div>
-          )}
-          {promotii.map((p) => (
-            <article key={p._id} className="reveal bg-white rounded-2xl shadow-md overflow-hidden border border-rose-100">
-              <div className="h-40 w-full overflow-hidden">
-                <img
-                  src={p.imagine || "/images/placeholder.svg"}
-                  alt={p.nume}
-                  loading="lazy"
-                  decoding="async"
-                  className="h-full w-full object-cover"
-                />
-              </div>
-              <div className="p-4">
-                <h3 className="font-semibold text-gray-900">{p.nume}</h3>
-                <div className="text-pink-600 font-bold mt-1">{p.pret} MDL</div>
-                {p.pretVechi ? (
-                  <div className="text-sm text-gray-500 line-through">{p.pretVechi} MDL</div>
-                ) : null}
-              </div>
-            </article>
-          ))}
-        </div>
-      </section>
-
-      {/* CUTIA LUNARA */}
-      <section className="max-w-6xl mx-auto px-4 py-12 md:py-16">
-        <div className="grid md:grid-cols-2 gap-10 items-center">
-          <div className="reveal space-y-3">
-            <p className="text-pink-500 font-semibold uppercase tracking-wide">Cutia lunara</p>
-            <h2 className="font-serif text-3xl font-bold text-gray-900">Abonamentul Maison Douce</h2>
-            <p className="text-gray-700 leading-relaxed">
-              Primesti lunar o selectie curatoriata de deserturi artizanale si surprize de sezon.
-            </p>
-            <div className="flex gap-3">
-              <Link to="/abonament" className="inline-flex items-center rounded-full bg-pink-600 px-5 py-3 text-sm font-semibold text-white shadow-soft hover:-translate-y-0.5 hover:bg-pink-700">
-                Vezi planuri
-              </Link>
-              <Link to="/abonament?plan=basic" className="inline-flex items-center rounded-full border border-rose-200 bg-white px-5 py-3 text-sm font-semibold text-pink-700 shadow-soft hover:bg-rose-50">
-                Aboneaza-te
-              </Link>
-            </div>
-          </div>
           <div className="reveal">
-            <div className="rounded-[28px] overflow-hidden shadow-lg border border-rose-100">
-              <img
-                src="/images/cosmos.jpg"
-                alt="Cutia lunara"
-                loading="lazy"
-                decoding="async"
-                className="w-full h-full object-cover"
-              />
-            </div>
-          </div>
-        </div>
-      </section>
-
-      {/* RECENZII */}
-      <section className="max-w-6xl mx-auto px-4 py-12 md:py-16">
-        <div className="mb-8 reveal">
-          <h2 className="font-serif text-3xl font-bold text-gray-900">Recenzii si rating-uri</h2>
-          <p className="text-gray-600">Parerile clientilor nostri</p>
-        </div>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          {recenzii.map((r) => (
-            <div key={r._id} className="reveal bg-white rounded-2xl border border-rose-100 shadow-md p-5">
-              <div className="text-sm font-semibold text-pink-600">Rating: {r.stele} / 5</div>
-              <p className="text-gray-700 mt-2">{r.comentariu}</p>
-              <div className="text-xs text-gray-500 mt-3">
-                {r.data ? new Date(r.data).toLocaleDateString() : ""}
-              </div>
-            </div>
-          ))}
-          {recenzii.length === 0 && (
-            <div className="reveal bg-white border border-rose-100 rounded-2xl p-6 text-gray-700">
-              Nu avem inca recenzii recente. Lasa-ne prima ta impresie!
-            </div>
-          )}
-        </div>
-      </section>
-
-      {/* CONTACT RAPID */}
-      <section className="border-y border-rose-100 bg-[linear-gradient(180deg,_rgba(255,245,242,0.95),_rgba(247,230,234,0.88))]">
-        <div className="max-w-6xl mx-auto px-4 py-10 grid grid-cols-1 md:grid-cols-3 gap-6 text-gray-700">
-          <div>
-            <h4 className="font-semibold mb-2">Contact rapid</h4>
-            <p>Telefon: +373 600 000 00</p>
-            <p>Email: hello@maisondouce.md</p>
-          </div>
-          <div>
-            <h4 className="font-semibold mb-2">Program</h4>
-            <p>Luni - Vineri: 09:00 - 19:00</p>
-            <p>Sambata: 10:00 - 16:00</p>
-          </div>
-          <div>
-            <h4 className="font-semibold mb-2">Social</h4>
-            <div className="flex gap-3">
-              <a href="https://instagram.com" className="text-pink-600 hover:text-pink-700">Instagram</a>
-              <a href="https://facebook.com" className="text-pink-600 hover:text-pink-700">Facebook</a>
-              <a href="https://tiktok.com" className="text-pink-600 hover:text-pink-700">TikTok</a>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      {/* GIFT / BACK TO SCHOOL */}
-      <section className="max-w-6xl mx-auto px-4 py-12 md:py-16">
-        <div className="grid md:grid-cols-2 gap-10 items-center">
-          <div className="reveal">
-            <div className="rounded-[28px] overflow-hidden shadow-lg border border-rose-100">
-              <img
-                src="/images/capusuni in ciocolata.jpg"
-                alt="capsuni in ciocolata"
-                loading="lazy"
-                decoding="async"
-                className="w-full h-full object-cover"
-              />
-            </div>
-          </div>
-          <div className="reveal space-y-3">
-            <p className="text-pink-500 font-semibold uppercase tracking-wide">Arta cadourilor</p>
-            <h2 className="font-serif text-3xl font-bold text-gray-900">Idei de cadou personalizate</h2>
-            <p className="text-gray-700 leading-relaxed">
-              O colectie jucausa si poetica: cutii gourmet, deserturi fine si personalizare completa. Perfecte pentru multumiri,
-              aniversari sau evenimente speciale.
-            </p>
-            <div className="flex gap-3">
-              <Link to="/constructor" className="inline-flex items-center rounded-full bg-pink-600 px-5 py-3 text-sm font-semibold text-white shadow-soft hover:-translate-y-0.5 hover:bg-pink-700">
-                Personalizeaza
-              </Link>
-              <Link to="/catalog" className="inline-flex items-center rounded-full border border-rose-200 bg-white px-5 py-3 text-sm font-semibold text-pink-700 shadow-soft hover:bg-rose-50">
-                Descopera colectia
-              </Link>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      {/* Tailor-made */}
-      <section className="max-w-6xl mx-auto px-4 py-12 md:py-16">
-        <div className="mb-8 reveal">
-          <p className="text-pink-500 font-semibold uppercase tracking-wide">Selectie personalizata</p>
-          <h2 className="font-serif text-3xl font-bold text-gray-900">Creeaza desertul tau</h2>
-        </div>
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-          {tailor.map((p, i) => (
-            <article key={i} className="reveal bg-white rounded-2xl shadow-md overflow-hidden border border-rose-100">
-              <div className="h-40 w-full overflow-hidden">
-                <img
-                  src={p.img}
-                  alt={p.title}
-                  loading="lazy"
-                  decoding="async"
-                  className="h-full w-full object-cover"
+            <SectionHeader
+              eyebrow="Noutati si oferte"
+              title="Selectii noi si propuneri de sezon"
+              description="Amestecam noutati, promotii si piese cu potential mare de personalizare."
+            />
+            <div className="grid gap-6">
+              {(promotii.length ? promotii : noutati).slice(0, 2).map((item) => (
+                <CatalogCard
+                  key={item._id}
+                  item={item}
+                  actionLabel="Vezi compozitia"
                 />
-              </div>
-              <div className="p-4 flex items-center justify-between">
-                <h3 className="font-semibold text-gray-900">{p.title}</h3>
-                <Link to="/constructor" className="text-pink-600 hover:text-pink-700 font-semibold text-sm">
-                  Alege aroma
-                </Link>
-              </div>
-            </article>
-          ))}
+              ))}
+            </div>
+          </div>
+        </div>
+
+        <div className="grid gap-6 xl:grid-cols-[0.95fr_1.05fr]">
+          <section className={`${cards.tinted} reveal`}>
+            <div className="eyebrow">Atelier si servicii</div>
+            <h2 className="mt-4 section-title">Tot fluxul de comanda este gandit ca o experienta premium.</h2>
+            <div className="mt-6 space-y-4 text-sm leading-7 text-[#625a52]">
+              <p>
+                Catalogul este curatat pentru denumiri reale, constructorul 2D comunica interiorul si finisajul, iar calendarul arata disponibilitate per patiser.
+              </p>
+              <p>
+                Pentru proiectele speciale poti salva drafturi, exporta PNG, discuta in chat cu laboratorul sau cere ajutorul designerului AI.
+              </p>
+            </div>
+            <div className="mt-8 flex flex-wrap gap-3">
+              <Link to="/calendar" className={buttons.primary}>
+                Rezerva un slot
+              </Link>
+              <Link to="/designer-ai" className={buttons.outline}>
+                Testeaza Designer AI
+              </Link>
+            </div>
+          </section>
+
+          <section className="grid gap-6 md:grid-cols-2">
+            {recenzii.length ? (
+              recenzii.slice(0, 4).map((review) => <ReviewCard key={review._id} review={review} />)
+            ) : (
+              <>
+                <div className={`${cards.default} reveal`}>
+                  <div className="text-xs font-semibold uppercase tracking-[0.24em] text-pink-600">
+                    Recenzii client
+                  </div>
+                  <p className="mt-4 text-base leading-7 text-[#5e554d]">
+                    Inca nu avem recenzii recente publicate, dar sectiunea este pregatita pentru testimonialele clientilor si update-urile de dupa comanda.
+                  </p>
+                </div>
+                <div className={`${cards.default} reveal`}>
+                  <div className="text-xs font-semibold uppercase tracking-[0.24em] text-pink-600">
+                    Maison club
+                  </div>
+                  <p className="mt-4 text-base leading-7 text-[#5e554d]">
+                    Fidelizarea, profilul si istoricul comenzilor sunt deja integrate si pot sustine o experienta de brand consistenta.
+                  </p>
+                </div>
+              </>
+            )}
+          </section>
         </div>
       </section>
-
-      {/* Footer */}
-      <footer className="bg-white border-t border-rose-100">
-        <div className="max-w-6xl mx-auto px-4 py-10 grid grid-cols-2 sm:grid-cols-4 gap-6 text-gray-700">
-          <div>
-            <h4 className="font-semibold mb-2">Maison-Douce</h4>
-            <Link to="/catalog" className="block hover:text-pink-600">Torturi</Link>
-            <Link to="/catalog" className="block hover:text-pink-600">Macarons</Link>
-            <Link to="/catalog" className="block hover:text-pink-600">Ciocolata</Link>
-            <Link to="/catalog" className="block hover:text-pink-600">Eclere</Link>
-          </div>
-          <div>
-            <h4 className="font-semibold mb-2">Informatii</h4>
-            <Link to="/catalog" className="block hover:text-pink-600">Colectii</Link>
-            <Link to="/despre" className="block hover:text-pink-600">Poveste</Link>
-          </div>
-          <div>
-            <h4 className="font-semibold mb-2">Corporate</h4>
-            <Link to="/contact" className="block hover:text-pink-600">Cadouri corporate</Link>
-            <Link to="/contact" className="block hover:text-pink-600">Evenimente</Link>
-          </div>
-          <div>
-            <h4 className="font-semibold mb-2">Help</h4>
-            <Link to="/contact" className="block hover:text-pink-600">Contact</Link>
-            <Link to="/faq" className="block hover:text-pink-600">FAQ</Link>
-            <Link to="/termeni" className="block hover:text-pink-600">Termeni</Link>
-            <Link to="/confidentialitate" className="block hover:text-pink-600">Confidentialitate</Link>
-          </div>
-        </div>
-      </footer>
     </div>
   );
 }
-

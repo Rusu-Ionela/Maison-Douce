@@ -1,12 +1,17 @@
-﻿import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { Link, useSearchParams } from "react-router-dom";
 import AdminShell, {
   AdminMetricGrid,
   AdminPanel,
 } from "../components/AdminShell";
 import StatusBanner from "../components/StatusBanner";
 import api from "/src/lib/api.js";
-import { buttons, inputs } from "../lib/tailwindComponents";
 import { getTodayDateInput } from "../lib/date";
+import {
+  buildLibraryProductionRecipes,
+  scaleProductionRows,
+} from "../lib/patiserRecipeScaling";
+import { buttons, inputs } from "../lib/tailwindComponents";
 
 function defaultIngredientRow() {
   return { ingredient: "", qty: 0, unit: "g", note: "" };
@@ -28,7 +33,28 @@ function formatCurrency(value) {
   return `${Number(value || 0).toFixed(2)} MDL`;
 }
 
+function formatScaledValue(value) {
+  if (!Number.isFinite(value)) return "-";
+  if (Number.isInteger(value)) return String(value);
+  return value.toLocaleString("ro-RO", {
+    minimumFractionDigits: value < 10 ? 1 : 0,
+    maximumFractionDigits: 2,
+  });
+}
+
+function mapRowsForForm(rows = []) {
+  return rows.length
+    ? rows.map((row) => ({
+        ingredient: row.ingredient || "",
+        qty: Number(row.qty || 0),
+        unit: row.unit || "g",
+        note: row.note || "",
+      }))
+    : [defaultIngredientRow()];
+}
+
 export default function AdminProduction() {
+  const [searchParams] = useSearchParams();
   const [recipes, setRecipes] = useState([]);
   const [board, setBoard] = useState([]);
   const [date, setDate] = useState(getTodayDateInput());
@@ -37,7 +63,7 @@ export default function AdminProduction() {
   const [loadingRecipes, setLoadingRecipes] = useState(false);
   const [loadingBoard, setLoadingBoard] = useState(false);
   const [msg, setMsg] = useState("");
-  const [editIngredients, setEditIngredients] = useState([]);
+  const [editIngredients, setEditIngredients] = useState([defaultIngredientRow()]);
   const [baseKgInput, setBaseKgInput] = useState(1);
   const [savingRecipe, setSavingRecipe] = useState(false);
   const [recipeNotice, setRecipeNotice] = useState("");
@@ -46,6 +72,9 @@ export default function AdminProduction() {
   const [newRecipeSaving, setNewRecipeSaving] = useState(false);
   const [notifications, setNotifications] = useState([]);
   const [loadingNotifications, setLoadingNotifications] = useState(false);
+
+  const libraryRecipes = useMemo(() => buildLibraryProductionRecipes(), []);
+  const allRecipes = useMemo(() => [...recipes, ...libraryRecipes], [recipes, libraryRecipes]);
 
   const fetchNotifications = async () => {
     setLoadingNotifications(true);
@@ -71,7 +100,7 @@ export default function AdminProduction() {
         const list = Array.isArray(data) ? data : [];
         setRecipes(list);
         if (list.length) {
-          setSelectedTort((prev) => prev || list[0]._id);
+          setSelectedTort((current) => current || list[0]._id);
         }
       } catch {
         if (!cancelled) {
@@ -119,9 +148,27 @@ export default function AdminProduction() {
     fetchNotifications();
   }, []);
 
+  useEffect(() => {
+    if (!allRecipes.length) return;
+
+    const requestedLibrarySlug = String(searchParams.get("libraryRecipe") || "").trim();
+    const requestedTargetKg = Number(searchParams.get("targetKg") || 0);
+    const preferredId = requestedLibrarySlug ? `library:${requestedLibrarySlug}` : "";
+
+    if (preferredId && allRecipes.some((item) => String(item._id) === preferredId)) {
+      setSelectedTort(preferredId);
+    } else if (!selectedTort) {
+      setSelectedTort(allRecipes[0]._id);
+    }
+
+    if (requestedTargetKg > 0) {
+      setTargetKg(requestedTargetKg);
+    }
+  }, [allRecipes, searchParams, selectedTort]);
+
   const recipe = useMemo(
-    () => recipes.find((item) => String(item._id) === String(selectedTort)) || null,
-    [recipes, selectedTort]
+    () => allRecipes.find((item) => String(item._id) === String(selectedTort)) || null,
+    [allRecipes, selectedTort]
   );
 
   useEffect(() => {
@@ -132,71 +179,82 @@ export default function AdminProduction() {
     }
 
     setRecipeNotice("");
-    setBaseKgInput(recipe.retetaBaseKg || 1);
-    setEditIngredients(
-      Array.isArray(recipe.reteta) && recipe.reteta.length
-        ? recipe.reteta.map((ingredient) => ({ ...ingredient }))
-        : [defaultIngredientRow()]
-    );
+    setBaseKgInput(Number(recipe.retetaBaseKg || 1) || 1);
+    setEditIngredients(mapRowsForForm(Array.isArray(recipe.reteta) ? recipe.reteta : []));
   }, [recipe]);
 
   const scaledIngredients = useMemo(() => {
     if (!recipe || !Array.isArray(recipe.reteta)) return [];
-    const baseKg = Number(recipe.retetaBaseKg || 1);
-    return recipe.reteta.map((item) => {
-      const scaled = ((Number(item.qty) || 0) * Number(targetKg || 0)) / baseKg;
-      return { ...item, scaled: scaled.toFixed(2) };
-    });
+
+    return scaleProductionRows(recipe.reteta, recipe.retetaBaseKg || 1, targetKg).map((item) => ({
+      ...item,
+      scaledLabel:
+        item.scaledQty == null ? "" : `${formatScaledValue(item.scaledQty)} ${item.unit}`,
+    }));
   }, [recipe, targetKg]);
 
   const ingredientRows = editIngredients.length ? editIngredients : [defaultIngredientRow()];
+  const newIngredientRows = newRecipeForm.ingredients.length
+    ? newRecipeForm.ingredients
+    : [defaultIngredientRow()];
 
   const updateIngredient = (idx, key, value) => {
-    setEditIngredients((prev) =>
-      prev.map((ingredient, index) =>
+    setEditIngredients((current) =>
+      current.map((ingredient, index) =>
         index === idx ? { ...ingredient, [key]: value } : ingredient
       )
     );
   };
 
   const addIngredient = () => {
-    setEditIngredients((prev) => [...prev, defaultIngredientRow()]);
+    setEditIngredients((current) => [...current, defaultIngredientRow()]);
   };
 
   const removeIngredient = (idx) => {
-    setEditIngredients((prev) => prev.filter((_, index) => index !== idx));
+    setEditIngredients((current) => current.filter((_, index) => index !== idx));
   };
 
   const updateNewRecipeField = (key, value) => {
-    setNewRecipeForm((prev) => ({ ...prev, [key]: value }));
+    setNewRecipeForm((current) => ({ ...current, [key]: value }));
   };
 
   const updateNewIngredient = (idx, key, value) => {
-    setNewRecipeForm((prev) => ({
-      ...prev,
-      ingredients: prev.ingredients.map((ingredient, index) =>
+    setNewRecipeForm((current) => ({
+      ...current,
+      ingredients: current.ingredients.map((ingredient, index) =>
         index === idx ? { ...ingredient, [key]: value } : ingredient
       ),
     }));
   };
 
   const addNewIngredient = () => {
-    setNewRecipeForm((prev) => ({
-      ...prev,
-      ingredients: [...prev.ingredients, defaultIngredientRow()],
+    setNewRecipeForm((current) => ({
+      ...current,
+      ingredients: [...current.ingredients, defaultIngredientRow()],
     }));
   };
 
   const removeNewIngredient = (idx) => {
-    setNewRecipeForm((prev) => ({
-      ...prev,
-      ingredients: prev.ingredients.filter((_, index) => index !== idx),
+    setNewRecipeForm((current) => ({
+      ...current,
+      ingredients: current.ingredients.filter((_, index) => index !== idx),
     }));
   };
 
-  const newIngredientRows = newRecipeForm.ingredients.length
-    ? newRecipeForm.ingredients
-    : [defaultIngredientRow()];
+  const copyCurrentRecipeToNewForm = () => {
+    if (!recipe) return;
+
+    setNewRecipeForm({
+      nume: `${recipe.nume} - productie`,
+      descriere: recipe.descriere || "",
+      pret: "",
+      imagine: "",
+      retetaBaseKg: Number(recipe.retetaBaseKg || 1) || 1,
+      ocazii: Array.isArray(recipe.ocazii) ? recipe.ocazii.join(", ") : "",
+      ingredients: mapRowsForForm(Array.isArray(recipe.reteta) ? recipe.reteta : []),
+    });
+    setNewRecipeMsg("Reteta selectata a fost copiata in formularul de reteta noua.");
+  };
 
   const createRecipe = async () => {
     if (!newRecipeForm.nume.trim()) {
@@ -228,9 +286,10 @@ export default function AdminProduction() {
           note: String(ingredient.note || "").trim(),
         })),
       };
+
       const { data } = await api.post("/admin/production/recipes", payload);
       if (data?.tort) {
-        setRecipes((prev) => [...prev, data.tort]);
+        setRecipes((current) => [...current, data.tort]);
         setSelectedTort(data.tort._id);
         setNewRecipeMsg("Reteta a fost creata.");
         setNewRecipeForm(defaultNewRecipe());
@@ -245,7 +304,8 @@ export default function AdminProduction() {
   };
 
   const saveRecipe = async () => {
-    if (!recipe) return;
+    if (!recipe || recipe.isLibrary) return;
+
     setRecipeNotice("");
     setSavingRecipe(true);
     try {
@@ -258,10 +318,11 @@ export default function AdminProduction() {
           note: String(ingredient.note || ""),
         })),
       };
+
       const { data } = await api.put(`/admin/production/recipes/${recipe._id}`, payload);
       if (Array.isArray(data?.tort?.reteta)) {
-        setRecipes((prev) =>
-          prev.map((item) =>
+        setRecipes((current) =>
+          current.map((item) =>
             String(item._id) === String(data.tort._id) ? { ...item, ...data.tort } : item
           )
         );
@@ -298,12 +359,14 @@ export default function AdminProduction() {
       setRecipes(recipeList);
       setBoard(boardList);
       setNotifications(notificationsList);
+
       if (recipeList.length) {
-        setSelectedTort((current) =>
-          current && recipeList.some((item) => String(item._id) === String(current))
-            ? current
-            : recipeList[0]._id
-        );
+        setSelectedTort((current) => {
+          const currentStillInDb = recipeList.some((item) => String(item._id) === String(current));
+          const currentIsLibrary = String(current || "").startsWith("library:");
+          if (currentIsLibrary) return current;
+          return currentStillInDb ? current : recipeList[0]._id;
+        });
       }
     } catch {
       setMsg("Nu am putut reincarca datele de productie.");
@@ -323,9 +386,9 @@ export default function AdminProduction() {
 
     return [
       {
-        label: "Retete active",
-        value: recipes.length,
-        hint: "Catalogul disponibil pentru productie.",
+        label: "Retete disponibile",
+        value: allRecipes.length,
+        hint: `${recipes.length} in baza de date si ${libraryRecipes.length} in biblioteca.`,
         tone: "rose",
       },
       {
@@ -347,7 +410,7 @@ export default function AdminProduction() {
         tone: "slate",
       },
     ];
-  }, [board, date, notifications.length, recipes.length]);
+  }, [allRecipes.length, board, date, libraryRecipes.length, notifications.length, recipes.length]);
 
   return (
     <AdminShell
@@ -370,164 +433,222 @@ export default function AdminProduction() {
       <div className="grid grid-cols-1 gap-6 xl:grid-cols-[0.95fr,1.35fr]">
         <AdminPanel
           title="Scalare retete"
-          description="Selecteaza reteta, seteaza cantitatea tinta si actualizeaza ingredientele fara sa iesi din acelasi modul."
+          description="Selecteaza reteta, seteaza cantitatea tinta si vezi instant gramajele necesare pentru productie."
           className="space-y-6"
         >
-            <div className="space-y-3">
-              <label className="text-sm font-semibold text-gray-700 block">Tort</label>
-              <select
-                value={selectedTort}
-                onChange={(event) => setSelectedTort(event.target.value)}
-                className={inputs.default}
-              >
-                {recipes.map((tort) => (
-                  <option key={tort._id} value={tort._id}>
-                    {tort.nume}
-                  </option>
-                ))}
-              </select>
-              <label className="text-sm font-semibold text-gray-700 block mt-3">
-                Kilograme dorite
-              </label>
+          <div className="space-y-3">
+            <label className="block text-sm font-semibold text-gray-700">Tort</label>
+            <select
+              value={selectedTort}
+              onChange={(event) => setSelectedTort(event.target.value)}
+              className={inputs.default}
+            >
+              {recipes.length ? (
+                <optgroup label="Retete din baza de date">
+                  {recipes.map((tort) => (
+                    <option key={tort._id} value={tort._id}>
+                      {tort.nume}
+                    </option>
+                  ))}
+                </optgroup>
+              ) : null}
+              {libraryRecipes.length ? (
+                <optgroup label="Biblioteca de cercetare">
+                  {libraryRecipes.map((tort) => (
+                    <option key={tort._id} value={tort._id}>
+                      {tort.nume} (biblioteca)
+                    </option>
+                  ))}
+                </optgroup>
+              ) : null}
+            </select>
+
+            <label className="block text-sm font-semibold text-gray-700">
+              Kilograme dorite
               <input
                 type="number"
                 min="0.1"
                 step="0.1"
                 value={targetKg}
                 onChange={(event) => setTargetKg(Number(event.target.value || 0))}
-                className={inputs.default}
+                className={`mt-2 ${inputs.default}`}
               />
-              <div className="text-sm text-gray-500">
-                {recipe
-                  ? `Reteta de baza: ${recipe.retetaBaseKg || 1}kg`
-                  : "Selecteaza un tort pentru reteta."}
+            </label>
+
+            <div className="text-sm text-gray-500">
+              {recipe
+                ? `Reteta de baza: ${recipe.retetaBaseKg || 1} kg`
+                : "Selecteaza un tort pentru reteta."}
+            </div>
+
+            {recipe?.isLibrary ? (
+              <div className="rounded-[22px] border border-rose-100 bg-[rgba(255,249,242,0.88)] px-4 py-3 text-sm leading-7 text-[#655c53]">
+                Ai selectat o reteta din biblioteca interna. O poti scala aici si o poti copia in
+                formularul de reteta noua daca vrei sa o salvezi permanent in baza de date.
               </div>
-            </div>
+            ) : null}
+          </div>
 
-            <div className="bg-rose-50 border border-rose-100 rounded-xl p-3 space-y-2 min-h-[140px]">
-              {loadingRecipes ? (
-                <div className="text-sm text-gray-500">Se incarca retetele...</div>
-              ) : recipe && scaledIngredients.length > 0 ? (
-                <div className="space-y-2">
-                  {scaledIngredients.map((ingredient) => (
-                    <div key={ingredient.ingredient} className="border rounded-lg p-2 bg-white">
-                      <div className="flex items-center justify-between text-sm">
-                        <span className="font-semibold">{ingredient.ingredient}</span>
-                        <span className="text-gray-600">
-                          {ingredient.scaled} {ingredient.unit}
-                        </span>
-                      </div>
-                      {ingredient.note && (
-                        <div className="text-xs text-gray-500">{ingredient.note}</div>
-                      )}
+          <div className="min-h-[160px] space-y-2 rounded-xl border border-rose-100 bg-rose-50 p-3">
+            {loadingRecipes ? (
+              <div className="text-sm text-gray-500">Se incarca retetele...</div>
+            ) : recipe && scaledIngredients.length > 0 ? (
+              scaledIngredients.map((ingredient, index) => (
+                <div
+                  key={`${ingredient.ingredient}-${ingredient.unit}-${index}`}
+                  className="rounded-lg border bg-white p-3"
+                >
+                  <div className="flex items-start justify-between gap-3 text-sm">
+                    <div>
+                      <div className="font-semibold">{ingredient.ingredient}</div>
+                      {ingredient.group ? (
+                        <div className="mt-1 text-[11px] uppercase tracking-[0.18em] text-[#8d775c]">
+                          {ingredient.group}
+                        </div>
+                      ) : null}
                     </div>
-                  ))}
+                    <div className="text-right text-gray-700">
+                      {ingredient.scaledLabel || "dupa gust / nescalabil"}
+                    </div>
+                  </div>
+                  {ingredient.note ? (
+                    <div className="mt-2 text-xs text-gray-500">{ingredient.note}</div>
+                  ) : null}
                 </div>
-              ) : (
-                <div className="text-sm text-gray-500">
-                  Reteta nu contine ingrediente detaliate.
-                </div>
-              )}
-            </div>
+              ))
+            ) : (
+              <div className="text-sm text-gray-500">
+                Reteta nu contine ingrediente detaliate.
+              </div>
+            )}
+          </div>
 
-            <div className="border border-rose-100 rounded-2xl p-4 space-y-4">
-              <div className="flex items-start justify-between gap-3">
-                <div>
-                  <p className="text-xs uppercase tracking-[0.15em] text-rose-600">Reteta</p>
-                  <h3 className="text-xl font-semibold text-gray-900">Editeaza ingredientele</h3>
-                  <p className="text-xs text-gray-500">
-                    Salvezi pentru a actualiza baza din Mongo.
-                  </p>
-                </div>
+          <div className="rounded-2xl border border-rose-100 p-4">
+            <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <p className="text-xs uppercase tracking-[0.15em] text-rose-600">Reteta</p>
+                <h3 className="text-xl font-semibold text-gray-900">Editeaza ingredientele</h3>
+                <p className="text-xs text-gray-500">
+                  Retetele din biblioteca sunt doar pentru consultare si scalare.
+                </p>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                {recipe?.isLibrary ? (
+                  <button
+                    type="button"
+                    onClick={copyCurrentRecipeToNewForm}
+                    className={buttons.outline}
+                  >
+                    Copiaza in reteta noua
+                  </button>
+                ) : null}
                 <button
                   type="button"
                   onClick={saveRecipe}
-                  disabled={!recipe || savingRecipe}
+                  disabled={!recipe || recipe?.isLibrary || savingRecipe}
                   className={buttons.primary}
                 >
                   {savingRecipe ? "Salvez..." : "Salveaza reteta"}
                 </button>
               </div>
+            </div>
 
-              <div className="grid grid-cols-1 gap-3">
-                <label className="text-sm font-semibold text-gray-700">
-                  Kg baza
-                  <input
-                    type="number"
-                    min="0.1"
-                    step="0.1"
-                    value={baseKgInput}
-                    onChange={(event) => setBaseKgInput(Number(event.target.value || 0))}
-                    className={`mt-1 ${inputs.default}`}
-                  />
-                </label>
-                <div className="text-sm text-gray-500">
-                  {recipe ? `Setat pentru ${recipe.nume}` : "Selecteaza un tort pentru date."}
+            {recipe?.isLibrary ? (
+              <div className="space-y-3">
+                <div className="rounded-[22px] border border-rose-100 bg-[rgba(255,249,242,0.88)] px-4 py-3 text-sm leading-7 text-[#655c53]">
+                  Fisa tehnica selectata provine din biblioteca de cercetare. Pentru editare
+                  permanenta, foloseste butonul de copiere si salveaza apoi o reteta noua.
+                </div>
+                <Link to="/admin/retete" className={buttons.outline}>
+                  Deschide biblioteca completa
+                </Link>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                <div className="grid grid-cols-1 gap-3">
+                  <label className="text-sm font-semibold text-gray-700">
+                    Kg baza
+                    <input
+                      type="number"
+                      min="0.1"
+                      step="0.1"
+                      value={baseKgInput}
+                      onChange={(event) => setBaseKgInput(Number(event.target.value || 0))}
+                      className={`mt-1 ${inputs.default}`}
+                    />
+                  </label>
+                  <div className="text-sm text-gray-500">
+                    {recipe ? `Setat pentru ${recipe.nume}` : "Selecteaza un tort pentru date."}
+                  </div>
+                </div>
+
+                <div className="space-y-3">
+                  {ingredientRows.map((ingredient, idx) => (
+                    <div
+                      key={`${ingredient.ingredient}-${idx}`}
+                      className="rounded-lg border bg-rose-50 p-3"
+                    >
+                      <div className="grid gap-2 sm:grid-cols-12">
+                        <input
+                          className={`sm:col-span-5 ${inputs.default}`}
+                          type="text"
+                          placeholder="Ingredient"
+                          value={ingredient.ingredient}
+                          onChange={(event) =>
+                            updateIngredient(idx, "ingredient", event.target.value)
+                          }
+                        />
+                        <input
+                          className={`sm:col-span-2 ${inputs.default}`}
+                          type="number"
+                          min="0"
+                          step="0.1"
+                          placeholder="Cantitate"
+                          value={ingredient.qty}
+                          onChange={(event) =>
+                            updateIngredient(idx, "qty", Number(event.target.value || 0))
+                          }
+                        />
+                        <input
+                          className={`sm:col-span-2 ${inputs.default}`}
+                          type="text"
+                          placeholder="Unitate"
+                          value={ingredient.unit}
+                          onChange={(event) => updateIngredient(idx, "unit", event.target.value)}
+                        />
+                        <input
+                          className={`sm:col-span-3 ${inputs.default}`}
+                          type="text"
+                          placeholder="Note"
+                          value={ingredient.note}
+                          onChange={(event) => updateIngredient(idx, "note", event.target.value)}
+                        />
+                        <button
+                          type="button"
+                          onClick={() => removeIngredient(idx)}
+                          disabled={ingredientRows.length <= 1}
+                          className="mt-1 text-xs text-rose-700 hover:underline sm:col-span-12"
+                        >
+                          Sterge ingredient
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+
+                <div className="flex items-center justify-between text-xs text-gray-500">
+                  <button
+                    type="button"
+                    onClick={addIngredient}
+                    className="text-rose-600 hover:underline"
+                  >
+                    + Adauga ingredient
+                  </button>
+                  {recipeNotice ? <span className="text-rose-700">{recipeNotice}</span> : null}
                 </div>
               </div>
-
-              <div className="space-y-3">
-                {ingredientRows.map((ingredient, idx) => (
-                  <div key={`${ingredient.ingredient}-${idx}`} className="border rounded-lg p-3 bg-rose-50">
-                    <div className="grid gap-2 sm:grid-cols-12">
-                      <input
-                        className={`sm:col-span-5 ${inputs.default}`}
-                        type="text"
-                        placeholder="Ingrediente"
-                        value={ingredient.ingredient}
-                        onChange={(event) =>
-                          updateIngredient(idx, "ingredient", event.target.value)
-                        }
-                      />
-                      <input
-                        className={`sm:col-span-2 ${inputs.default}`}
-                        type="number"
-                        min="0"
-                        step="0.1"
-                        placeholder="Cantitate"
-                        value={ingredient.qty}
-                        onChange={(event) =>
-                          updateIngredient(idx, "qty", Number(event.target.value || 0))
-                        }
-                      />
-                      <input
-                        className={`sm:col-span-2 ${inputs.default}`}
-                        type="text"
-                        placeholder="Unitate"
-                        value={ingredient.unit}
-                        onChange={(event) => updateIngredient(idx, "unit", event.target.value)}
-                      />
-                      <input
-                        className={`sm:col-span-3 ${inputs.default}`}
-                        type="text"
-                        placeholder="Note"
-                        value={ingredient.note}
-                        onChange={(event) => updateIngredient(idx, "note", event.target.value)}
-                      />
-                      <button
-                        type="button"
-                        onClick={() => removeIngredient(idx)}
-                        disabled={ingredientRows.length <= 1}
-                        className="sm:col-span-12 text-xs text-rose-700 hover:underline mt-1"
-                      >
-                        Sterge ingredient
-                      </button>
-                    </div>
-                  </div>
-                ))}
-              </div>
-
-              <div className="flex justify-between items-center text-xs text-gray-500">
-                <button
-                  type="button"
-                  onClick={addIngredient}
-                  className="text-rose-600 hover:underline"
-                >
-                  + Adauga ingredient
-                </button>
-                {recipeNotice && <span className="text-rose-700">{recipeNotice}</span>}
-              </div>
-            </div>
+            )}
+          </div>
         </AdminPanel>
 
         <AdminPanel
@@ -535,91 +656,93 @@ export default function AdminProduction() {
           description="Vezi comenzile planificate pentru ziua selectata, impreuna cu statusul, plata si compozitia estimata."
           className="space-y-4"
         >
-            <div className="flex flex-col md:flex-row md:items-end md:justify-between gap-3">
-              <div>
-                <h2 className="text-xl font-semibold text-gray-900">Program productie</h2>
-                <p className="text-sm text-gray-500">
-                  Selecteaza ziua pentru lista comenzilor.
-                </p>
-              </div>
-              <input
-                type="date"
-                value={date}
-                onChange={(event) => setDate(event.target.value)}
-                className={inputs.default}
-              />
+          <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
+            <div>
+              <h2 className="text-xl font-semibold text-gray-900">Program productie</h2>
+              <p className="text-sm text-gray-500">
+                Selecteaza ziua pentru lista comenzilor.
+              </p>
             </div>
+            <input
+              type="date"
+              value={date}
+              onChange={(event) => setDate(event.target.value)}
+              className={inputs.default}
+            />
+          </div>
 
-            {loadingBoard ? (
-              <div className="text-gray-600">Se incarca board-ul...</div>
-            ) : board.length === 0 ? (
-              <div className="text-gray-600">Nu exista comenzi pentru data selectata.</div>
-            ) : (
-              <div className="space-y-3">
-                {board.map((order) => {
-                  const methodLabel =
-                    order.source === "personalizata"
-                      ? "Comanda personalizata"
-                      : order.method === "livrare"
-                      ? "Livrare"
-                      : order.method || "Ridicare";
-                  const totalValue = Number(order.total || order.totalFinal || 0);
+          {loadingBoard ? (
+            <div className="text-gray-600">Se incarca board-ul...</div>
+          ) : board.length === 0 ? (
+            <div className="text-gray-600">Nu exista comenzi pentru data selectata.</div>
+          ) : (
+            <div className="space-y-3">
+              {board.map((order) => {
+                const methodLabel =
+                  order.source === "personalizata"
+                    ? "Comanda personalizata"
+                    : order.method === "livrare"
+                    ? "Livrare"
+                    : order.method || "Ridicare";
+                const totalValue = Number(order.total || order.totalFinal || 0);
 
-                  return (
-                    <div key={order.orderId} className="border rounded-2xl p-4 bg-rose-50">
-                      <div className="flex flex-wrap gap-2 items-center justify-between">
-                        <div>
-                          <div className="text-sm text-gray-600">
-                            {order.data} @ {order.time || "ora nedefinita"}
-                          </div>
-                          <div className="text-lg font-bold text-gray-900">
-                            {order.numeroComanda || order.orderId}
-                          </div>
+                return (
+                  <div key={order.orderId} className="rounded-2xl border bg-rose-50 p-4">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <div>
+                        <div className="text-sm text-gray-600">
+                          {order.data} @ {order.time || "ora nedefinita"}
                         </div>
-                        <div className="flex items-center gap-2 text-sm text-gray-600">
-                          <span>{methodLabel}</span>
-                          {order.source && (
-                            <span className="px-2 py-0.5 text-[10px] uppercase tracking-wider rounded-full border border-rose-200">
-                              {order.source}
-                            </span>
-                          )}
+                        <div className="text-lg font-bold text-gray-900">
+                          {order.numeroComanda || order.orderId}
                         </div>
                       </div>
-                      <div className="mt-3 flex gap-3">
-                        <div className="w-32 h-24 overflow-hidden rounded-xl bg-white border border-rose-100">
-                          {order.image ? (
-                            <img
-                              src={order.image}
-                              alt="Produs"
-                              className="w-full h-full object-cover"
-                            />
-                          ) : (
-                            <div className="text-center text-xs text-gray-500 py-8">
-                              Fara imagine
-                            </div>
-                          )}
-                        </div>
-                        <div className="flex-1 space-y-2 text-sm text-gray-700">
-                          <div>Client: {order.clientId || "necunoscut"}</div>
-                          <div>Status: {order.status}</div>
-                          <div>Plata: {order.payment}</div>
-                          <div>Greutate estimata: {order.weightKg} kg</div>
-                          <div>Total: {totalValue.toFixed(2)} MDL</div>
-                          {order.notes && <div>Nota: {order.notes}</div>}
-                          <div className="space-y-1">
-                            {order.items.map((item) => (
-                              <div key={`${order.orderId}-${item.name}`} className="text-xs">
-                                - {item.name} × {item.qty} {item.personalizari?.marime || ""}
-                              </div>
-                            ))}
+                      <div className="flex items-center gap-2 text-sm text-gray-600">
+                        <span>{methodLabel}</span>
+                        {order.source ? (
+                          <span className="rounded-full border border-rose-200 px-2 py-0.5 text-[10px] uppercase tracking-wider">
+                            {order.source}
+                          </span>
+                        ) : null}
+                      </div>
+                    </div>
+
+                    <div className="mt-3 flex gap-3">
+                      <div className="h-24 w-32 overflow-hidden rounded-xl border border-rose-100 bg-white">
+                        {order.image ? (
+                          <img
+                            src={order.image}
+                            alt="Produs"
+                            className="h-full w-full object-cover"
+                          />
+                        ) : (
+                          <div className="py-8 text-center text-xs text-gray-500">
+                            Fara imagine
                           </div>
+                        )}
+                      </div>
+
+                      <div className="flex-1 space-y-2 text-sm text-gray-700">
+                        <div>Client: {order.clientId || "necunoscut"}</div>
+                        <div>Status: {order.status}</div>
+                        <div>Plata: {order.payment}</div>
+                        <div>Greutate estimata: {order.weightKg} kg</div>
+                        <div>Total: {totalValue.toFixed(2)} MDL</div>
+                        {order.notes ? <div>Nota: {order.notes}</div> : null}
+                        <div className="space-y-1">
+                          {order.items.map((item) => (
+                            <div key={`${order.orderId}-${item.name}`} className="text-xs">
+                              - {item.name} x {item.qty} {item.personalizari?.marime || ""}
+                            </div>
+                          ))}
                         </div>
                       </div>
                     </div>
-                  );
-                })}
-              </div>
-            )}
+                  </div>
+                );
+              })}
+            </div>
+          )}
         </AdminPanel>
       </div>
 
@@ -639,121 +762,123 @@ export default function AdminProduction() {
             </button>
           }
         >
-
-            <div className="grid gap-3">
+          <div className="grid gap-3">
+            <input
+              type="text"
+              placeholder="Numele tortului"
+              value={newRecipeForm.nume}
+              onChange={(event) => updateNewRecipeField("nume", event.target.value)}
+              className={inputs.default}
+            />
+            <textarea
+              placeholder="Descriere scurta"
+              value={newRecipeForm.descriere}
+              onChange={(event) => updateNewRecipeField("descriere", event.target.value)}
+              className={`${inputs.default} h-24`}
+            />
+            <div className="grid grid-cols-2 gap-3">
               <input
-                type="text"
-                placeholder="Numele tortului"
-                value={newRecipeForm.nume}
-                onChange={(event) => updateNewRecipeField("nume", event.target.value)}
+                type="number"
+                min="0"
+                placeholder="Pret (MDL)"
+                value={newRecipeForm.pret}
+                onChange={(event) => updateNewRecipeField("pret", event.target.value)}
                 className={inputs.default}
               />
-              <textarea
-                placeholder="Descriere scurta"
-                value={newRecipeForm.descriere}
-                onChange={(event) => updateNewRecipeField("descriere", event.target.value)}
-                className={`${inputs.default} h-24`}
+              <input
+                type="text"
+                placeholder="URL imagine (optional)"
+                value={newRecipeForm.imagine}
+                onChange={(event) => updateNewRecipeField("imagine", event.target.value)}
+                className={inputs.default}
               />
-              <div className="grid grid-cols-2 gap-3">
-                <input
-                  type="number"
-                  min="0"
-                  placeholder="Pret (MDL)"
-                  value={newRecipeForm.pret}
-                  onChange={(event) => updateNewRecipeField("pret", event.target.value)}
-                  className={inputs.default}
-                />
-                <input
-                  type="text"
-                  placeholder="URL imagine (optional)"
-                  value={newRecipeForm.imagine}
-                  onChange={(event) => updateNewRecipeField("imagine", event.target.value)}
-                  className={inputs.default}
-                />
-              </div>
-              <div className="grid grid-cols-2 gap-3">
-                <input
-                  type="number"
-                  min="0.1"
-                  step="0.1"
-                  placeholder="Kg baza"
-                  value={newRecipeForm.retetaBaseKg}
-                  onChange={(event) =>
-                    updateNewRecipeField("retetaBaseKg", Number(event.target.value || 0))
-                  }
-                  className={inputs.default}
-                />
-                <input
-                  type="text"
-                  placeholder="Ocazii (separate prin virgula)"
-                  value={newRecipeForm.ocazii}
-                  onChange={(event) => updateNewRecipeField("ocazii", event.target.value)}
-                  className={inputs.default}
-                />
-              </div>
             </div>
-
-            <div className="space-y-3">
-              {newIngredientRows.map((ingredient, idx) => (
-                <div key={`${ingredient.ingredient}-${idx}`} className="border rounded-lg p-3 bg-rose-50">
-                  <div className="grid gap-2 sm:grid-cols-12">
-                    <input
-                      className={`sm:col-span-5 ${inputs.default}`}
-                      type="text"
-                      placeholder="Ingredient"
-                      value={ingredient.ingredient}
-                      onChange={(event) =>
-                        updateNewIngredient(idx, "ingredient", event.target.value)
-                      }
-                    />
-                    <input
-                      className={`sm:col-span-2 ${inputs.default}`}
-                      type="number"
-                      min="0"
-                      step="0.1"
-                      placeholder="Cantitate"
-                      value={ingredient.qty}
-                      onChange={(event) =>
-                        updateNewIngredient(idx, "qty", Number(event.target.value || 0))
-                      }
-                    />
-                    <input
-                      className={`sm:col-span-2 ${inputs.default}`}
-                      type="text"
-                      placeholder="Unitate"
-                      value={ingredient.unit}
-                      onChange={(event) => updateNewIngredient(idx, "unit", event.target.value)}
-                    />
-                    <input
-                      className={`sm:col-span-3 ${inputs.default}`}
-                      type="text"
-                      placeholder="Note"
-                      value={ingredient.note}
-                      onChange={(event) => updateNewIngredient(idx, "note", event.target.value)}
-                    />
-                    <button
-                      type="button"
-                      onClick={() => removeNewIngredient(idx)}
-                      disabled={newIngredientRows.length <= 1}
-                      className="sm:col-span-12 text-xs text-rose-700 hover:underline mt-1"
-                    >
-                      Sterge ingredient
-                    </button>
-                  </div>
-                </div>
-              ))}
+            <div className="grid grid-cols-2 gap-3">
+              <input
+                type="number"
+                min="0.1"
+                step="0.1"
+                placeholder="Kg baza"
+                value={newRecipeForm.retetaBaseKg}
+                onChange={(event) =>
+                  updateNewRecipeField("retetaBaseKg", Number(event.target.value || 0))
+                }
+                className={inputs.default}
+              />
+              <input
+                type="text"
+                placeholder="Ocazii (separate prin virgula)"
+                value={newRecipeForm.ocazii}
+                onChange={(event) => updateNewRecipeField("ocazii", event.target.value)}
+                className={inputs.default}
+              />
             </div>
+          </div>
 
-            <div className="flex justify-between items-center text-xs text-gray-500">
-              <button
-                type="button"
-                onClick={addNewIngredient}
-                className="text-rose-600 hover:underline"
+          <div className="space-y-3">
+            {newIngredientRows.map((ingredient, idx) => (
+              <div
+                key={`${ingredient.ingredient}-${idx}`}
+                className="rounded-lg border bg-rose-50 p-3"
               >
-                + Adauga ingredient
-              </button>
-              {newRecipeMsg && <span className="text-rose-700">{newRecipeMsg}</span>}
-            </div>
+                <div className="grid gap-2 sm:grid-cols-12">
+                  <input
+                    className={`sm:col-span-5 ${inputs.default}`}
+                    type="text"
+                    placeholder="Ingredient"
+                    value={ingredient.ingredient}
+                    onChange={(event) =>
+                      updateNewIngredient(idx, "ingredient", event.target.value)
+                    }
+                  />
+                  <input
+                    className={`sm:col-span-2 ${inputs.default}`}
+                    type="number"
+                    min="0"
+                    step="0.1"
+                    placeholder="Cantitate"
+                    value={ingredient.qty}
+                    onChange={(event) =>
+                      updateNewIngredient(idx, "qty", Number(event.target.value || 0))
+                    }
+                  />
+                  <input
+                    className={`sm:col-span-2 ${inputs.default}`}
+                    type="text"
+                    placeholder="Unitate"
+                    value={ingredient.unit}
+                    onChange={(event) => updateNewIngredient(idx, "unit", event.target.value)}
+                  />
+                  <input
+                    className={`sm:col-span-3 ${inputs.default}`}
+                    type="text"
+                    placeholder="Note"
+                    value={ingredient.note}
+                    onChange={(event) => updateNewIngredient(idx, "note", event.target.value)}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => removeNewIngredient(idx)}
+                    disabled={newIngredientRows.length <= 1}
+                    className="mt-1 text-xs text-rose-700 hover:underline sm:col-span-12"
+                  >
+                    Sterge ingredient
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          <div className="flex items-center justify-between text-xs text-gray-500">
+            <button
+              type="button"
+              onClick={addNewIngredient}
+              className="text-rose-600 hover:underline"
+            >
+              + Adauga ingredient
+            </button>
+            {newRecipeMsg ? <span className="text-rose-700">{newRecipeMsg}</span> : null}
+          </div>
         </AdminPanel>
 
         <AdminPanel
@@ -766,35 +891,35 @@ export default function AdminProduction() {
             </button>
           }
         >
-            {loadingNotifications ? (
-              <div className="text-sm text-gray-500">Se incarca notificari...</div>
-            ) : notifications.length === 0 ? (
-              <div className="text-sm text-gray-500">Nu exista notificari.</div>
-            ) : (
-              <div className="space-y-3">
-                {notifications.map((notification) => (
-                  <div
-                    key={notification._id}
-                    className="border border-rose-100 rounded-lg p-3 bg-rose-50"
-                  >
-                    <div className="flex justify-between items-start gap-3">
-                      <div>
-                        <div className="font-semibold text-sm">
-                          {notification.titlu || "Notificare"}
-                        </div>
-                        <div className="text-xs text-gray-700">{notification.mesaj}</div>
+          {loadingNotifications ? (
+            <div className="text-sm text-gray-500">Se incarca notificari...</div>
+          ) : notifications.length === 0 ? (
+            <div className="text-sm text-gray-500">Nu exista notificari.</div>
+          ) : (
+            <div className="space-y-3">
+              {notifications.map((notification) => (
+                <div
+                  key={notification._id}
+                  className="rounded-lg border border-rose-100 bg-rose-50 p-3"
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <div className="text-sm font-semibold">
+                        {notification.titlu || "Notificare"}
                       </div>
-                      <span className="text-[10px] uppercase tracking-wide text-gray-500">
-                        {notification.tip || "info"}
-                      </span>
+                      <div className="text-xs text-gray-700">{notification.mesaj}</div>
                     </div>
-                    <div className="text-[10px] text-gray-500 mt-2">
-                      {new Date(notification.data).toLocaleString()}
-                    </div>
+                    <span className="text-[10px] uppercase tracking-wide text-gray-500">
+                      {notification.tip || "info"}
+                    </span>
                   </div>
-                ))}
-              </div>
-            )}
+                  <div className="mt-2 text-[10px] text-gray-500">
+                    {new Date(notification.data).toLocaleString()}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
         </AdminPanel>
       </div>
     </AdminShell>

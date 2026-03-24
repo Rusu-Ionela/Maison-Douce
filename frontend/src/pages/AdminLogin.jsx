@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
+import { isStaffRole } from "../lib/roles";
 
 function AdminLogin() {
   const { login } = useAuth();
@@ -14,8 +15,7 @@ function AdminLogin() {
     setErr("");
     try {
       const u = await login({ email, parola });
-      const role = u?.rol || u?.role;
-      if (role !== "admin" && role !== "patiser" && role !== "prestator") {
+      if (!isStaffRole(u?.rol || u?.role)) {
         setErr("Nu ai acces in zona admin.");
         return;
       }

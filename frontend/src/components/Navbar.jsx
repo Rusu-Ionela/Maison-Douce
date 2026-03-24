@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link, NavLink } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import { useCart } from "../context/CartContext";
@@ -6,24 +6,25 @@ import { getTopNavLinks } from "../lib/siteMap";
 
 function navLinkClass({ isActive }) {
   return [
-    "inline-flex items-center gap-2 rounded-full px-3 py-2 text-sm font-medium whitespace-nowrap",
+    "group relative inline-flex items-center gap-2 px-3 py-2 text-sm font-medium whitespace-nowrap transition",
     isActive
-      ? "bg-rose-100 text-pink-700 shadow-soft"
-      : "text-gray-700 hover:bg-white hover:text-pink-700",
+      ? "text-pink-700"
+      : "text-[#5f564d] hover:text-pink-700",
   ].join(" ");
 }
 
 function mobileNavLinkClass({ isActive }) {
   return [
-    "rounded-2xl border px-3 py-3 text-sm font-medium",
+    "rounded-[22px] border px-3 py-3 text-sm font-medium transition",
     isActive
-      ? "border-rose-200 bg-rose-50 text-pink-700"
-      : "border-transparent bg-white text-gray-700 hover:border-rose-100 hover:bg-rose-50/70",
+      ? "border-sage-deep/30 bg-sage/40 text-pink-700 shadow-soft"
+      : "border-rose-100 bg-white/85 text-[#5f564d] hover:border-rose-200 hover:bg-white",
   ].join(" ");
 }
 
 export default function Navbar() {
   const [isOpen, setIsOpen] = useState(false);
+  const [isScrolled, setIsScrolled] = useState(false);
   const { user, logout } = useAuth() || {};
   const { items } = useCart();
   const navLinks = useMemo(() => getTopNavLinks(user), [user]);
@@ -32,13 +33,20 @@ export default function Navbar() {
     [items]
   );
 
+  useEffect(() => {
+    const onScroll = () => setIsScrolled(window.scrollY > 18);
+    onScroll();
+    window.addEventListener("scroll", onScroll, { passive: true });
+    return () => window.removeEventListener("scroll", onScroll);
+  }, []);
+
   const renderNavLabel = (link) => {
     if (link.to !== "/cart") return link.label;
 
     return (
       <>
         <span>{link.label}</span>
-        <span className="inline-flex min-w-6 items-center justify-center rounded-full bg-white/80 px-2 py-0.5 text-xs font-semibold text-pink-700">
+        <span className="inline-flex min-w-6 items-center justify-center rounded-full border border-rose-200 bg-white/80 px-2 py-0.5 text-[11px] font-semibold text-pink-700">
           {cartCount}
         </span>
       </>
@@ -46,21 +54,37 @@ export default function Navbar() {
   };
 
   return (
-    <header className="sticky top-0 z-50 w-full border-b border-rose-100/80 bg-white/85 shadow-[0_12px_32px_rgba(165,110,112,0.12)] backdrop-blur-xl">
-      <div className="mx-auto flex max-w-6xl items-center justify-between gap-4 px-4 py-3">
+    <header
+      className={[
+        "sticky top-0 z-50 w-full transition-all duration-300",
+        isScrolled
+          ? "border-b border-rose-100/80 bg-[rgba(251,247,239,0.88)] shadow-[0_18px_48px_rgba(68,53,41,0.08)] backdrop-blur-xl"
+          : "bg-transparent",
+      ].join(" ")}
+    >
+      <div className="mx-auto flex max-w-editorial items-center justify-between gap-4 px-4 py-4 md:px-6">
         <Link to="/" className="shrink-0">
-          <div className="text-[0.7rem] font-semibold uppercase tracking-[0.24em] text-pink-500">
-            Atelier artizanal
-          </div>
-          <div className="font-serif text-2xl font-semibold text-gray-900">
+          <div className="text-[0.68rem] font-semibold uppercase tracking-[0.34em] text-pink-500">
             Maison-Douce
+          </div>
+          <div className="font-serif text-[1.95rem] font-semibold leading-none text-ink">
+            Patisserie
           </div>
         </Link>
 
-        <nav className="hidden min-w-0 flex-1 items-center justify-center gap-2 overflow-x-auto px-2 xl:flex">
+        <nav className="hidden min-w-0 flex-1 items-center justify-center gap-5 overflow-x-auto px-2 xl:flex">
           {navLinks.map((link) => (
             <NavLink key={link.to} to={link.to} className={navLinkClass}>
-              {renderNavLabel(link)}
+              {({ isActive }) => (
+                <>
+                  {renderNavLabel(link)}
+                  <span
+                    className={`absolute inset-x-3 -bottom-0.5 h-px origin-left bg-gradient-to-r from-pink-600 to-gold transition-transform duration-200 ${
+                      isActive ? "scale-x-100" : "scale-x-0 group-hover:scale-x-100"
+                    }`}
+                  />
+                </>
+              )}
             </NavLink>
           ))}
         </nav>
@@ -70,12 +94,12 @@ export default function Navbar() {
             <>
               <Link
                 to="/profil"
-                className="hidden rounded-full border border-rose-200 bg-white px-4 py-2 text-sm font-semibold text-pink-700 shadow-soft hover:border-rose-300 hover:bg-rose-50 sm:inline-flex"
+                className="hidden rounded-full border border-rose-200 bg-white/80 px-4 py-2 text-sm font-semibold text-pink-700 shadow-soft hover:-translate-y-0.5 hover:bg-white sm:inline-flex"
               >
                 Profil
               </Link>
               <button
-                className="hidden rounded-full bg-pink-600 px-4 py-2 text-sm font-semibold text-white shadow-soft hover:bg-pink-700 sm:inline-flex"
+                className="hidden rounded-full bg-charcoal px-4 py-2 text-sm font-semibold text-white shadow-soft hover:-translate-y-0.5 hover:bg-pink-700 sm:inline-flex"
                 onClick={logout}
               >
                 Logout
@@ -85,13 +109,13 @@ export default function Navbar() {
             <>
               <Link
                 to="/login"
-                className="hidden rounded-full border border-rose-200 bg-white px-4 py-2 text-sm font-semibold text-pink-700 shadow-soft hover:border-rose-300 hover:bg-rose-50 sm:inline-flex"
+                className="hidden rounded-full border border-rose-200 bg-white/80 px-4 py-2 text-sm font-semibold text-pink-700 shadow-soft hover:-translate-y-0.5 hover:bg-white sm:inline-flex"
               >
                 Login
               </Link>
               <Link
                 to="/register"
-                className="hidden rounded-full bg-pink-600 px-4 py-2 text-sm font-semibold text-white shadow-soft hover:bg-pink-700 sm:inline-flex"
+                className="hidden rounded-full bg-charcoal px-4 py-2 text-sm font-semibold text-white shadow-soft hover:-translate-y-0.5 hover:bg-pink-700 sm:inline-flex"
               >
                 Inregistrare
               </Link>
@@ -100,7 +124,7 @@ export default function Navbar() {
 
           <button
             type="button"
-            className="inline-flex items-center rounded-full border border-rose-200 bg-white px-3 py-2 text-sm font-semibold text-gray-700 shadow-soft hover:border-rose-300 hover:bg-rose-50 xl:hidden"
+            className="inline-flex items-center rounded-full border border-rose-200 bg-white/88 px-3 py-2 text-sm font-semibold text-[#5f564d] shadow-soft hover:-translate-y-0.5 hover:bg-white xl:hidden"
             onClick={() => setIsOpen((prev) => !prev)}
             aria-expanded={isOpen}
             aria-label="Toggle menu"
@@ -110,9 +134,9 @@ export default function Navbar() {
         </div>
       </div>
 
-      {isOpen && (
-        <div className="border-t border-rose-100 bg-[linear-gradient(180deg,_rgba(255,255,255,0.96),_rgba(255,247,241,0.96))] xl:hidden">
-          <nav className="mx-auto grid max-w-6xl gap-2 px-4 py-4 sm:grid-cols-2">
+      {isOpen ? (
+        <div className="border-t border-rose-100 bg-[linear-gradient(180deg,_rgba(255,252,247,0.98),_rgba(246,239,228,0.96))] xl:hidden">
+          <nav className="mx-auto grid max-w-editorial gap-2 px-4 py-4 sm:grid-cols-2 md:px-6">
             {navLinks.map((link) => (
               <NavLink
                 key={link.to}
@@ -123,7 +147,7 @@ export default function Navbar() {
                 <div className="flex items-center justify-between gap-2">
                   <span>{link.label}</span>
                   {link.to === "/cart" ? (
-                    <span className="rounded-full bg-rose-100 px-2 py-0.5 text-xs font-semibold text-pink-700">
+                    <span className="rounded-full border border-rose-200 bg-white px-2 py-0.5 text-xs font-semibold text-pink-700">
                       {cartCount}
                     </span>
                   ) : null}
@@ -141,7 +165,7 @@ export default function Navbar() {
                   Profil
                 </NavLink>
                 <button
-                  className="rounded-2xl border border-rose-100 bg-white px-3 py-3 text-left text-sm font-semibold text-pink-700 hover:bg-rose-50"
+                  className="rounded-[22px] border border-rose-200 bg-white px-3 py-3 text-left text-sm font-semibold text-pink-700 shadow-soft hover:bg-rose-50"
                   onClick={() => {
                     logout?.();
                     setIsOpen(false);
@@ -170,7 +194,7 @@ export default function Navbar() {
             )}
           </nav>
         </div>
-      )}
+      ) : null}
     </header>
   );
 }

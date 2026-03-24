@@ -31,18 +31,21 @@ export default function QuickNavigator() {
 
   return (
     <div className="fixed bottom-4 right-4 z-40 flex flex-col items-end gap-2">
-      {open && (
-        <div className="max-h-[72vh] w-[360px] max-w-[calc(100vw-1rem)] overflow-hidden rounded-[28px] border border-rose-100 bg-white/95 shadow-card backdrop-blur-xl">
-          <div className="border-b border-rose-100 bg-[linear-gradient(180deg,_rgba(255,250,242,0.95),_rgba(255,255,255,0.98))] p-4">
-            <div className="text-sm font-semibold text-gray-900">Navigare completa</div>
-            <div className="mt-1 text-xs text-gray-500">
-              Cauta pagina dupa nume, rol sau ruta.
+      {open ? (
+        <div className="max-h-[72vh] w-[360px] max-w-[calc(100vw-1rem)] overflow-hidden rounded-[30px] border border-rose-100 bg-[rgba(255,251,245,0.96)] shadow-floating backdrop-blur-xl">
+          <div className="border-b border-rose-100 bg-[linear-gradient(180deg,_rgba(255,252,247,0.96),_rgba(244,238,228,0.98))] p-4">
+            <div className="text-sm font-semibold uppercase tracking-[0.2em] text-pink-600">
+              Navigare completa
+            </div>
+            <div className="mt-2 font-serif text-2xl text-ink">Maison-Douce</div>
+            <div className="mt-1 text-xs leading-5 text-[#7d746a]">
+              Cauta o pagina dupa nume, rol sau ruta.
             </div>
             <input
               value={query}
               onChange={(e) => setQuery(e.target.value)}
-              className="mt-3 w-full rounded-2xl border border-rose-200 bg-white px-3 py-2 text-sm outline-none focus:border-pink-400 focus:ring-4 focus:ring-rose-100"
-              placeholder="ex: contabilitate, /admin/comenzi"
+              className="mt-3 w-full rounded-[20px] border border-rose-200 bg-white px-3 py-2 text-sm outline-none focus:border-pink-400 focus:ring-4 focus:ring-sage/30"
+              placeholder="ex: calendar, /admin/comenzi"
             />
           </div>
 
@@ -50,11 +53,11 @@ export default function QuickNavigator() {
             {sections.map((section) => (
               <div key={section.id} className="space-y-2">
                 <div>
-                  <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-gray-500">
+                  <div className="text-[11px] font-semibold uppercase tracking-[0.2em] text-[#8a8178]">
                     {section.title}
                   </div>
                   {section.note ? (
-                    <div className="mt-1 text-xs text-gray-400">{section.note}</div>
+                    <div className="mt-1 text-xs text-[#9c9388]">{section.note}</div>
                   ) : null}
                 </div>
 
@@ -70,14 +73,14 @@ export default function QuickNavigator() {
                           key={`${section.id}-${item.to}-${item.label}`}
                           to={item.to}
                           className={[
-                            "rounded-2xl border px-3 py-2.5 text-sm",
+                            "rounded-[22px] border px-3 py-3 text-sm transition",
                             isCurrent
-                              ? "border-rose-200 bg-rose-50 text-pink-700"
-                              : "border-transparent bg-white text-gray-700 hover:border-rose-100 hover:bg-rose-50/80 hover:text-pink-700",
+                              ? "border-sage-deep/30 bg-sage/40 text-pink-700 shadow-soft"
+                              : "border-transparent bg-white/86 text-[#5f564d] hover:border-rose-100 hover:bg-white hover:text-pink-700",
                           ].join(" ")}
                         >
                           <div className="font-medium">{item.label}</div>
-                          <div className="mt-1 text-xs text-gray-400">{item.to}</div>
+                          <div className="mt-1 text-xs text-[#8a8178]">{item.to}</div>
                         </Link>
                       );
                     }
@@ -85,12 +88,10 @@ export default function QuickNavigator() {
                     return (
                       <span
                         key={`${section.id}-${item.to}-${item.label}`}
-                        className="rounded-2xl border border-dashed border-rose-100 bg-stone-50 px-3 py-2.5 text-sm text-gray-400"
+                        className="rounded-[22px] border border-dashed border-rose-100 bg-[#f3efe8] px-3 py-3 text-sm text-[#8d857b]"
                       >
                         <div className="font-medium">{item.label}</div>
-                        <div className="mt-1 text-xs text-gray-400">
-                          Acces limitat pentru rolul curent
-                        </div>
+                        <div className="mt-1 text-xs">Acces limitat pentru rolul curent</div>
                       </span>
                     );
                   })}
@@ -99,15 +100,15 @@ export default function QuickNavigator() {
             ))}
           </div>
         </div>
-      )}
+      ) : null}
 
       <button
         type="button"
         onClick={() => setOpen((prev) => !prev)}
-        className="inline-flex items-center rounded-full border border-white/70 bg-pink-600 px-4 py-2.5 text-sm font-semibold text-white shadow-card hover:-translate-y-0.5 hover:bg-pink-700"
+        className="inline-flex items-center rounded-full border border-white/70 bg-charcoal px-4 py-2.5 text-sm font-semibold text-white shadow-card hover:-translate-y-0.5 hover:bg-pink-700"
         aria-expanded={open}
       >
-        {open ? "Inchide navigarea" : "Navigare rapida"}
+        {open ? "Inchide meniul" : "Navigare rapida"}
       </button>
     </div>
   );

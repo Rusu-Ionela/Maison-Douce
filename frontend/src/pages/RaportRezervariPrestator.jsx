@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from "react";
 import api from "/src/lib/api.js";
 import { useAuth } from "../context/AuthContext";
+import { isStaffRole } from "../lib/roles";
 
 function extractFilename(contentDisposition, fallback) {
   const value = String(contentDisposition || "");
@@ -18,8 +19,7 @@ export default function RaportRezervariPrestator() {
   const [to, setTo] = useState("");
   const [msg, setMsg] = useState("");
   const userId = user?._id || user?.id || null;
-  const role = user?.rol || user?.role;
-  const isStaff = ["admin", "patiser", "prestator"].includes(String(role || ""));
+  const isStaff = isStaffRole(user?.rol || user?.role);
 
   useEffect(() => {
     const fetchRezervari = async () => {

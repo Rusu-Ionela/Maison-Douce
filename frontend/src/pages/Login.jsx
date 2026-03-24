@@ -2,6 +2,8 @@ import { useState } from "react";
 import { Navigate, Link, useNavigate } from "react-router-dom";
 import StatusBanner from "../components/StatusBanner";
 import { useAuth } from "../context/AuthContext";
+import { isStaffRole } from "../lib/roles";
+import { buttons, cards, inputs } from "../lib/tailwindComponents";
 
 export default function Login() {
   const { login, isAuthenticated, user } = useAuth();
@@ -11,7 +13,7 @@ export default function Login() {
   const [submitting, setSubmitting] = useState(false);
 
   if (isAuthenticated) {
-    if (user?.rol === "admin" || user?.rol === "prestator" || user?.rol === "patiser") {
+    if (isStaffRole(user?.rol || user?.role)) {
       return <Navigate to="/admin/calendar" replace />;
     }
     return <Navigate to="/calendar" replace />;
@@ -24,11 +26,7 @@ export default function Login() {
     try {
       setSubmitting(true);
       const loggedUser = await login(form);
-      if (
-        loggedUser.rol === "admin" ||
-        loggedUser.rol === "prestator" ||
-        loggedUser.rol === "patiser"
-      ) {
+      if (isStaffRole(loggedUser?.rol || loggedUser?.role)) {
         nav("/admin/calendar");
         return;
       }
@@ -44,42 +42,40 @@ export default function Login() {
   }
 
   return (
-    <div className="min-h-screen bg-[radial-gradient(circle_at_top,_rgba(255,255,255,0.96),_rgba(250,232,236,0.92),_rgba(244,226,219,0.88))] px-4 py-12">
-      <div className="mx-auto grid max-w-5xl gap-8 lg:grid-cols-[1.1fr,0.9fr]">
-        <section className="rounded-[32px] border border-rose-100 bg-white/85 p-8 shadow-xl shadow-rose-100/60 backdrop-blur">
-          <p className="text-sm font-semibold uppercase tracking-[0.24em] text-pink-500">
-            Maison-Douce
+    <div className="min-h-screen px-4 py-12 md:px-6">
+      <div className="mx-auto grid max-w-editorial gap-8 xl:grid-cols-[1.05fr_0.95fr]">
+        <section className={`${cards.tinted} overflow-hidden p-8 md:p-10`}>
+          <div className="eyebrow">Maison-Douce</div>
+          <div className="mt-5">
+            <div className="font-script text-4xl text-pink-500">Bienvenue</div>
+            <h1 className="mt-2 font-serif text-4xl font-semibold text-ink md:text-5xl">
+              Intra in contul tau Maison-Douce
+            </h1>
+          </div>
+          <p className="mt-5 max-w-xl text-base leading-8 text-[#655c53]">
+            Accesezi rapid calendarul, comenzile, platile, chatul cu patiserul si istoricul
+            complet al experientei tale in atelier.
           </p>
-          <h1 className="mt-4 font-serif text-4xl text-gray-900">
-            Autentificare
-          </h1>
-          <p className="mt-4 max-w-xl text-base leading-7 text-gray-600">
-            Intri rapid in cont pentru comenzi, plata, rezervari si urmarirea
-            istoricului tau. Pentru staff, dupa login se deschide direct panoul
-            operational.
-          </p>
-          <div className="mt-8 grid gap-4 sm:grid-cols-2">
-            <div className="rounded-2xl border border-rose-100 bg-rose-50/70 p-4">
-              <div className="text-sm font-semibold text-gray-900">Client</div>
-              <div className="mt-2 text-sm text-gray-600">
-                Vezi comenzi, plateste, lasa recenzii si gestioneaza profilul.
+          <div className="mt-8 grid gap-4 md:grid-cols-2">
+            <div className="rounded-[24px] border border-rose-100 bg-white/75 p-4 shadow-soft">
+              <div className="text-sm font-semibold text-ink">Client</div>
+              <div className="mt-2 text-sm leading-6 text-[#655c53]">
+                Vezi comenzi, plateste, salveaza preferinte si gestioneaza profilul.
               </div>
             </div>
-            <div className="rounded-2xl border border-rose-100 bg-white p-4">
-              <div className="text-sm font-semibold text-gray-900">Staff</div>
-              <div className="mt-2 text-sm text-gray-600">
-                Administrezi calendarul, comenzile, catalogul si moderarea.
+            <div className="rounded-[24px] border border-rose-100 bg-white/75 p-4 shadow-soft">
+              <div className="text-sm font-semibold text-ink">Staff</div>
+              <div className="mt-2 text-sm leading-6 text-[#655c53]">
+                Administrezi calendarul, comenzile, catalogul si fluxul operational.
               </div>
             </div>
           </div>
         </section>
 
-        <section className="rounded-[32px] border border-rose-100 bg-white p-8 shadow-xl shadow-rose-100/70">
+        <section className={`${cards.elevated} p-8`}>
           <div className="mb-6">
-            <h2 className="text-2xl font-semibold text-gray-900">
-              Intra in cont
-            </h2>
-            <p className="mt-2 text-sm text-gray-600">
+            <h2 className="text-2xl font-semibold text-ink">Autentificare</h2>
+            <p className="mt-2 text-sm leading-7 text-[#655c53]">
               Foloseste emailul si parola cu care ai creat contul.
             </p>
           </div>
@@ -87,10 +83,10 @@ export default function Login() {
           <StatusBanner type="error" message={err} className="mb-4" />
 
           <form className="space-y-4" onSubmit={onSubmit}>
-            <label className="block text-sm font-semibold text-gray-700">
+            <label className="block text-sm font-semibold text-[#4f463e]">
               Email
               <input
-                className="mt-2 w-full rounded-2xl border border-rose-200 bg-rose-50/40 px-4 py-3 outline-none transition focus:border-pink-400 focus:bg-white"
+                className={`mt-2 ${inputs.default}`}
                 type="email"
                 value={form.email}
                 onChange={(event) =>
@@ -102,10 +98,10 @@ export default function Login() {
               />
             </label>
 
-            <label className="block text-sm font-semibold text-gray-700">
+            <label className="block text-sm font-semibold text-[#4f463e]">
               Parola
               <input
-                className="mt-2 w-full rounded-2xl border border-rose-200 bg-rose-50/40 px-4 py-3 outline-none transition focus:border-pink-400 focus:bg-white"
+                className={`mt-2 ${inputs.default}`}
                 type="password"
                 value={form.parola}
                 onChange={(event) =>
@@ -117,25 +113,21 @@ export default function Login() {
               />
             </label>
 
-            <button
-              className="w-full rounded-full bg-pink-600 px-5 py-3 text-sm font-semibold text-white transition hover:bg-pink-700"
-              type="submit"
-              disabled={submitting}
-            >
+            <button className={`w-full ${buttons.primary}`} type="submit" disabled={submitting}>
               {submitting ? "Se autentifica..." : "Intra in cont"}
             </button>
           </form>
 
-          <div className="mt-6 space-y-2 text-sm text-gray-600">
+          <div className="mt-6 space-y-2 text-sm text-[#655c53]">
             <p>
               Ti-ai uitat parola?{" "}
-              <Link to="/resetare-parola" className="font-semibold text-pink-600 underline">
+              <Link to="/resetare-parola" className="font-semibold text-pink-700 underline">
                 Reseteaza parola
               </Link>
             </p>
             <p>
               Nu ai cont?{" "}
-              <Link to="/register" className="font-semibold text-pink-600 underline">
+              <Link to="/register" className="font-semibold text-pink-700 underline">
                 Creeaza unul acum
               </Link>
             </p>

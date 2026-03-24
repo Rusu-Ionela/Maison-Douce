@@ -3,7 +3,9 @@ import { Navigate, Route, Routes, useLocation } from "react-router-dom";
 import Navbar from "./components/Navbar";
 import RouteContextBar from "./components/RouteContextBar";
 import QuickNavigator from "./components/QuickNavigator";
+import SiteFooter from "./components/SiteFooter";
 import { useAuth } from "./context/AuthContext";
+import { normalizeRole } from "./lib/roles";
 
 const pageModules = import.meta.glob("./pages/*.jsx");
 
@@ -92,6 +94,7 @@ const NotificariFoto = lazyPage("./pages/NotificariFoto.jsx");
 const RaportRezervariPrestator = lazyPage("./pages/RaportRezervariPrestator.jsx");
 const PatiserContabilitate = lazyPage("./pages/PatiserContabilitate.jsx");
 const PatiserUmpluturi = lazyPage("./pages/PatiserUmpluturi.jsx");
+const PatiserRecipes = lazyPage("./pages/PatiserRecipes.jsx");
 
 const NotFoundPage = lazyPage("./pages/NotFound.jsx");
 
@@ -122,8 +125,9 @@ function RequireAuth({ children }) {
 function RequireRole({ children, roles }) {
   const { isAuthenticated, user, loading } =
     useAuth() || { isAuthenticated: false, user: null, loading: false };
-  const role = user?.rol || user?.role;
-  const isAllowed = isAuthenticated && (roles || []).includes(role);
+  const role = normalizeRole(user?.rol || user?.role);
+  const normalizedRoles = (roles || []).map((item) => normalizeRole(item));
+  const isAllowed = isAuthenticated && normalizedRoles.includes(role);
   if (loading) return <Loading />;
   if (!isAuthenticated) return <Navigate to="/admin/login" replace />;
   if (!isAllowed) return <Navigate to="/" replace />;
@@ -135,12 +139,12 @@ function RequireAdmin({ children }) {
 }
 
 function RequireStaff({ children }) {
-  return <RequireRole roles={["admin", "patiser", "prestator"]}>{children}</RequireRole>;
+  return <RequireRole roles={["admin", "patiser"]}>{children}</RequireRole>;
 }
 
 export default function App() {
   return (
-    <>
+    <div className="page-shell">
       <Navbar />
       <ScrollToTop />
       <RouteContextBar />
@@ -157,7 +161,14 @@ export default function App() {
           <Route path="/personalizare" element={<Navigate to="/personalizeaza" replace />} />
           <Route path="/constructor" element={<Constructor />} />
           <Route path="/desen-tort" element={<DesenTort />} />
-          <Route path="/designer-ai" element={<DesignerAI />} />
+          <Route
+            path="/designer-ai"
+            element={
+              <RequireAuth>
+                <DesignerAI />
+              </RequireAuth>
+            }
+          />
           <Route path="/tort-designer" element={<TortDesigner />} />
           <Route path="/patiser-drawing" element={<PatiserDrawing />} />
           <Route path="/retete" element={<Retete />} />
@@ -276,9 +287,9 @@ export default function App() {
           <Route
             path="/prestator/calendar"
             element={
-              <RequireAuth>
+              <RequireStaff>
                 <CalendarPrestator />
-              </RequireAuth>
+              </RequireStaff>
             }
           />
           <Route
@@ -508,6 +519,14 @@ export default function App() {
             }
           />
           <Route
+            path="/admin/retete"
+            element={
+              <RequireStaff>
+                <PatiserRecipes />
+              </RequireStaff>
+            }
+          />
+          <Route
             path="/admin/albume"
             element={
               <RequireStaff>
@@ -567,6 +586,7 @@ export default function App() {
           <Route path="*" element={<NotFoundPage />} />
         </Routes>
       </Suspense>
-    </>
+      <SiteFooter />
+    </div>
   );
 }

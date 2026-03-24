@@ -1,9 +1,20 @@
 ﻿// frontend/src/api/calendar.js
 import api from "/src/lib/api.js";
 
-// ia sloturile de disponibilitate
 export async function getAvailability(prestatorId, options = {}) {
-    const { from, to, hideFull } = options;
+    const { from, to, hideFull, month } = options;
+
+    if (month) {
+        const params = new URLSearchParams();
+        params.set("providerId", prestatorId);
+        params.set("month", month);
+        if (hideFull != null) {
+            params.set("hideFull", String(Boolean(hideFull)));
+        }
+
+        const res = await api.get(`/calendar/availability?${params.toString()}`);
+        return res.data;
+    }
 
     const params = new URLSearchParams();
     if (from) params.set("from", from);
@@ -15,12 +26,14 @@ export async function getAvailability(prestatorId, options = {}) {
         (params.toString() ? `?${params.toString()}` : "");
 
     const res = await api.get(url);
-    return res.data; // { slots: [...] }
-}
-
-// rezervă un slot
-export async function reserveSlot(payload) {
-    const res = await api.post("/calendar/reserve", payload);
     return res.data;
 }
 
+export async function bookSlot(payload) {
+    const res = await api.post("/calendar/book", payload);
+    return res.data;
+}
+
+export async function reserveSlot(payload) {
+    return bookSlot(payload);
+}
