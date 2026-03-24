@@ -5,11 +5,17 @@
 
 # Dependencies
 node_modules/
+backend/node_modules/
 
 # Build artifacts and local runtime files
 frontend/dist/
 backend/.generated-vapid.json
+backend/.runtime/
+backend/uploads/ai/
+backend/uploads/personalizari/
 backend/uploads/mail-outbox/
+frontend/cypress/screenshots/
+Maison-Douce.git/
 backups/
 *-live.err.log
 *-live.out.log
