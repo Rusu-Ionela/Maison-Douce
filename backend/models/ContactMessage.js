@@ -16,12 +16,19 @@ const ContactMessageSchema = new mongoose.Schema(
     userId: { type: mongoose.Schema.Types.ObjectId, ref: "Utilizator", default: null },
     gestionatDe: { type: mongoose.Schema.Types.ObjectId, ref: "Utilizator", default: null },
     gestionatLa: { type: Date, default: null },
+    conversationId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "ContactConversation",
+      default: null,
+    },
+    migratedAt: { type: Date, default: null },
   },
   { timestamps: true }
 );
 
 ContactMessageSchema.index({ status: 1, createdAt: -1 });
 ContactMessageSchema.index({ email: 1, createdAt: -1 });
+ContactMessageSchema.index({ conversationId: 1 }, { sparse: true });
 
 module.exports =
   mongoose.models.ContactMessage ||

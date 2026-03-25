@@ -721,6 +721,8 @@ test("backend integration flows", async (t) => {
       });
       assert.equal(contactCreate.status, 201);
       assert.equal(contactCreate.data?.ok, true);
+      assert.ok(contactCreate.data?.conversationId);
+      assert.ok(contactCreate.data?.messageId);
 
       const contactList = await harness.request("/contact?limit=20", {
         token: admin.token,
@@ -728,6 +730,47 @@ test("backend integration flows", async (t) => {
       assert.equal(contactList.status, 200);
       assert.ok(Array.isArray(contactList.data));
       assert.equal(contactList.data.length, 1);
+      assert.equal(contactList.data[0]?.status, "noua");
+
+      const contactMessages = await harness.request(
+        `/contact/${contactList.data[0]._id}/messages`,
+        {
+          token: admin.token,
+        }
+      );
+      assert.equal(contactMessages.status, 200);
+      assert.ok(Array.isArray(contactMessages.data));
+      assert.equal(contactMessages.data.length, 1);
+
+      const contactReply = await harness.request(
+        `/contact/${contactList.data[0]._id}/messages`,
+        {
+          method: "POST",
+          token: admin.token,
+          body: {
+            mesaj: "Am primit solicitarea si revenim cu detalii in aceeasi conversatie.",
+          },
+        }
+      );
+      assert.equal(contactReply.status, 201);
+      assert.equal(contactReply.data?.conversation?.status, "in_progres");
+
+      const clientContactList = await harness.request("/contact/mine?limit=20", {
+        token: client.token,
+      });
+      assert.equal(clientContactList.status, 200);
+      assert.ok(Array.isArray(clientContactList.data));
+      assert.equal(clientContactList.data.length, 1);
+
+      const clientThread = await harness.request(
+        `/contact/${contactList.data[0]._id}/messages`,
+        {
+          token: client.token,
+        }
+      );
+      assert.equal(clientThread.status, 200);
+      assert.ok(Array.isArray(clientThread.data));
+      assert.equal(clientThread.data.length, 2);
 
       const contactStatus = await harness.request(
         `/contact/${contactList.data[0]._id}/status`,
@@ -738,7 +781,7 @@ test("backend integration flows", async (t) => {
         }
       );
       assert.equal(contactStatus.status, 200);
-      assert.equal(contactStatus.data?.status, "rezolvat");
+      assert.equal(contactStatus.data?.status, "finalizata");
 
       const albumCreate = await harness.request("/albume", {
         method: "POST",

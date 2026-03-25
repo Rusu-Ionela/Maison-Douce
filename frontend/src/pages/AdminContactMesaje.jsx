@@ -1,30 +1,65 @@
-import { useEffect, useState } from "react";
-import api from "/src/lib/api.js";
+import { useEffect, useMemo, useState } from "react";
+import ContactConversationWorkspace from "../components/contact/ContactConversationWorkspace";
+import { useAuth } from "../context/AuthContext";
+import {
+  getContactConversation,
+  getContactConversationMessages,
+  listAdminContactConversations,
+  sendContactConversationMessage,
+  updateContactConversationStatus,
+} from "../api/contactConversations";
 
-const STATUS_OPTIONS = ["nou", "in_proces", "rezolvat"];
+const STATUS_OPTIONS = [
+  { value: "noua", label: "Noua" },
+  { value: "in_progres", label: "In progres" },
+  { value: "finalizata", label: "Finalizata" },
+];
 
 export default function AdminContactMesaje() {
+  const { user } = useAuth();
   const [items, setItems] = useState([]);
+  const [selectedConversationId, setSelectedConversationId] = useState("");
+  const [selectedConversation, setSelectedConversation] = useState(null);
+  const [messages, setMessages] = useState([]);
   const [loading, setLoading] = useState(false);
+  const [threadLoading, setThreadLoading] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
   const [msg, setMsg] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
+  const [replyText, setReplyText] = useState("");
+  const [sending, setSending] = useState(false);
+  const [statusUpdating, setStatusUpdating] = useState(false);
 
-  const load = async (status = statusFilter) => {
+  const selectedConversationFromList = useMemo(
+    () => items.find((item) => item._id === selectedConversationId) || null,
+    [items, selectedConversationId]
+  );
+
+  const load = async (status = statusFilter, { silent = false } = {}) => {
+    if (silent) {
+      setRefreshing(true);
+    }
     setLoading(true);
     setMsg("");
+
     try {
-      const { data } = await api.get("/contact", {
-        params: {
-          limit: 200,
-          ...(status ? { status } : {}),
-        },
+      const data = await listAdminContactConversations({
+        limit: 200,
+        ...(status ? { status } : {}),
       });
-      setItems(Array.isArray(data) ? data : []);
-    } catch (e) {
+      const nextItems = Array.isArray(data) ? data : [];
+      setItems(nextItems);
+
+      setSelectedConversationId((current) => {
+        if (current && nextItems.some((item) => item._id === current)) return current;
+        return nextItems[0]?._id || "";
+      });
+    } catch (error) {
       setItems([]);
-      setMsg(e?.response?.data?.message || "Nu am putut incarca mesajele de contact.");
+      setMsg(error?.response?.data?.message || "Nu am putut incarca mesajele de contact.");
     } finally {
       setLoading(false);
+      setRefreshing(false);
     }
   };
 
@@ -33,90 +68,144 @@ export default function AdminContactMesaje() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const changeStatus = async (id, status) => {
+  useEffect(() => {
+    let active = true;
+
+    async function loadThread() {
+      if (!selectedConversationId) {
+        setSelectedConversation(null);
+        setMessages([]);
+        return;
+      }
+
+      setThreadLoading(true);
+      setMsg("");
+
+      try {
+        const [conversation, thread] = await Promise.all([
+          getContactConversation(selectedConversationId),
+          getContactConversationMessages(selectedConversationId),
+        ]);
+
+        if (!active) return;
+        setSelectedConversation(conversation || null);
+        setMessages(Array.isArray(thread) ? thread : []);
+      } catch (error) {
+        if (!active) return;
+        setSelectedConversation(null);
+        setMessages([]);
+        setMsg(error?.response?.data?.message || "Nu am putut incarca conversatia selectata.");
+      } finally {
+        if (active) {
+          setThreadLoading(false);
+        }
+      }
+    }
+
+    loadThread();
+    return () => {
+      active = false;
+    };
+  }, [selectedConversationId]);
+
+  const sendReply = async () => {
+    if (!selectedConversationId || !replyText.trim()) return;
+
     try {
-      await api.patch(`/contact/${id}/status`, { status });
-      await load();
-    } catch (e) {
-      setMsg(e?.response?.data?.message || "Nu am putut actualiza statusul.");
+      setSending(true);
+      await sendContactConversationMessage(selectedConversationId, replyText.trim());
+      setReplyText("");
+      await load(statusFilter, { silent: true });
+
+      const [conversation, thread] = await Promise.all([
+        getContactConversation(selectedConversationId),
+        getContactConversationMessages(selectedConversationId),
+      ]);
+      setSelectedConversation(conversation || null);
+      setMessages(Array.isArray(thread) ? thread : []);
+    } catch (error) {
+      setMsg(error?.response?.data?.message || "Nu am putut trimite raspunsul.");
+    } finally {
+      setSending(false);
+    }
+  };
+
+  const changeStatus = async (status) => {
+    if (!selectedConversationId) return;
+
+    try {
+      setStatusUpdating(true);
+      const updated = await updateContactConversationStatus(selectedConversationId, status);
+      setSelectedConversation(updated || null);
+      await load(statusFilter, { silent: true });
+    } catch (error) {
+      setMsg(error?.response?.data?.message || "Nu am putut actualiza statusul.");
+    } finally {
+      setStatusUpdating(false);
     }
   };
 
   return (
-    <div className="max-w-6xl mx-auto p-6 space-y-4">
+    <div className="mx-auto max-w-editorial space-y-6 px-4 py-8 sm:px-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <h1 className="text-2xl font-bold">Mesaje Contact</h1>
-        <div className="flex gap-2 items-center">
+        <div>
+          <div className="eyebrow">Mesaje contact</div>
+          <h1 className="mt-2 font-serif text-4xl font-semibold text-ink">
+            Conversatii client - patiser
+          </h1>
+        </div>
+
+        <div className="flex items-center gap-2">
           <select
             value={statusFilter}
-            onChange={(e) => {
-              const next = e.target.value;
+            onChange={(event) => {
+              const next = event.target.value;
               setStatusFilter(next);
-              load(next);
+              load(next, { silent: true });
             }}
-            className="border rounded p-2"
+            className="w-[220px] rounded-[22px] border border-rose-200 bg-[rgba(255,253,249,0.96)] px-4 py-3 text-ink shadow-sm outline-none focus:border-pink-400 focus:ring-4 focus:ring-sage/30"
           >
             <option value="">Toate statusurile</option>
-            {STATUS_OPTIONS.map((s) => (
-              <option key={s} value={s}>
-                {s}
+            {STATUS_OPTIONS.map((option) => (
+              <option key={option.value} value={option.value}>
+                {option.label}
               </option>
             ))}
           </select>
-          <button onClick={() => load()} className="px-3 py-2 border rounded">
-            Reincarca
-          </button>
         </div>
       </div>
 
-      {msg && <div className="text-sm text-rose-700">{msg}</div>}
-
-      {loading ? (
-        <div className="text-gray-600">Se incarca...</div>
-      ) : items.length === 0 ? (
-        <div className="text-gray-600">Nu exista mesaje pentru filtrul curent.</div>
-      ) : (
-        <div className="overflow-x-auto border rounded">
-          <table className="min-w-full bg-white text-sm">
-            <thead className="bg-gray-50 border-b">
-              <tr>
-                <th className="p-3 text-left">Data</th>
-                <th className="p-3 text-left">Nume</th>
-                <th className="p-3 text-left">Email</th>
-                <th className="p-3 text-left">Telefon</th>
-                <th className="p-3 text-left">Subiect</th>
-                <th className="p-3 text-left">Mesaj</th>
-                <th className="p-3 text-left">Status</th>
-              </tr>
-            </thead>
-            <tbody>
-              {items.map((item) => (
-                <tr key={item._id} className="border-b align-top">
-                  <td className="p-3 whitespace-nowrap">{new Date(item.createdAt).toLocaleString()}</td>
-                  <td className="p-3 font-medium">{item.nume || "-"}</td>
-                  <td className="p-3">{item.email || "-"}</td>
-                  <td className="p-3">{item.telefon || "-"}</td>
-                  <td className="p-3">{item.subiect || "-"}</td>
-                  <td className="p-3 max-w-[320px] whitespace-pre-wrap">{item.mesaj || "-"}</td>
-                  <td className="p-3">
-                    <select
-                      value={item.status || "nou"}
-                      onChange={(e) => changeStatus(item._id, e.target.value)}
-                      className="border rounded p-1"
-                    >
-                      {STATUS_OPTIONS.map((s) => (
-                        <option key={s} value={s}>
-                          {s}
-                        </option>
-                      ))}
-                    </select>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
+      <ContactConversationWorkspace
+        mode="admin"
+        title="Inbox premium pentru solicitarile din contact"
+        subtitle="Selecteaza conversatia din stanga, vezi istoricul complet si raspunde direct clientului fara sa parasesti pagina."
+        conversations={items}
+        selectedConversationId={selectedConversationId}
+        onSelectConversation={(conversation) => {
+          setSelectedConversationId(conversation?._id || "");
+          setReplyText("");
+        }}
+        selectedConversation={selectedConversation || selectedConversationFromList}
+        messages={messages}
+        listLoading={loading}
+        threadLoading={threadLoading}
+        composerValue={replyText}
+        onComposerChange={setReplyText}
+        onSend={sendReply}
+        sending={sending}
+        notice={msg ? { type: "error", text: msg } : null}
+        currentUserId={user?._id || user?.id || ""}
+        onRefresh={() => load(statusFilter, { silent: true })}
+        refreshing={refreshing}
+        statusOptions={STATUS_OPTIONS}
+        onStatusChange={changeStatus}
+        statusUpdating={statusUpdating}
+        emptyListTitle="Nu exista conversatii pentru filtrul curent."
+        emptyListText="Mesajele noi din formularul de contact si raspunsurile clientilor vor aparea aici."
+        emptyThreadTitle="Alege o conversatie din inbox."
+        emptyThreadText="Istoricul complet, raspunsurile si schimbarea de status se gestioneaza in partea dreapta."
+        composerPlaceholder="Scrie raspunsul catre client..."
+      />
     </div>
   );
 }
