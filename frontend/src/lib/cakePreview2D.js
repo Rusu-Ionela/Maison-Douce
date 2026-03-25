@@ -404,6 +404,271 @@ export const DEFAULT_CAKE_OPTIONS = {
   font: CAKE_OPTIONS.font[0].id,
 };
 
+function normalizeCakeText(value = "") {
+  return String(value || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .trim();
+}
+
+const CATALOG_FILLING_PREFILLS = [
+  {
+    keywords: ["crema de vanilie", "vanilie"],
+    values: {
+      crema: "vanilie",
+      umplutura: "capsuni",
+      decor: "minimal",
+      topping: "perle",
+      culoare: "#f6d7c3",
+      font: "Georgia",
+    },
+    summary:
+      "Am preselectat o compozitie delicata cu crema de vanilie si umplutura de capsuni.",
+  },
+  {
+    keywords: ["ganache de ciocolata", "ganache", "ciocolata"],
+    values: {
+      blat: "ciocolata",
+      crema: "vanilie",
+      umplutura: "oreo",
+      decor: "minimal",
+      topping: "ciocolata",
+      culoare: "#f7e6c4",
+      font: "Times New Roman",
+    },
+    summary:
+      "Am preselectat cea mai apropiata compozitie intensa disponibila in constructor pentru un profil de ciocolata.",
+  },
+  {
+    keywords: ["crema mascarpone cu fructe", "mascarpone", "fructe"],
+    values: {
+      blat: "vanilie",
+      crema: "fructe",
+      umplutura: "fructe-padure",
+      decor: "floral",
+      topping: "fructe",
+      culoare: "#f2c9e5",
+      font: "Garamond",
+    },
+    summary:
+      "Am preselectat o compozitie proaspata cu crema fructata si umplutura de fructe de padure.",
+  },
+  {
+    keywords: ["caramel sarat", "caramel"],
+    values: {
+      blat: "ciocolata",
+      crema: "vanilie",
+      umplutura: "oreo",
+      decor: "minimal",
+      topping: "ciocolata",
+      culoare: "#f7e6c4",
+      font: "Georgia",
+    },
+    summary:
+      "Am preselectat cea mai apropiata combinatie disponibila pentru un profil de caramel si contrast intens.",
+  },
+  {
+    keywords: ["mousse de ciocolata", "mousse"],
+    values: {
+      blat: "ciocolata",
+      crema: "vanilie",
+      umplutura: "oreo",
+      decor: "minimal",
+      topping: "ciocolata",
+      culoare: "#f7e6c4",
+      font: "Times New Roman",
+    },
+    summary:
+      "Am preselectat o combinatie cu accent de cacao si interior intens, potrivita pentru mousse de ciocolata.",
+  },
+  {
+    keywords: ["crema de fistic", "fistic"],
+    values: {
+      blat: "vanilie",
+      crema: "pistachio",
+      umplutura: "fructe-padure",
+      decor: "floral",
+      topping: "fructe",
+      culoare: "#f6d7c3",
+      font: "Garamond",
+    },
+    summary:
+      "Am preselectat crema de fistic si o umplutura fructata care se potriveste bine in preview si in compozitie.",
+  },
+  {
+    keywords: ["crema de cocos tip raffaello", "raffaello", "cocos"],
+    values: {
+      blat: "vanilie",
+      crema: "vanilie",
+      umplutura: "oreo",
+      decor: "minimal",
+      topping: "perle",
+      culoare: "#f6d7c3",
+      font: "Georgia",
+    },
+    summary:
+      "Am preselectat o compozitie luminoasa si delicata, apropiata de profilul Raffaello.",
+  },
+  {
+    keywords: ["crema de lamaie", "lamaie"],
+    values: {
+      blat: "vanilie",
+      crema: "vanilie",
+      umplutura: "capsuni",
+      decor: "minimal",
+      topping: "fructe",
+      culoare: "#f6d7c3",
+      font: "Georgia",
+    },
+    summary:
+      "Am preselectat o compozitie fresh si luminoasa, apropiata de profilul de lamaie.",
+  },
+  {
+    keywords: ["crema de cafea", "cafea"],
+    values: {
+      blat: "ciocolata",
+      crema: "vanilie",
+      umplutura: "oreo",
+      decor: "minimal",
+      topping: "ciocolata",
+      culoare: "#f7e6c4",
+      font: "Times New Roman",
+    },
+    summary:
+      "Am preselectat o combinatie mai intensa, apropiata de profilul de cafea si ciocolata.",
+  },
+  {
+    keywords: ["crema de arahide tip snickers", "snickers", "arahide"],
+    values: {
+      blat: "ciocolata",
+      crema: "vanilie",
+      umplutura: "oreo",
+      decor: "minimal",
+      topping: "ciocolata",
+      culoare: "#f7e6c4",
+      font: "Times New Roman",
+    },
+    summary:
+      "Am preselectat o compozitie apropiata de profilul Snickers, cu blat de ciocolata si accent intens.",
+  },
+];
+
+const CAKE_PRODUCT_PREFILLS = [
+  {
+    slugs: ["red-velvet"],
+    values: {
+      blat: "redvelvet",
+      crema: "vanilie",
+      umplutura: "fructe-padure",
+      decor: "floral",
+      topping: "fructe",
+      culoare: "#f2c9e5",
+      font: "Garamond",
+    },
+    summary:
+      "Am pornit de la un profil Red Velvet si am preselectat o compozitie romantica, cu interior fructat si finisaj floral.",
+  },
+  {
+    slugs: ["medovik", "napoleon", "diplomat"],
+    values: {
+      blat: "vanilie",
+      crema: "vanilie",
+      umplutura: "capsuni",
+      decor: "minimal",
+      topping: "perle",
+      culoare: "#f7e6c4",
+      font: "Georgia",
+    },
+    summary:
+      "Am preselectat o compozitie luminoasa si clasica, potrivita pentru torturi fine de inspiratie europeana.",
+  },
+  {
+    slugs: ["trio-de-ciocolata", "ferrero", "oreo", "ciocolata-belgiana"],
+    values: {
+      blat: "ciocolata",
+      crema: "vanilie",
+      umplutura: "oreo",
+      decor: "minimal",
+      topping: "ciocolata",
+      culoare: "#f7e6c4",
+      font: "Times New Roman",
+    },
+    summary:
+      "Am preselectat o compozitie intensa cu blat de ciocolata si interior bogat, apropiata de profilul premium al tortului ales.",
+  },
+  {
+    slugs: ["vanilie-fructe-de-padure", "capsuni-si-crema-de-vanilie", "mango-pasiune"],
+    values: {
+      blat: "vanilie",
+      crema: "fructe",
+      umplutura: "fructe-padure",
+      decor: "floral",
+      topping: "fructe",
+      culoare: "#f2c9e5",
+      font: "Garamond",
+    },
+    summary:
+      "Am preselectat o compozitie proaspata si feminina, cu accent pe fructe si o sectiune usor de citit in preview.",
+  },
+  {
+    slugs: ["raffaello"],
+    values: {
+      blat: "vanilie",
+      crema: "vanilie",
+      umplutura: "oreo",
+      decor: "minimal",
+      topping: "perle",
+      culoare: "#f6d7c3",
+      font: "Georgia",
+    },
+    summary:
+      "Am preselectat o compozitie delicata si luminoasa, apropiata de profilul Raffaello si potrivita pentru un finisaj curat.",
+  },
+  {
+    slugs: ["snickers", "caramel-sarat"],
+    values: {
+      blat: "ciocolata",
+      crema: "vanilie",
+      umplutura: "oreo",
+      decor: "minimal",
+      topping: "ciocolata",
+      culoare: "#f7e6c4",
+      font: "Times New Roman",
+    },
+    summary:
+      "Am preselectat o compozitie intensa, cu blat de ciocolata si accente potrivite pentru un profil de caramel, cacao si contraste puternice.",
+  },
+  {
+    slugs: ["fistic-zmeura"],
+    values: {
+      blat: "vanilie",
+      crema: "pistachio",
+      umplutura: "fructe-padure",
+      decor: "floral",
+      topping: "fructe",
+      culoare: "#f6d7c3",
+      font: "Garamond",
+    },
+    summary:
+      "Am preselectat una dintre cele mai potrivite combinatii premium din constructor pentru un profil de fistic si zmeura.",
+  },
+  {
+    slugs: ["nunta-elegant"],
+    values: {
+      blat: "vanilie",
+      crema: "vanilie",
+      umplutura: "fructe-padure",
+      decor: "floral",
+      topping: "perle",
+      culoare: "#f6d7c3",
+      font: "Garamond",
+    },
+    summary:
+      "Am preselectat o compozitie eleganta si echilibrata, cu finisaj luminos si directie potrivita pentru un tort de ceremonie.",
+  },
+];
+
 const SECTION_PRIORITY_FIELDS = new Set(["blat", "crema", "umplutura"]);
 const EXTERIOR_PRIORITY_FIELDS = new Set(["decor", "topping", "culoare", "font", "mesaj"]);
 
@@ -617,6 +882,77 @@ function buildChocolateDecor({ x, y, scale, accent, dark, glaze }) {
 
 export function findCakeOption(section, optionId) {
   return (CAKE_OPTIONS[section] || []).find((item) => item.id === optionId) || null;
+}
+
+export function resolveConstructorPrefillFromFilling(fillingName = "") {
+  const normalized = normalizeCakeText(fillingName);
+  if (!normalized) return null;
+
+  const matched = CATALOG_FILLING_PREFILLS.find((entry) =>
+    entry.keywords.some((keyword) => normalized.includes(normalizeCakeText(keyword)))
+  );
+
+  if (!matched) return null;
+
+  return {
+    sourceLabel: String(fillingName || "").trim(),
+    values: matched.values,
+    summary: matched.summary,
+  };
+}
+
+export function resolveConstructorPrefillFromCake(cake) {
+  if (!cake) return null;
+
+  const normalizedSlug = normalizeCakeText(cake?.slug || "");
+  const normalizedName = normalizeCakeText(cake?.nume || cake?.name || "");
+  const matched =
+    CAKE_PRODUCT_PREFILLS.find((entry) =>
+      entry.slugs.some((slug) => normalizeCakeText(slug) === normalizedSlug)
+    ) ||
+    CAKE_PRODUCT_PREFILLS.find((entry) =>
+      entry.slugs.some((slug) => normalizedName.includes(normalizeCakeText(slug)))
+    );
+
+  if (!matched) {
+    const fallbackText = normalizeCakeText(
+      [
+        cake?.nume,
+        cake?.descriere,
+        cake?.fillingSummary,
+        cake?.shortFlavor,
+        ...(Array.isArray(cake?.displayTags) ? cake.displayTags : []),
+      ].join(" ")
+    );
+
+    const inferred =
+      (fallbackText.includes("fistic") && CAKE_PRODUCT_PREFILLS.find((entry) => entry.slugs.includes("fistic-zmeura"))) ||
+      ((fallbackText.includes("snickers") || fallbackText.includes("caramel")) &&
+        CAKE_PRODUCT_PREFILLS.find((entry) => entry.slugs.includes("snickers"))) ||
+      ((fallbackText.includes("ciocol") || fallbackText.includes("oreo") || fallbackText.includes("ferrero")) &&
+        CAKE_PRODUCT_PREFILLS.find((entry) => entry.slugs.includes("trio-de-ciocolata"))) ||
+      ((fallbackText.includes("fruct") || fallbackText.includes("capsuni") || fallbackText.includes("zmeura")) &&
+        CAKE_PRODUCT_PREFILLS.find((entry) => entry.slugs.includes("vanilie-fructe-de-padure"))) ||
+      ((fallbackText.includes("nunta") || fallbackText.includes("etajat")) &&
+        CAKE_PRODUCT_PREFILLS.find((entry) => entry.slugs.includes("nunta-elegant"))) ||
+      CAKE_PRODUCT_PREFILLS.find((entry) => entry.slugs.includes("diplomat"));
+
+    if (!inferred) return null;
+
+    return {
+      sourceLabel: String(cake?.nume || cake?.name || "tortul selectat").trim(),
+      sourceSlug: String(cake?.slug || "").trim(),
+      values: inferred.values,
+      summary: inferred.summary,
+    };
+  }
+
+  return {
+    sourceLabel: String(cake?.nume || cake?.name || "tortul selectat").trim(),
+    sourceSlug: String(cake?.slug || "").trim(),
+    values: matched.values,
+    summary: matched.summary,
+  };
 }
 
 export function getRecommendedPreviewModeForField(field) {

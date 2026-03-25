@@ -10,7 +10,10 @@ const STEPS = [
 
 export default function Constructor() {
   const location = useLocation();
-  const designId = new URLSearchParams(location.search).get("designId");
+  const params = new URLSearchParams(location.search);
+  const designId = params.get("designId");
+  const prefillFilling = params.get("umplutura") || "";
+  const prefillProductId = params.get("from") || "";
 
   return (
     <div className="min-h-screen">
@@ -64,7 +67,11 @@ export default function Constructor() {
           </div>
         </header>
 
-        <CakeConstructor2D designId={designId} />
+        <CakeConstructor2D
+          designId={designId}
+          prefillFilling={prefillFilling}
+          prefillProductId={prefillProductId}
+        />
       </div>
     </div>
   );

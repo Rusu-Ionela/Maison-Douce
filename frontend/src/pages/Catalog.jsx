@@ -1,9 +1,11 @@
 import { useDeferredValue, useEffect, useMemo, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useLocation } from "react-router-dom";
 import CakeWeightCalculator from "../components/CakeWeightCalculator";
+import CatalogFillingCard from "../components/CatalogFillingCard";
 import { ProductsAPI } from "../api/products";
 import ProductCard from "../components/ProductCard";
 import { useCart } from "../context/CartContext";
+import { CATALOG_FILLINGS } from "../data/catalogFillings";
 import { buttons, cards } from "../lib/tailwindComponents";
 import {
   STOREFRONT_FLAVOR_FILTERS,
@@ -24,6 +26,38 @@ const priceFormatter = new Intl.NumberFormat("ro-MD");
 
 function formatPrice(value = 0) {
   return `${priceFormatter.format(Number(value || 0))} MDL`;
+}
+
+function matchesSelectedFillingCake(item, filling) {
+  if (!item || !filling) return true;
+
+  const slugMatch =
+    Array.isArray(filling.recommendedCatalogSlugs) &&
+    filling.recommendedCatalogSlugs.includes(String(item.slug || "").trim());
+  if (slugMatch) return true;
+
+  const haystack = normalizeStorefrontText(
+    [
+      item.slug,
+      item.nume,
+      item.descriere,
+      item.fillingSummary,
+      item.shortFlavor,
+      ...(Array.isArray(item.displayTags) ? item.displayTags : []),
+      ...(Array.isArray(item.arome) ? item.arome : []),
+      ...(Array.isArray(item.ingrediente) ? item.ingrediente : []),
+    ].join(" ")
+  );
+
+  const keywords = [
+    filling.name,
+    filling.pairing,
+    ...(Array.isArray(filling.catalogKeywords) ? filling.catalogKeywords : []),
+  ]
+    .map((value) => normalizeStorefrontText(value))
+    .filter(Boolean);
+
+  return keywords.some((keyword) => haystack.includes(keyword));
 }
 
 function FilterChip({ label, active, onClick }) {
@@ -95,6 +129,12 @@ function CatalogCard({ item, onAddToCart }) {
         </div>
 
         <div className="flex flex-wrap gap-2 pt-1">
+          <Link
+            to={`/catalog?selectedTort=${encodeURIComponent(item.slug || item._id)}#umpluturile-mele`}
+            className="inline-flex items-center justify-center rounded-full border border-[#d8c3a7]/60 bg-[#fbf3e8] px-4 py-2.5 text-sm font-semibold text-[#7a6045] transition hover:-translate-y-0.5 hover:border-[#c5ab8b] hover:bg-[#f8eee1]"
+          >
+            Vezi umpluturi compatibile
+          </Link>
           <Link to={`/tort/${item._id}`} className={buttons.outline}>
             Vezi detalii
           </Link>
@@ -114,6 +154,7 @@ function CatalogCard({ item, onAddToCart }) {
 }
 
 export default function Catalog() {
+  const location = useLocation();
   const { add } = useCart();
   const [loading, setLoading] = useState(true);
   const [rawItems, setRawItems] = useState([]);
@@ -123,6 +164,7 @@ export default function Catalog() {
   const [occasion, setOccasion] = useState("toate");
   const [flavorTag, setFlavorTag] = useState("toate");
   const [sort, setSort] = useState("recommended");
+  const [highlightedFillingId, setHighlightedFillingId] = useState("");
 
   useEffect(() => {
     document.title = "Catalog torturi | Maison-Douce";
@@ -136,6 +178,111 @@ export default function Catalog() {
     }
     meta.content = desc;
   }, []);
+
+  useEffect(() => {
+    if (location.hash !== "#umpluturile-mele") return;
+
+    const scrollToFillings = () => {
+      const element = document.getElementById("umpluturile-mele");
+      if (!element) return;
+      element.scrollIntoView({ behavior: "smooth", block: "start" });
+    };
+
+    const timer = window.setTimeout(scrollToFillings, 80);
+    return () => window.clearTimeout(timer);
+  }, [location.hash]);
+
+  const selectedFillingQuery = useMemo(() => {
+    const params = new URLSearchParams(location.search);
+    return params.get("selectedUmplutura") || "";
+  }, [location.search]);
+  const selectedCakeQuery = useMemo(() => {
+    const params = new URLSearchParams(location.search);
+    return params.get("selectedTort") || "";
+  }, [location.search]);
+
+  const selectedFilling = useMemo(() => {
+    const normalized = normalizeStorefrontText(selectedFillingQuery);
+    if (!normalized) return null;
+
+    return (
+      CATALOG_FILLINGS.find((item) => {
+        const name = normalizeStorefrontText(item.name);
+        return name === normalized || name.includes(normalized) || normalized.includes(name);
+      }) || null
+    );
+  }, [selectedFillingQuery]);
+  const catalogItems = useMemo(() => getStorefrontCatalogItems(rawItems), [rawItems]);
+  const selectedCake = useMemo(() => {
+    const normalized = normalizeStorefrontText(selectedCakeQuery);
+    if (!normalized) return null;
+
+    return (
+      catalogItems.find((item) => {
+        const slug = normalizeStorefrontText(item.slug);
+        const id = normalizeStorefrontText(item._id);
+        const name = normalizeStorefrontText(item.nume);
+        return (
+          slug === normalized ||
+          id === normalized ||
+          name === normalized ||
+          slug.includes(normalized) ||
+          name.includes(normalized)
+        );
+      }) || null
+    );
+  }, [catalogItems, selectedCakeQuery]);
+
+  const activeSelectedFillingId = selectedFilling?.id || "";
+  const compatibleFillingIds = useMemo(() => {
+    if (!selectedCake) return [];
+
+    return CATALOG_FILLINGS.filter((filling) => matchesSelectedFillingCake(selectedCake, filling)).map(
+      (filling) => filling.id
+    );
+  }, [selectedCake]);
+
+  useEffect(() => {
+    if (!selectedFilling) {
+      setHighlightedFillingId("");
+      return undefined;
+    }
+
+    setHighlightedFillingId(selectedFilling.id);
+
+    const revealTimer = window.setTimeout(() => {
+      const element = document.getElementById(`filling-card-${selectedFilling.id}`);
+      if (element) {
+        element.scrollIntoView({ behavior: "smooth", block: "center" });
+      }
+    }, 220);
+
+    const clearTimer = window.setTimeout(() => {
+      setHighlightedFillingId("");
+    }, 4200);
+
+    return () => {
+      window.clearTimeout(revealTimer);
+      window.clearTimeout(clearTimer);
+    };
+  }, [selectedFilling]);
+
+  const sortedFillings = useMemo(() => {
+    if (selectedFilling) {
+      return [
+        selectedFilling,
+        ...CATALOG_FILLINGS.filter((item) => item.id !== selectedFilling.id),
+      ];
+    }
+
+    if (!selectedCake || compatibleFillingIds.length === 0) return CATALOG_FILLINGS;
+
+    const compatibleSet = new Set(compatibleFillingIds);
+    return [
+      ...CATALOG_FILLINGS.filter((item) => compatibleSet.has(item.id)),
+      ...CATALOG_FILLINGS.filter((item) => !compatibleSet.has(item.id)),
+    ];
+  }, [compatibleFillingIds, selectedCake, selectedFilling]);
 
   useEffect(() => {
     let alive = true;
@@ -163,11 +310,15 @@ export default function Catalog() {
     };
   }, []);
 
-  const catalogItems = useMemo(() => getStorefrontCatalogItems(rawItems), [rawItems]);
   const normalizedQuery = normalizeStorefrontText(deferredQuery);
+  const compatibleItems = useMemo(() => {
+    if (!selectedFilling) return catalogItems;
+    return catalogItems.filter((item) => matchesSelectedFillingCake(item, selectedFilling));
+  }, [catalogItems, selectedFilling]);
 
   const filteredItems = useMemo(() => {
     const next = catalogItems.filter((item) => {
+      if (selectedFilling && !matchesSelectedFillingCake(item, selectedFilling)) return false;
       if (occasion !== "toate" && !item.ocazii.includes(occasion)) return false;
       if (flavorTag !== "toate" && !item.displayTags.includes(flavorTag)) return false;
       if (normalizedQuery && !String(item.searchText || "").includes(normalizedQuery)) return false;
@@ -201,11 +352,32 @@ export default function Catalog() {
       }
       return Number(right.ratingAvg || 0) - Number(left.ratingAvg || 0);
     });
-  }, [catalogItems, flavorTag, normalizedQuery, occasion, sort]);
+  }, [catalogItems, flavorTag, normalizedQuery, occasion, selectedFilling, sort]);
 
   const highlightedCount = filteredItems.filter((item) => item.badge?.label === "Popular").length;
   const premiumCount = filteredItems.filter((item) => item.displayTags.includes("premium")).length;
-  const activeFilterCount = [query, occasion !== "toate", flavorTag !== "toate", sort !== "recommended"].filter(Boolean).length;
+  const activeFilterCount = [
+    query,
+    occasion !== "toate",
+    flavorTag !== "toate",
+    sort !== "recommended",
+    Boolean(selectedFilling),
+  ].filter(Boolean).length;
+  const fillingCategories = useMemo(
+    () => Array.from(new Set(CATALOG_FILLINGS.map((item) => item.category))).slice(0, 5),
+    []
+  );
+  const premiumFillings = useMemo(
+    () => CATALOG_FILLINGS.filter((item) => Number(item.priceExtra || 0) >= 90).length,
+    []
+  );
+  const fillingPriceRange = useMemo(() => {
+    const prices = CATALOG_FILLINGS.map((item) => Number(item.priceExtra || 0)).filter(
+      (value) => Number.isFinite(value) && value > 0
+    );
+    if (!prices.length) return "atelier Maison-Douce";
+    return `${Math.min(...prices)}-${Math.max(...prices)} MDL / kg`;
+  }, []);
 
   const resetFilters = () => {
     setQuery("");
@@ -230,7 +402,165 @@ export default function Catalog() {
 
   return (
     <div className="min-h-screen pb-16">
-      <section className="relative overflow-hidden px-4 pb-6 pt-8 md:px-6 md:pt-12">
+      <section
+        id="umpluturile-mele"
+        className="relative overflow-hidden scroll-mt-28 px-4 pb-8 pt-8 md:px-6 md:pt-12"
+      >
+        <div className="absolute inset-0 bg-brand-wash" />
+        <div className="absolute -right-16 top-4 h-72 w-72 rounded-full bg-white/65 blur-3xl" />
+        <div className="absolute left-0 top-32 h-72 w-72 rounded-full bg-rose-100/70 blur-3xl" />
+
+        <div className="relative mx-auto max-w-editorial space-y-8">
+          <div className={`${cards.tinted} relative overflow-hidden`}>
+            <div className="absolute -right-8 top-0 h-48 w-48 rounded-full bg-white/60 blur-3xl" />
+            <div className="absolute bottom-0 left-0 h-40 w-40 rounded-full bg-rose-100/70 blur-3xl" />
+
+            <div className="relative grid gap-6 xl:grid-cols-[1.1fr,0.9fr]">
+              <div className="space-y-5">
+                <div className="eyebrow">Maison-Douce Atelier</div>
+                <div>
+                  <div className="font-script text-3xl text-pink-500">Arome fine pentru fiecare compozitie</div>
+                  <h1 className="mt-2 max-w-3xl font-serif text-4xl font-semibold leading-tight text-ink md:text-5xl">
+                    Umpluturile mele de torturi
+                  </h1>
+                  <p className="mt-4 max-w-2xl text-base leading-7 text-[#665d54] md:text-lg">
+                    O selectie feminina, eleganta si premium de creme Maison-Douce, gandita pentru
+                    torturi artizanale cu personalitate: de la vanilie fina si mascarpone cu fructe,
+                    pana la fistic, caramel sarat si accente inspirate de Snickers sau Raffaello.
+                  </p>
+                </div>
+
+                <div className="flex flex-wrap gap-2.5">
+                  {fillingCategories.map((category) => (
+                    <span
+                      key={category}
+                      className="rounded-full border border-rose-200 bg-white/80 px-4 py-2 text-sm font-semibold text-[#6d6056]"
+                    >
+                      {category}
+                    </span>
+                  ))}
+                </div>
+
+                {selectedFilling ? (
+                  <div className="rounded-[24px] border border-sage-deep/15 bg-white/85 p-4 shadow-soft">
+                    <div className="flex flex-wrap items-start justify-between gap-3">
+                      <div className="space-y-2">
+                        <div className="text-xs font-semibold uppercase tracking-[0.18em] text-sage-deep">
+                          Selectia ta curenta
+                        </div>
+                        <div className="font-serif text-2xl font-semibold text-ink">
+                          {selectedFilling.name}
+                        </div>
+                        <p className="max-w-2xl text-sm leading-6 text-[#665d54]">
+                          Pastrez aceasta umplutura evidentiata ca sa compari mai usor restul
+                          optiunilor fara sa pierzi alegerea de pornire.
+                        </p>
+                        <div className="flex flex-wrap gap-2">
+                          <span className="rounded-full border border-sage-deep/15 bg-sage/25 px-3 py-1.5 text-xs font-semibold text-sage-deep">
+                            {selectedFilling.category}
+                          </span>
+                          <span className="rounded-full border border-sage-deep/15 bg-white px-3 py-1.5 text-xs font-semibold text-[#6d6056]">
+                            +{Number(selectedFilling.priceExtra || 0)} MDL / kg
+                          </span>
+                        </div>
+                      </div>
+
+                      <div className="flex flex-wrap gap-2">
+                        <Link
+                          to={`/constructor?umplutura=${encodeURIComponent(selectedFilling.name)}`}
+                          className={buttons.primary}
+                        >
+                          Revino in constructor
+                        </Link>
+                        <Link
+                          to="/catalog#umpluturile-mele"
+                          className={buttons.outline}
+                        >
+                          Arata toate
+                        </Link>
+                      </div>
+                    </div>
+                  </div>
+                ) : null}
+
+                {!selectedFilling && selectedCake ? (
+                  <div className="rounded-[24px] border border-[#d8c3a7]/30 bg-[#fff8ef] p-4 shadow-soft">
+                    <div className="flex flex-wrap items-start justify-between gap-3">
+                      <div className="space-y-2">
+                        <div className="text-xs font-semibold uppercase tracking-[0.18em] text-[#8a6848]">
+                          Umpluturi recomandate pentru
+                        </div>
+                        <div className="font-serif text-2xl font-semibold text-ink">
+                          {selectedCake.nume}
+                        </div>
+                        <p className="max-w-2xl text-sm leading-6 text-[#665d54]">
+                          Am adus primele in lista cremele si umpluturile care se potrivesc cel mai
+                          bine cu acest tort, pe baza profilului aromatic si a compozitiei lui.
+                        </p>
+                        <div className="flex flex-wrap gap-2">
+                          <span className="rounded-full border border-[#d8c3a7]/40 bg-white px-3 py-1.5 text-xs font-semibold text-[#8a6848]">
+                            {compatibleFillingIds.length} umpluturi recomandate
+                          </span>
+                          <span className="rounded-full border border-[#d8c3a7]/40 bg-white px-3 py-1.5 text-xs font-semibold text-[#6d6056]">
+                            {selectedCake.shortFlavor}
+                          </span>
+                        </div>
+                      </div>
+
+                      <div className="flex flex-wrap gap-2">
+                        <Link to={`/tort/${selectedCake._id}`} className={buttons.primary}>
+                          Vezi detalii tort
+                        </Link>
+                        <Link to="/catalog#umpluturile-mele" className={buttons.outline}>
+                          Arata toate umpluturile
+                        </Link>
+                      </div>
+                    </div>
+                  </div>
+                ) : null}
+              </div>
+
+              <div className="grid gap-3 sm:grid-cols-3 xl:grid-cols-1">
+                <div className="rounded-[24px] border border-rose-100 bg-[rgba(255,249,242,0.88)] p-4">
+                  <div className="text-xs uppercase tracking-[0.2em] text-pink-600">Selectie</div>
+                  <div className="mt-2 text-2xl font-semibold text-ink">{CATALOG_FILLINGS.length}</div>
+                  <div className="mt-1 text-sm text-[#7b736a]">umpluturi semnatura</div>
+                </div>
+                <div className="rounded-[24px] border border-rose-100 bg-[rgba(255,249,242,0.88)] p-4">
+                  <div className="text-xs uppercase tracking-[0.2em] text-pink-600">Premium</div>
+                  <div className="mt-2 text-2xl font-semibold text-ink">{premiumFillings}</div>
+                  <div className="mt-1 text-sm text-[#7b736a]">optiuni cu profil intens</div>
+                </div>
+                <div className="rounded-[24px] border border-rose-100 bg-[rgba(255,249,242,0.88)] p-4">
+                  <div className="text-xs uppercase tracking-[0.2em] text-pink-600">Extra recomandat</div>
+                  <div className="mt-2 text-2xl font-semibold text-ink">{fillingPriceRange}</div>
+                  <div className="mt-1 text-sm text-[#7b736a]">orientativ pentru selectie</div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div className="grid gap-6 md:grid-cols-2 xl:grid-cols-3">
+            {sortedFillings.map((filling) => (
+              <CatalogFillingCard
+                key={filling.id}
+                filling={filling}
+                selected={activeSelectedFillingId === filling.id}
+                recommended={
+                  !selectedFilling &&
+                  compatibleFillingIds.includes(filling.id)
+                }
+                flash={highlightedFillingId === filling.id}
+              />
+            ))}
+          </div>
+        </div>
+      </section>
+
+      <section
+        id="catalog-torturi"
+        className="relative overflow-hidden px-4 pb-6 pt-2 md:px-6 md:pt-4"
+      >
         <div className="absolute inset-0 bg-brand-wash" />
         <div className="absolute -left-24 top-12 h-64 w-64 rounded-full bg-white/55 blur-3xl" />
         <div className="absolute right-0 top-0 h-72 w-72 rounded-full bg-sage/40 blur-3xl" />
@@ -238,12 +568,12 @@ export default function Catalog() {
           <div className={`${cards.elevated} relative overflow-hidden`}>
             <div className="absolute right-0 top-0 h-40 w-40 rounded-full bg-sage/25 blur-3xl" />
             <div className="relative space-y-5">
-              <div className="eyebrow">Maison-Douce</div>
+              <div className="eyebrow">Colectia de torturi Maison-Douce</div>
               <div>
-                <div className="font-script text-3xl text-pink-500">Collection maison</div>
-                <h1 className="mt-2 max-w-3xl font-serif text-4xl font-semibold leading-tight text-ink md:text-5xl">
+                <div className="font-script text-3xl text-pink-500">Torturile casei</div>
+                <h2 className="mt-2 max-w-3xl font-serif text-4xl font-semibold leading-tight text-ink md:text-5xl">
                   Catalog de torturi artizanale cu prezentare editoriala si selectie realista in MDL
-                </h1>
+                </h2>
                 <p className="mt-4 max-w-2xl text-base leading-7 text-[#665d54] md:text-lg">
                   Nume curate, umpluturi credibile, imagini atent alese si filtre utile pentru aniversari, nunti, botezuri si evenimente corporate.
                 </p>
@@ -370,6 +700,45 @@ export default function Catalog() {
 
         <CakeWeightCalculator />
 
+        {selectedFilling ? (
+          <div className="mt-8 rounded-[30px] border border-sage-deep/15 bg-[linear-gradient(135deg,rgba(255,252,247,0.96),rgba(233,240,228,0.82))] p-5 shadow-soft md:p-6">
+            <div className="flex flex-wrap items-start justify-between gap-4">
+              <div className="space-y-2">
+                <div className="text-xs font-semibold uppercase tracking-[0.22em] text-sage-deep">
+                  Filtrare dupa umplutura
+                </div>
+                <h2 className="font-serif text-3xl text-ink">
+                  Torturi potrivite pentru {selectedFilling.name}
+                </h2>
+                <p className="max-w-2xl text-sm leading-7 text-[#665d54]">
+                  Afisez mai jos doar torturile care se potrivesc natural cu aceasta compozitie,
+                  pe baza aromelor, profilului si recomandarilor Maison-Douce.
+                </p>
+                <div className="flex flex-wrap gap-2">
+                  <span className="rounded-full border border-sage-deep/15 bg-white/90 px-3 py-1.5 text-xs font-semibold text-sage-deep">
+                    {compatibleItems.length} propuneri compatibile
+                  </span>
+                  <span className="rounded-full border border-sage-deep/15 bg-white px-3 py-1.5 text-xs font-semibold text-[#6d6056]">
+                    {selectedFilling.textureLabel}
+                  </span>
+                </div>
+              </div>
+
+              <div className="flex flex-wrap gap-2">
+                <Link
+                  to={`/constructor?umplutura=${encodeURIComponent(selectedFilling.name)}`}
+                  className={buttons.primary}
+                >
+                  Revino in constructor
+                </Link>
+                <Link to="/catalog#catalog-torturi" className={buttons.outline}>
+                  Vezi tot catalogul
+                </Link>
+              </div>
+            </div>
+          </div>
+        ) : null}
+
         <div className="mt-8 flex flex-wrap items-end justify-between gap-4">
           <div>
             <div className="text-xs font-semibold uppercase tracking-[0.24em] text-pink-600">
@@ -402,11 +771,20 @@ export default function Catalog() {
           <div className="mt-8 rounded-[30px] border border-rose-100 bg-white p-8 text-center shadow-soft">
             <div className="font-serif text-3xl text-ink">Nicio combinatie nu se potriveste acum</div>
             <p className="mx-auto mt-3 max-w-xl text-sm leading-7 text-[#665d54]">
-              Incearca o cautare mai scurta sau revino la filtrele implicite pentru a vedea intreaga colectie Maison-Douce.
+              {selectedFilling
+                ? "Filtrele active sunt prea restrictive pentru umplutura selectata. Revino la filtrele implicite sau afiseaza intregul catalog Maison-Douce."
+                : "Incearca o cautare mai scurta sau revino la filtrele implicite pentru a vedea intreaga colectie Maison-Douce."}
             </p>
-            <button type="button" className={`${buttons.primary} mt-5`} onClick={resetFilters}>
-              Vezi intreaga selectie
-            </button>
+            <div className="mt-5 flex flex-wrap justify-center gap-3">
+              <button type="button" className={buttons.primary} onClick={resetFilters}>
+                Vezi intreaga selectie
+              </button>
+              {selectedFilling ? (
+                <Link to="/catalog#catalog-torturi" className={buttons.outline}>
+                  Scoate filtrul de umplutura
+                </Link>
+              ) : null}
+            </div>
           </div>
         ) : null}
 

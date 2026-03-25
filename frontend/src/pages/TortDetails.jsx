@@ -359,6 +359,16 @@ export default function TortDetails() {
                     </span>
                   ))}
                 </div>
+                <div className="mt-4 flex flex-wrap gap-2">
+                  <Link
+                    to={`/catalog?selectedTort=${encodeURIComponent(
+                      storefrontTort.slug || storefrontTort._id
+                    )}#umpluturile-mele`}
+                    className="inline-flex items-center justify-center rounded-full border border-[#d8c3a7]/60 bg-[#fbf3e8] px-4 py-2.5 text-sm font-semibold text-[#7a6045] transition hover:-translate-y-0.5 hover:border-[#c5ab8b] hover:bg-[#f8eee1]"
+                  >
+                    Vezi umpluturi compatibile
+                  </Link>
+                </div>
               </div>
 
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
@@ -427,6 +437,14 @@ export default function TortDetails() {
                 )}
                 <Link to={`/constructor?from=${storefrontTort._id}`} className={buttons.outline}>
                   Personalizeaza
+                </Link>
+                <Link
+                  to={`/catalog?selectedTort=${encodeURIComponent(
+                    storefrontTort.slug || storefrontTort._id
+                  )}#umpluturile-mele`}
+                  className="inline-flex items-center justify-center rounded-full border border-[#d8c3a7]/60 bg-[#fbf3e8] px-4 py-2.5 text-sm font-semibold text-[#7a6045] transition hover:-translate-y-0.5 hover:border-[#c5ab8b] hover:bg-[#f8eee1]"
+                >
+                  Vezi umpluturi compatibile
                 </Link>
                 <Link
                   to="/catalog"

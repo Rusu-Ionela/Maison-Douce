@@ -741,6 +741,7 @@ export function getStorefrontCake(item, index = 0) {
     ...item,
     _id: item?._id || `curated-${preset.slug}`,
     id: item?._id || `curated-${preset.slug}`,
+    slug: preset.slug,
     nume: usePresetIdentity ? preset.name : String(item?.nume || preset.name).trim(),
     descriere:
       hasUsefulText(item?.descriere, 26) && !isTechnicalName(item?.descriere)

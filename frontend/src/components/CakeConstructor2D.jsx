@@ -1,9 +1,12 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { Link } from "react-router-dom";
+import { ProductsAPI } from "../api/products";
 import api from "/src/lib/api.js";
 import CakePreview2DStage from "../components/CakePreview2DStage";
 import StatusBanner from "../components/StatusBanner";
 import { useAuth } from "../context/AuthContext";
 import { buttons, cards, inputs } from "../lib/tailwindComponents";
+import { getStorefrontCake, getStorefrontFallbackCakeById } from "../lib/storefrontCatalog";
 import {
   BASE_PREP_HOURS,
   BASE_PRICE,
@@ -15,6 +18,8 @@ import {
   findCakeOption,
   getCakeDesignSummary,
   getRecommendedPreviewModeForField,
+  resolveConstructorPrefillFromCake,
+  resolveConstructorPrefillFromFilling,
 } from "../lib/cakePreview2D";
 
 function OptionPill({
@@ -93,7 +98,46 @@ function PreviewModeToggle({ activeMode, onChange }) {
   );
 }
 
-export default function CakeConstructor2D({ designId: propDesignId }) {
+function ConstructorPrefillBadge({
+  sourceLabel,
+  summary,
+  actionTo,
+  actionLabel,
+  chipLabel = "Prefill din catalog",
+}) {
+  return (
+    <div className="rounded-[24px] border border-sage-deep/15 bg-[linear-gradient(135deg,rgba(247,244,236,0.96),rgba(233,240,228,0.82))] px-4 py-4 shadow-soft">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="space-y-3">
+          <div className="space-y-1">
+            <div className="text-xs font-semibold uppercase tracking-[0.18em] text-sage-deep">
+              Ai pornit de la
+            </div>
+            <div className="font-display text-2xl text-[#2f2126]">{sourceLabel}</div>
+            <p className="max-w-2xl text-sm leading-6 text-[#5c524a]">{summary}</p>
+          </div>
+          {actionTo && actionLabel ? (
+            <Link
+              to={actionTo}
+              className="inline-flex items-center justify-center rounded-full border border-sage-deep/25 bg-white/90 px-4 py-2 text-sm font-semibold text-[#465141] shadow-soft transition hover:-translate-y-0.5 hover:border-sage-deep/35 hover:bg-white"
+            >
+              {actionLabel}
+            </Link>
+          ) : null}
+        </div>
+        <span className="rounded-full border border-white/80 bg-white/90 px-3 py-2 text-xs font-semibold uppercase tracking-[0.14em] text-[#7a6856] shadow-soft">
+          {chipLabel}
+        </span>
+      </div>
+    </div>
+  );
+}
+
+export default function CakeConstructor2D({
+  designId: propDesignId,
+  prefillFilling = "",
+  prefillProductId = "",
+}) {
   const exteriorStageRef = useRef(null);
   const sectionStageRef = useRef(null);
   const previewRef = useRef(null);
@@ -117,6 +161,12 @@ export default function CakeConstructor2D({ designId: propDesignId }) {
   const [culoare, setCuloare] = useState(DEFAULT_CAKE_OPTIONS.culoare);
   const [mesaj, setMesaj] = useState("");
   const [font, setFont] = useState(DEFAULT_CAKE_OPTIONS.font);
+  const [productPrefill, setProductPrefill] = useState(null);
+  const catalogPrefill = useMemo(() => {
+    if (propDesignId) return null;
+    return resolveConstructorPrefillFromFilling(prefillFilling);
+  }, [prefillFilling, propDesignId]);
+  const activePrefill = catalogPrefill || productPrefill;
 
   useEffect(() => {
     const element = previewRef.current;
@@ -187,6 +237,90 @@ export default function CakeConstructor2D({ designId: propDesignId }) {
     };
   }, [propDesignId]);
 
+  useEffect(() => {
+    if (!catalogPrefill) return;
+
+    const nextValues = { ...DEFAULT_CAKE_OPTIONS, ...catalogPrefill.values };
+    setBlat(nextValues.blat);
+    setCrema(nextValues.crema);
+    setUmplutura(nextValues.umplutura);
+    setDecor(nextValues.decor);
+    setTopping(nextValues.topping);
+    setCuloare(nextValues.culoare);
+    setFont(nextValues.font);
+    setPreviewMode("section");
+    setPreviewHint(`Am preselectat ${catalogPrefill.sourceLabel}.`);
+    if (hintTimerRef.current) {
+      window.clearTimeout(hintTimerRef.current);
+    }
+    hintTimerRef.current = window.setTimeout(() => {
+      setPreviewHint("");
+    }, 2600);
+    setStatus({
+      type: "info",
+      text: `Configuratia initiala porneste de la ${catalogPrefill.sourceLabel}. ${catalogPrefill.summary} Poti ajusta apoi crema, umplutura si decorul direct din constructor.`,
+    });
+  }, [catalogPrefill]);
+
+  useEffect(() => {
+    if (propDesignId || catalogPrefill || !prefillProductId) {
+      setProductPrefill(null);
+      return undefined;
+    }
+
+    let cancelled = false;
+
+    (async () => {
+      try {
+        let sourceCake = null;
+        try {
+          const data = await ProductsAPI.get(prefillProductId);
+          sourceCake = getStorefrontCake(data, 0);
+        } catch {
+          sourceCake = getStorefrontFallbackCakeById(prefillProductId);
+        }
+
+        const resolved = resolveConstructorPrefillFromCake(sourceCake);
+        if (!cancelled) {
+          setProductPrefill(resolved);
+        }
+      } catch {
+        if (!cancelled) {
+          setProductPrefill(null);
+        }
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [catalogPrefill, prefillProductId, propDesignId]);
+
+  useEffect(() => {
+    if (catalogPrefill || !productPrefill) return;
+
+    const nextValues = { ...DEFAULT_CAKE_OPTIONS, ...productPrefill.values };
+    setBlat(nextValues.blat);
+    setCrema(nextValues.crema);
+    setUmplutura(nextValues.umplutura);
+    setDecor(nextValues.decor);
+    setTopping(nextValues.topping);
+    setCuloare(nextValues.culoare);
+    setFont(nextValues.font);
+    setPreviewMode("section");
+    setPreviewHint(`Am pornit de la ${productPrefill.sourceLabel}.`);
+    if (hintTimerRef.current) {
+      window.clearTimeout(hintTimerRef.current);
+    }
+    hintTimerRef.current = window.setTimeout(() => {
+      setPreviewHint("");
+    }, 2600);
+    setStatus({
+      type: "info",
+      text: `Configuratia initiala este inspirata de ${productPrefill.sourceLabel}. ${productPrefill.summary} Poti rafina apoi straturile, decorul si mesajul final direct din constructor.`,
+    });
+  }, [catalogPrefill, productPrefill]);
+
   const stageWidth = Math.max(320, previewWidth);
   const stageHeight = Math.round(stageWidth * 0.72);
 
@@ -250,6 +384,26 @@ export default function CakeConstructor2D({ designId: propDesignId }) {
         .join(" • "),
     [selectedOptions]
   );
+
+  const estimationContext = useMemo(() => {
+    if (catalogPrefill) {
+      return {
+        eyebrow: "Pornire din umplutura",
+        title: `Configuratia initiala porneste de la ${catalogPrefill.sourceLabel}`,
+        text: "Estimarea de mai jos foloseste aceasta directie ca punct de plecare si se actualizeaza instant cand schimbi straturile, stilul sau decorul.",
+      };
+    }
+
+    if (productPrefill) {
+      return {
+        eyebrow: "Pornire din tort",
+        title: `Configuratia initiala este inspirata de ${productPrefill.sourceLabel}`,
+        text: "Pretul estimat si preview-ul pornesc de la profilul tortului selectat, apoi se recalculeaza imediat pe masura ce personalizezi compozitia.",
+      };
+    }
+
+    return null;
+  }, [catalogPrefill, productPrefill]);
 
   const activeModeMeta = PREVIEW_MODES.find((mode) => mode.id === previewMode) || PREVIEW_MODES[0];
 
@@ -509,6 +663,22 @@ export default function CakeConstructor2D({ designId: propDesignId }) {
             )}
           </div>
 
+          {activePrefill ? (
+            <ConstructorPrefillBadge
+              sourceLabel={activePrefill.sourceLabel}
+              summary={`${activePrefill.summary} Acum poti rafina fiecare strat, culoarea si mesajul final exact cum vrei.`}
+              actionTo={
+                catalogPrefill
+                  ? `/catalog?selectedUmplutura=${encodeURIComponent(activePrefill.sourceLabel)}#umpluturile-mele`
+                  : activePrefill.sourceSlug
+                    ? `/catalog?selectedTort=${encodeURIComponent(activePrefill.sourceSlug)}#umpluturile-mele`
+                    : "/catalog#umpluturile-mele"
+              }
+              actionLabel={catalogPrefill ? "Schimba umplutura" : "Vezi umpluturi compatibile"}
+              chipLabel={catalogPrefill ? "Prefill din catalog" : "Prefill din tort"}
+            />
+          ) : null}
+
           <StatusBanner type={status.type || "info"} message={status.text} />
 
           <div className="overflow-hidden rounded-[28px] border border-rose-100 bg-[radial-gradient(circle_at_top,_rgba(255,255,255,0.98),_rgba(249,244,236,0.96),_rgba(231,237,228,0.86))] p-3 shadow-soft">
@@ -729,6 +899,16 @@ export default function CakeConstructor2D({ designId: propDesignId }) {
               Prețul estimat rămâne sincronizat cu selecția curentă și cu modul de preview activ.
             </p>
           </div>
+
+          {estimationContext ? (
+            <div className="rounded-[24px] border border-sage-deep/15 bg-[linear-gradient(135deg,rgba(255,252,247,0.96),rgba(233,240,228,0.82))] px-4 py-4 shadow-soft">
+              <div className="text-xs font-semibold uppercase tracking-[0.18em] text-sage-deep">
+                {estimationContext.eyebrow}
+              </div>
+              <div className="mt-2 font-serif text-2xl text-ink">{estimationContext.title}</div>
+              <p className="mt-2 text-sm leading-6 text-[#5c524a]">{estimationContext.text}</p>
+            </div>
+          ) : null}
 
           <div className="rounded-[26px] border border-rose-100 bg-[linear-gradient(180deg,_rgba(255,255,255,0.98),_rgba(246,239,228,0.92))] p-5 shadow-soft">
             <div className="space-y-3">
