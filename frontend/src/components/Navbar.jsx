@@ -3,6 +3,7 @@ import { Link, NavLink } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import { useCart } from "../context/CartContext";
 import { getTopNavLinks } from "../lib/siteMap";
+import NotificationBell from "./NotificationBell";
 
 function navLinkClass({ isActive }) {
   return [
@@ -90,6 +91,8 @@ export default function Navbar() {
         </nav>
 
         <div className="flex items-center gap-2">
+          {user ? <NotificationBell user={user} /> : null}
+
           {user ? (
             <>
               <Link

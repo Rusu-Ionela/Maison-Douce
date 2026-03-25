@@ -161,7 +161,7 @@ async function notifyUser(userId, payload) {
 async function notifyAdmins(payload) {
   try {
     const admins = await Utilizator.find(
-      { rol: { $in: ["admin", "patiser"] } },
+      { rol: { $in: ["admin", "patiser", "prestator", "provider", "baker"] } },
       { _id: 1 }
     ).lean();
     if (!admins.length) return [];
