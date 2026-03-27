@@ -2,7 +2,7 @@ import React, { Suspense, useEffect } from "react";
 import { Navigate, Route, Routes, useLocation } from "react-router-dom";
 import Navbar from "./components/Navbar";
 import RouteContextBar from "./components/RouteContextBar";
-import QuickNavigator from "./components/QuickNavigator";
+import ClientAssistantWidget from "./components/ClientAssistantWidget";
 import SiteFooter from "./components/SiteFooter";
 import { useAuth } from "./context/AuthContext";
 import { normalizeRole } from "./lib/roles";
@@ -148,7 +148,7 @@ export default function App() {
       <Navbar />
       <ScrollToTop />
       <RouteContextBar />
-      <QuickNavigator />
+      <ClientAssistantWidget />
 
       <Suspense fallback={<Loading />}>
         <Routes>
