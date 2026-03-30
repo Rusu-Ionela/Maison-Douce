@@ -463,9 +463,11 @@ function WholeCakeIllustration({
 }
 
 function SectionSlice({ model, stageWidth, stageHeight }) {
+  const sliceModel = model.primaryTier || model;
+
   const slice = useMemo(() => {
-    const sliceWidth = model.cake.bodyWidth * 0.34;
-    const sliceHeight = model.cake.bodyHeight * 0.84;
+    const sliceWidth = sliceModel.cake.bodyWidth * 0.34;
+    const sliceHeight = sliceModel.cake.bodyHeight * 0.84;
     const sliceX = stageWidth * 0.16;
     const sliceY = model.board.y - sliceHeight - model.board.radiusY * 0.2;
     const shellX = sliceWidth * 0.085;
@@ -478,14 +480,14 @@ function SectionSlice({ model, stageWidth, stageHeight }) {
       height: sliceHeight - shellY - shellBottom,
     };
     const gap = Math.max(3, stageHeight * 0.006);
-    const rawHeight = model.layers.reduce((sum, layer) => sum + layer.height, 0);
-    const targetHeight = innerFrame.height - gap * (model.layers.length - 1);
+    const rawHeight = sliceModel.layers.reduce((sum, layer) => sum + layer.height, 0);
+    const targetHeight = innerFrame.height - gap * (sliceModel.layers.length - 1);
     const ratio = targetHeight / Math.max(rawHeight, 1);
     let currentY = innerFrame.y;
 
-    const layers = model.layers.map((layer, index) => {
+    const layers = sliceModel.layers.map((layer, index) => {
       const nextHeight =
-        index === model.layers.length - 1
+        index === sliceModel.layers.length - 1
           ? innerFrame.y + innerFrame.height - currentY
           : layer.height * ratio;
       const projected = projectLayerToFrame(layer, {
@@ -509,11 +511,11 @@ function SectionSlice({ model, stageWidth, stageHeight }) {
       topRadiusY: sliceWidth * 0.11,
       layers,
     };
-  }, [model, stageHeight, stageWidth]);
+  }, [model, sliceModel, stageHeight, stageWidth]);
 
-  const hasPearls = model.topping.pearls.length > 0;
-  const hasFruit = model.topping.fruits.length > 0;
-  const hasChocolate = model.topping.chocolates.length > 0;
+  const hasPearls = sliceModel.topping.pearls.length > 0;
+  const hasFruit = sliceModel.topping.fruits.length > 0;
+  const hasChocolate = sliceModel.topping.chocolates.length > 0;
 
   return (
     <Group>
@@ -531,17 +533,17 @@ function SectionSlice({ model, stageWidth, stageHeight }) {
         width={slice.width}
         height={slice.height - slice.topRadiusY * 0.54}
         cornerRadius={Math.max(20, slice.width * 0.09)}
-        stroke={model.cake.shellStroke}
+        stroke={sliceModel.cake.shellStroke}
         strokeWidth={1.3}
         fillLinearGradientStartPoint={{ x: slice.x, y: slice.y }}
         fillLinearGradientEndPoint={{ x: slice.x, y: slice.y + slice.height }}
         fillLinearGradientColorStops={[
           0,
-          model.cake.shellTop,
+          sliceModel.cake.shellTop,
           0.38,
-          model.cake.shellColor,
+          sliceModel.cake.shellColor,
           1,
-          model.cake.shellShadow,
+          sliceModel.cake.shellShadow,
         ]}
         shadowColor="rgba(92, 60, 71, 0.18)"
         shadowBlur={10}
@@ -565,11 +567,11 @@ function SectionSlice({ model, stageWidth, stageHeight }) {
           0,
           "rgba(255,255,255,0.92)",
           0.26,
-          model.cake.shellTop,
+          sliceModel.cake.shellTop,
           1,
-          model.cake.shellColor,
+          sliceModel.cake.shellColor,
         ]}
-        stroke={model.cake.shellStroke}
+        stroke={sliceModel.cake.shellStroke}
         strokeWidth={1.2}
       />
 
@@ -613,16 +615,16 @@ function SectionSlice({ model, stageWidth, stageHeight }) {
             x={slice.x + slice.width * 0.38}
             y={slice.y + slice.height * 0.05}
             radius={slice.width * 0.028}
-            fill={model.topping.pearls[0]?.fill}
-            shadowColor={model.topping.pearls[0]?.shadow}
+            fill={sliceModel.topping.pearls[0]?.fill}
+            shadowColor={sliceModel.topping.pearls[0]?.shadow}
             shadowBlur={2}
           />
           <Circle
             x={slice.x + slice.width * 0.5}
             y={slice.y + slice.height * 0.025}
             radius={slice.width * 0.022}
-            fill={model.topping.pearls[1]?.fill || model.topping.pearls[0]?.fill}
-            shadowColor={model.topping.pearls[0]?.shadow}
+            fill={sliceModel.topping.pearls[1]?.fill || sliceModel.topping.pearls[0]?.fill}
+            shadowColor={sliceModel.topping.pearls[0]?.shadow}
             shadowBlur={2}
           />
         </>
@@ -631,17 +633,17 @@ function SectionSlice({ model, stageWidth, stageHeight }) {
       {hasFruit ? (
         <FruitCluster
           cluster={{
-            ...model.topping.fruits[0],
-            berries: model.topping.fruits[0].berries.map((berry) => ({
+            ...sliceModel.topping.fruits[0],
+            berries: sliceModel.topping.fruits[0].berries.map((berry) => ({
               ...berry,
-              x: slice.x + slice.width * 0.52 + (berry.x - model.topping.fruits[0].berries[0].x) * 0.4,
-              y: slice.y + slice.height * 0.02 + (berry.y - model.topping.fruits[0].berries[0].y) * 0.4,
+              x: slice.x + slice.width * 0.52 + (berry.x - sliceModel.topping.fruits[0].berries[0].x) * 0.4,
+              y: slice.y + slice.height * 0.02 + (berry.y - sliceModel.topping.fruits[0].berries[0].y) * 0.4,
               radius: berry.radius * 0.65,
             })),
-            leaves: model.topping.fruits[0].leaves.map((leaf) => ({
+            leaves: sliceModel.topping.fruits[0].leaves.map((leaf) => ({
               ...leaf,
-              x: slice.x + slice.width * 0.48 + (leaf.x - model.topping.fruits[0].berries[0].x) * 0.4,
-              y: slice.y + slice.height * 0.01 + (leaf.y - model.topping.fruits[0].berries[0].y) * 0.4,
+              x: slice.x + slice.width * 0.48 + (leaf.x - sliceModel.topping.fruits[0].berries[0].x) * 0.4,
+              y: slice.y + slice.height * 0.01 + (leaf.y - sliceModel.topping.fruits[0].berries[0].y) * 0.4,
               radiusX: leaf.radiusX * 0.64,
               radiusY: leaf.radiusY * 0.64,
             })),
@@ -661,7 +663,7 @@ function SectionSlice({ model, stageWidth, stageHeight }) {
               slice.y + slice.height * 0.08,
             ]}
             closed
-            fill={model.topping.chocolates[0]?.fill}
+            fill={sliceModel.topping.chocolates[0]?.fill}
             stroke="rgba(80, 44, 29, 0.22)"
             strokeWidth={1}
           />
@@ -674,7 +676,7 @@ function SectionSlice({ model, stageWidth, stageHeight }) {
               slice.x + slice.width * 0.6,
               slice.y + slice.height * 0.11,
             ]}
-            stroke={model.topping.drizzles[0]?.stroke}
+            stroke={sliceModel.topping.drizzles[0]?.stroke}
             strokeWidth={Math.max(1.8, slice.width * 0.026)}
             lineCap="round"
             lineJoin="round"
@@ -695,6 +697,7 @@ export default function CakePreview2DStage({
   footerText,
 }) {
   const isSection = mode === "section";
+  const tiers = Array.isArray(model.tiers) && model.tiers.length > 0 ? model.tiers : [model];
 
   return (
     <Stage
@@ -727,15 +730,21 @@ export default function CakePreview2DStage({
               opacity={0.7}
             />
 
-            <WholeCakeIllustration
-              model={model}
-              decorationOpacity={0.62}
-              toppingOpacity={0.68}
-              messageOpacity={0.54}
-              scale={0.84}
-              offsetX={stageWidth * 0.12}
-              offsetY={stageHeight * 0.02}
-            />
+            {tiers
+              .slice()
+              .reverse()
+              .map((tier, index) => (
+                <WholeCakeIllustration
+                  key={`ghost-tier-${index}`}
+                  model={tier}
+                  decorationOpacity={0.62}
+                  toppingOpacity={0.68}
+                  messageOpacity={0.54}
+                  scale={0.84}
+                  offsetX={stageWidth * 0.12}
+                  offsetY={stageHeight * 0.02}
+                />
+              ))}
 
             <PremiumBoard board={model.board} stageHeight={stageHeight} opacity={0.72} />
             <SectionSlice model={model} stageWidth={stageWidth} stageHeight={stageHeight} />
@@ -743,12 +752,18 @@ export default function CakePreview2DStage({
         ) : (
           <>
             <PremiumBoard board={model.board} stageHeight={stageHeight} />
-            <WholeCakeIllustration
-              model={model}
-              decorationOpacity={1}
-              toppingOpacity={1}
-              messageOpacity={1}
-            />
+            {tiers
+              .slice()
+              .reverse()
+              .map((tier, index) => (
+                <WholeCakeIllustration
+                  key={`tier-${index}`}
+                  model={tier}
+                  decorationOpacity={1}
+                  toppingOpacity={1}
+                  messageOpacity={1}
+                />
+              ))}
           </>
         )}
 

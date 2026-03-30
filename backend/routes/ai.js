@@ -1,7 +1,7 @@
 const express = require("express");
 const router = express.Router();
 const AIImageRequest = require("../models/AIImageRequest");
-const { authRequired } = require("../middleware/auth");
+const { authOptional, authRequired } = require("../middleware/auth");
 const { generateCakeImage } = require("../services/aiImages");
 const { resolveProviderForRequest } = require("../utils/providerDirectory");
 const { isStaffRole } = require("../utils/roles");
@@ -37,7 +37,7 @@ async function persistHistoryEntry(payload, requestId) {
   }
 }
 
-router.post("/generate-cake", authRequired, async (req, res) => {
+router.post("/generate-cake", authOptional, async (req, res) => {
   const prompt = String(req.body?.prompt || "").trim() || "tort personalizat";
   const userId = normalizeId(req.user?._id || req.user?.id);
   const prestatorId = normalizeId(

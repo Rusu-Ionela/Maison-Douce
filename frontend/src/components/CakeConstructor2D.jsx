@@ -3,19 +3,25 @@ import { Link } from "react-router-dom";
 import { ProductsAPI } from "../api/products";
 import api from "/src/lib/api.js";
 import CakePreview2DStage from "../components/CakePreview2DStage";
+import ProviderSelector from "../components/ProviderSelector";
 import StatusBanner from "../components/StatusBanner";
 import { useAuth } from "../context/AuthContext";
 import { buttons, cards, inputs } from "../lib/tailwindComponents";
+import { useProviderDirectory } from "../lib/providers";
 import { getStorefrontCake, getStorefrontFallbackCakeById } from "../lib/storefrontCatalog";
 import {
   BASE_PREP_HOURS,
   BASE_PRICE,
   CAKE_OPTIONS,
   CAKE_PRESETS,
+  CAKE_STRUCTURE_OPTIONS,
   DEFAULT_CAKE_OPTIONS,
+  DEFAULT_CAKE_STRUCTURE,
   PREVIEW_MODES,
+  buildCakeAiPrompt,
   buildCakePreviewModel,
   findCakeOption,
+  findCakeStructureOption,
   getCakeDesignSummary,
   getRecommendedPreviewModeForField,
   resolveConstructorPrefillFromCake,
@@ -28,6 +34,7 @@ function OptionPill({
   onClick,
   showPrice = false,
   swatch = "",
+  metaText = "",
   className = "",
 }) {
   return (
@@ -51,6 +58,16 @@ function OptionPill({
         ) : null}
         <div className="min-w-0">
           <div className="font-semibold">{option.label}</div>
+          {option.description ? (
+            <div className={`mt-1 text-xs leading-5 ${active ? "text-rose-100" : "text-gray-500"}`}>
+              {option.description}
+            </div>
+          ) : null}
+          {metaText ? (
+            <div className={`mt-1 text-xs font-medium ${active ? "text-rose-100" : "text-pink-700"}`}>
+              {metaText}
+            </div>
+          ) : null}
           {showPrice ? (
             <div className={`text-xs ${active ? "text-rose-100" : "text-pink-700"}`}>
               +{option.price || 0} MDL
@@ -143,16 +160,21 @@ export default function CakeConstructor2D({
   const previewRef = useRef(null);
   const hintTimerRef = useRef(null);
   const manualModeLockRef = useRef(0);
-  const { user } = useAuth() || {};
+  const { user, isAuthenticated } = useAuth() || {};
+  const providerState = useProviderDirectory({ user });
 
   const [loading, setLoading] = useState(false);
   const [designId, setDesignId] = useState(null);
   const [busyAction, setBusyAction] = useState("");
+  const [aiBusy, setAiBusy] = useState(false);
   const [previewWidth, setPreviewWidth] = useState(560);
   const [status, setStatus] = useState({ type: "", text: "" });
+  const [aiStatus, setAiStatus] = useState({ type: "", text: "" });
   const [previewMode, setPreviewMode] = useState("exterior");
   const [previewHint, setPreviewHint] = useState("");
 
+  const [tiers, setTiers] = useState(DEFAULT_CAKE_STRUCTURE.tiers);
+  const [heightProfile, setHeightProfile] = useState(DEFAULT_CAKE_STRUCTURE.heightProfile);
   const [blat, setBlat] = useState(DEFAULT_CAKE_OPTIONS.blat);
   const [crema, setCrema] = useState(DEFAULT_CAKE_OPTIONS.crema);
   const [umplutura, setUmplutura] = useState(DEFAULT_CAKE_OPTIONS.umplutura);
@@ -161,6 +183,8 @@ export default function CakeConstructor2D({
   const [culoare, setCuloare] = useState(DEFAULT_CAKE_OPTIONS.culoare);
   const [mesaj, setMesaj] = useState("");
   const [font, setFont] = useState(DEFAULT_CAKE_OPTIONS.font);
+  const [aiDecorRequest, setAiDecorRequest] = useState("");
+  const [aiPreview, setAiPreview] = useState(null);
   const [productPrefill, setProductPrefill] = useState(null);
   const catalogPrefill = useMemo(() => {
     if (propDesignId) return null;
@@ -206,6 +230,10 @@ export default function CakeConstructor2D({
         if (cancelled || !data) return;
 
         if (data.options) {
+          setTiers(Number(data.options.tiers || DEFAULT_CAKE_STRUCTURE.tiers));
+          setHeightProfile(
+            data.options.heightProfile || DEFAULT_CAKE_STRUCTURE.heightProfile
+          );
           setBlat(data.options.blat || DEFAULT_CAKE_OPTIONS.blat);
           setCrema(data.options.crema || DEFAULT_CAKE_OPTIONS.crema);
           setUmplutura(data.options.umplutura || DEFAULT_CAKE_OPTIONS.umplutura);
@@ -213,6 +241,17 @@ export default function CakeConstructor2D({
           setTopping(data.options.topping || DEFAULT_CAKE_OPTIONS.topping);
           setCuloare(data.options.culoare || DEFAULT_CAKE_OPTIONS.culoare);
           setFont(data.options.font || DEFAULT_CAKE_OPTIONS.font);
+          setAiDecorRequest(data.options.aiDecorRequest || "");
+          if (data.options.aiPreviewUrl) {
+            setAiPreview({
+              imageUrl: data.options.aiPreviewUrl,
+              prompt: data.options.aiPrompt || "",
+              source: data.options.aiSource || "saved",
+              fallback: data.options.aiFallback === true,
+            });
+          } else {
+            setAiPreview(null);
+          }
         }
 
         if (data.mesaj) {
@@ -241,6 +280,10 @@ export default function CakeConstructor2D({
     if (!catalogPrefill) return;
 
     const nextValues = { ...DEFAULT_CAKE_OPTIONS, ...catalogPrefill.values };
+    setTiers(Number(catalogPrefill.values?.tiers || DEFAULT_CAKE_STRUCTURE.tiers));
+    setHeightProfile(
+      catalogPrefill.values?.heightProfile || DEFAULT_CAKE_STRUCTURE.heightProfile
+    );
     setBlat(nextValues.blat);
     setCrema(nextValues.crema);
     setUmplutura(nextValues.umplutura);
@@ -300,6 +343,10 @@ export default function CakeConstructor2D({
     if (catalogPrefill || !productPrefill) return;
 
     const nextValues = { ...DEFAULT_CAKE_OPTIONS, ...productPrefill.values };
+    setTiers(Number(productPrefill.values?.tiers || DEFAULT_CAKE_STRUCTURE.tiers));
+    setHeightProfile(
+      productPrefill.values?.heightProfile || DEFAULT_CAKE_STRUCTURE.heightProfile
+    );
     setBlat(nextValues.blat);
     setCrema(nextValues.crema);
     setUmplutura(nextValues.umplutura);
@@ -337,6 +384,14 @@ export default function CakeConstructor2D({
     [blat, crema, umplutura, decor, topping, culoare, font]
   );
 
+  const selectedStructure = useMemo(
+    () => ({
+      tiers: findCakeStructureOption("tiers", tiers),
+      heightProfile: findCakeStructureOption("heightProfiles", heightProfile),
+    }),
+    [heightProfile, tiers]
+  );
+
   const previewModel = useMemo(
     () =>
       buildCakePreviewModel({
@@ -344,45 +399,81 @@ export default function CakeConstructor2D({
         stageHeight,
         selectedOptions,
         message: mesaj,
+        structureOptions: {
+          tiers,
+          heightProfile,
+        },
       }),
-    [mesaj, selectedOptions, stageHeight, stageWidth]
+    [heightProfile, mesaj, selectedOptions, stageHeight, stageWidth, tiers]
+  );
+
+  const aiPromptPreview = useMemo(
+    () =>
+      buildCakeAiPrompt({
+        selectedOptions,
+        structureOptions: {
+          tiers,
+          heightProfile,
+        },
+        message: mesaj,
+        customRequest: aiDecorRequest,
+      }),
+    [aiDecorRequest, heightProfile, mesaj, selectedOptions, tiers]
   );
 
   const total = useMemo(() => {
     return (
       BASE_PRICE +
+      (selectedStructure.tiers?.price || 0) +
+      (selectedStructure.heightProfile?.price || 0) +
       (selectedOptions.blat?.price || 0) +
       (selectedOptions.crema?.price || 0) +
       (selectedOptions.umplutura?.price || 0) +
       (selectedOptions.decor?.price || 0) +
       (selectedOptions.topping?.price || 0)
     );
-  }, [selectedOptions]);
+  }, [selectedOptions, selectedStructure]);
 
-  const timpOre = useMemo(() => BASE_PREP_HOURS + (mesaj.trim() ? 4 : 0), [mesaj]);
-  const designSummary = useMemo(() => getCakeDesignSummary(selectedOptions), [selectedOptions]);
+  const timpOre = useMemo(
+    () =>
+      BASE_PREP_HOURS +
+      (selectedStructure.tiers?.prepHours || 0) +
+      (selectedStructure.heightProfile?.prepHours || 0) +
+      (mesaj.trim() ? 4 : 0),
+    [mesaj, selectedStructure]
+  );
+  const designSummary = useMemo(
+    () =>
+      getCakeDesignSummary(selectedOptions, {
+        tiers,
+        heightProfile,
+      }),
+    [heightProfile, selectedOptions, tiers]
+  );
   const layerSummary = useMemo(
     () =>
       [
+        selectedStructure.tiers?.label,
         selectedOptions.blat?.label,
         selectedOptions.crema?.label,
         selectedOptions.umplutura?.label,
       ]
         .filter(Boolean)
         .join(" • "),
-    [selectedOptions]
+    [selectedOptions, selectedStructure]
   );
 
   const exteriorFooter = useMemo(
     () =>
       [
+        selectedStructure.heightProfile?.label,
         selectedOptions.decor?.label,
         selectedOptions.culoare?.label,
         selectedOptions.topping?.label,
       ]
         .filter(Boolean)
         .join(" • "),
-    [selectedOptions]
+    [selectedOptions, selectedStructure]
   );
 
   const estimationContext = useMemo(() => {
@@ -404,6 +495,21 @@ export default function CakeConstructor2D({
 
     return null;
   }, [catalogPrefill, productPrefill]);
+
+  const activeProviderId = providerState.activeProviderId;
+  const activeProviderName =
+    providerState.activeProvider?.displayName || "prestatorul selectat";
+  const structureSummary = useMemo(
+    () =>
+      [
+        selectedStructure.tiers?.label,
+        selectedStructure.heightProfile?.label,
+        selectedStructure.tiers?.servings,
+      ]
+        .filter(Boolean)
+        .join(" • "),
+    [selectedStructure]
+  );
 
   const activeModeMeta = PREVIEW_MODES.find((mode) => mode.id === previewMode) || PREVIEW_MODES[0];
 
@@ -466,6 +572,8 @@ export default function CakeConstructor2D({
   };
 
   const applyPreset = (values) => {
+    setTiers(Number(values.tiers || DEFAULT_CAKE_STRUCTURE.tiers));
+    setHeightProfile(values.heightProfile || DEFAULT_CAKE_STRUCTURE.heightProfile);
     setBlat(values.blat);
     setCrema(values.crema);
     setUmplutura(values.umplutura);
@@ -479,6 +587,55 @@ export default function CakeConstructor2D({
       type: "info",
       text: "Preset-ul a fost aplicat. Poți trece în Secțiune pentru a verifica imediat straturile.",
     });
+  };
+
+  const handleAiRequestChange = (event) => {
+    setAiDecorRequest(event.target.value);
+    setAiStatus({ type: "", text: "" });
+  };
+
+  const generateAiPreview = async () => {
+    if (!activeProviderId) {
+      setAiStatus({
+        type: "error",
+        text:
+          providerState.error ||
+          "Selecteaza un prestator valid inainte de a genera un preview realist.",
+      });
+      return;
+    }
+
+    setAiBusy(true);
+    setAiStatus({ type: "", text: "" });
+
+    try {
+      const response = await api.post("/ai/generate-cake", {
+        prompt: aiPromptPreview,
+        prestatorId: activeProviderId,
+      });
+      const nextPreview = {
+        imageUrl: response?.data?.imageUrl || "",
+        prompt: aiPromptPreview,
+        source: response?.data?.source || response?.data?.mode || "ai",
+        fallback: Boolean(response?.data?.fallback),
+      };
+      setAiPreview(nextPreview);
+      setAiStatus({
+        type: nextPreview.fallback ? "info" : "success",
+        text: nextPreview.fallback
+          ? "A fost generat un preview local. Adauga cheia AI pentru imagini complet fotorealiste."
+          : `Preview-ul realist a fost generat pentru ${activeProviderName}.`,
+      });
+    } catch (error) {
+      setAiStatus({
+        type: "error",
+        text:
+          error?.response?.data?.message ||
+          "Nu am putut genera preview-ul realist pe baza cerintei introduse.",
+      });
+    } finally {
+      setAiBusy(false);
+    }
   };
 
   const exportImage = () => {
@@ -503,11 +660,27 @@ export default function CakeConstructor2D({
     const imageData = exportImage();
     const payload = {
       clientId: user?._id || undefined,
+      prestatorId: activeProviderId || undefined,
       forma: "rotund",
       culori: [culoare],
       mesaj,
       imageData,
-      options: { blat, crema, umplutura, decor, topping, culoare, font },
+      options: {
+        tiers,
+        heightProfile,
+        blat,
+        crema,
+        umplutura,
+        decor,
+        topping,
+        culoare,
+        font,
+        aiDecorRequest,
+        aiPrompt: aiPromptPreview,
+        aiPreviewUrl: aiPreview?.imageUrl || "",
+        aiSource: aiPreview?.source || "",
+        aiFallback: aiPreview?.fallback === true,
+      },
       pretEstimat: total,
       timpPreparareOre: timpOre,
       status: nextStatus,
@@ -576,11 +749,25 @@ export default function CakeConstructor2D({
 
         await api.post("/comenzi-personalizate", {
           clientId: user._id,
+          prestatorId: activeProviderId || undefined,
           numeClient: user?.nume || user?.name || "Client",
           preferinte: mesaj || "Comandă personalizată",
           imagine: exportImage(),
           designId: nextId,
-          options: { blat, crema, umplutura, decor, topping, culoare, font },
+          options: {
+            tiers,
+            heightProfile,
+            blat,
+            crema,
+            umplutura,
+            decor,
+            topping,
+            culoare,
+            font,
+            aiDecorRequest,
+            aiPrompt: aiPromptPreview,
+            aiPreviewUrl: aiPreview?.imageUrl || "",
+          },
           pretEstimat: total,
           timpPreparareOre: timpOre,
         });
@@ -604,9 +791,13 @@ export default function CakeConstructor2D({
         <div className={`${cards.elevated} space-y-4`}>
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div>
-              <h2 className="text-xl font-semibold text-gray-900">Preset-uri rapide</h2>
+              <div className="text-xs font-semibold uppercase tracking-[0.18em] text-pink-500">
+                Pasul 1
+              </div>
+              <h2 className="text-xl font-semibold text-gray-900">Structura si pornire rapida</h2>
               <p className="text-sm text-gray-600">
-                Alegi o direcție de atelier și vezi instant cum se schimbă compoziția, frosting-ul și topping-ul.
+                Clientul alege mai intai cate etaje vrea si ce profil de inaltime prefera,
+                apoi poate porni de la un preset apropiat de atmosfera dorita.
               </p>
             </div>
             {designId ? (
@@ -614,6 +805,43 @@ export default function CakeConstructor2D({
                 Draft #{String(designId).slice(-6)}
               </span>
             ) : null}
+          </div>
+
+          <div className="grid gap-3 md:grid-cols-3">
+            {CAKE_STRUCTURE_OPTIONS.tiers.map((option) => (
+              <OptionPill
+                key={`tier-${option.id}`}
+                option={option}
+                active={String(tiers) === String(option.id)}
+                onClick={() => handleOptionChange("tiers", setTiers, option.id)}
+                showPrice
+                metaText={option.servings}
+              />
+            ))}
+          </div>
+
+          <div className="grid gap-3 md:grid-cols-3">
+            {CAKE_STRUCTURE_OPTIONS.heightProfiles.map((option) => (
+              <OptionPill
+                key={`height-${option.id}`}
+                option={option}
+                active={heightProfile === option.id}
+                onClick={() => handleOptionChange("heightProfile", setHeightProfile, option.id)}
+                showPrice
+                metaText={option.detail}
+              />
+            ))}
+          </div>
+
+          <div className="rounded-[24px] border border-sage-deep/15 bg-[linear-gradient(135deg,rgba(255,252,247,0.96),rgba(233,240,228,0.82))] px-4 py-4 shadow-soft">
+            <div className="text-xs font-semibold uppercase tracking-[0.18em] text-sage-deep">
+              Rezumat rapid
+            </div>
+            <div className="mt-2 text-lg font-semibold text-[#2f2126]">{structureSummary}</div>
+            <p className="mt-2 text-sm leading-6 text-[#5c524a]">
+              Preview-ul 2D se redimensioneaza imediat, iar sectiunea arata mai realist
+              interiorul cand alegi un profil inalt.
+            </p>
           </div>
 
           <div className="grid gap-3 md:grid-cols-3">
@@ -761,6 +989,92 @@ export default function CakeConstructor2D({
             </div>
           </div>
         </div>
+        <div className={`${cards.elevated} space-y-4`}>
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <div className="text-xs font-semibold uppercase tracking-[0.18em] text-pink-500">
+                Pasul 4
+              </div>
+              <h2 className="text-xl font-semibold text-gray-900">Preview realist cu AI</h2>
+              <p className="text-sm text-gray-600">
+                Clientul poate descrie liber decorul dorit, iar promptul se compune din
+                structura, interiorul si exteriorul deja alese.
+              </p>
+            </div>
+            <span className="rounded-full border border-rose-200 bg-white px-3 py-2 text-xs font-semibold uppercase tracking-[0.14em] text-[#7a6856] shadow-soft">
+              {isAuthenticated ? "Istoric salvat" : "Disponibil si fara cont"}
+            </span>
+          </div>
+
+          <ProviderSelector
+            providers={providerState.providers}
+            value={activeProviderId}
+            onChange={providerState.setSelectedProviderId}
+            loading={providerState.loading}
+            disabled={!providerState.canChooseProvider}
+            label="Prestator pentru preview"
+            helpText={
+              activeProviderId
+                ? `Imaginea se genereaza pentru ${activeProviderName}.`
+                : "Selecteaza laboratorul pentru care vrei simularea vizuala."
+            }
+          />
+
+          <label className="block text-sm font-semibold text-gray-700">
+            Ce vrei sa ceri liber pentru decor?
+            <textarea
+              value={aiDecorRequest}
+              onChange={handleAiRequestChange}
+              placeholder="Ex: vreau un tort foarte elegant, cu textura fina de unt, flori albe naturale, accente aurii subtile si look de fotografie reala."
+              className={`mt-2 ${inputs.default} min-h-[120px] resize-y`}
+            />
+          </label>
+
+          <div className="rounded-[22px] border border-rose-100 bg-[rgba(255,249,242,0.9)] px-4 py-4">
+            <div className="text-xs font-semibold uppercase tracking-[0.16em] text-pink-500">
+              Prompt compus automat
+            </div>
+            <div className="mt-2 text-sm leading-6 text-[#5c524a]">{aiPromptPreview}</div>
+          </div>
+
+          {aiStatus.text ? <StatusBanner type={aiStatus.type || "info"} message={aiStatus.text} /> : null}
+
+          <div className="flex flex-wrap gap-3">
+            <button
+              type="button"
+              className={buttons.secondary}
+              disabled={aiBusy || providerState.loading || !activeProviderId}
+              onClick={generateAiPreview}
+            >
+              {aiBusy ? "Generez imagine..." : "Genereaza preview realist"}
+            </button>
+            <button
+              type="button"
+              className={buttons.outline}
+              onClick={() => setPreviewMode("exterior")}
+            >
+              Revino la preview 2D
+            </button>
+          </div>
+
+          {aiPreview?.imageUrl ? (
+            <div className="overflow-hidden rounded-[28px] border border-rose-100 bg-white shadow-soft">
+              <img
+                src={aiPreview.imageUrl}
+                alt={`Preview realist pentru ${designSummary}`}
+                className="h-auto w-full object-cover"
+              />
+              <div className="border-t border-rose-100 px-4 py-3 text-sm text-[#5f564d]">
+                Sursa: {aiPreview.source || "AI"}{aiPreview.fallback ? " • fallback local" : ""}
+              </div>
+            </div>
+          ) : (
+            <div className="rounded-[24px] border border-dashed border-rose-200 bg-white/80 px-4 py-6 text-sm leading-6 text-[#6d625a]">
+              Dupa ce generezi imaginea, aici apare un preview mai aproape de un tort real,
+              util pentru confirmarea stilului final.
+            </div>
+          )}
+        </div>
       </section>
 
       <aside className="space-y-6">
@@ -774,6 +1088,9 @@ export default function CakeConstructor2D({
 
           <div className="space-y-5">
             <div>
+              <div className="mb-2 text-xs font-semibold uppercase tracking-[0.18em] text-pink-500">
+                Pasul 2 • Interior
+              </div>
               <div className="mb-3 text-sm font-semibold text-gray-700">Blat</div>
               <div className="grid gap-3 sm:grid-cols-3">
                 {CAKE_OPTIONS.blat.map((option) => (
@@ -821,6 +1138,9 @@ export default function CakeConstructor2D({
             </div>
 
             <div>
+              <div className="mb-2 text-xs font-semibold uppercase tracking-[0.18em] text-pink-500">
+                Pasul 3 • Exterior
+              </div>
               <div className="mb-3 text-sm font-semibold text-gray-700">Stil exterior</div>
               <div className="grid gap-3 sm:grid-cols-3">
                 {CAKE_OPTIONS.decor.map((option) => (
@@ -912,6 +1232,14 @@ export default function CakeConstructor2D({
 
           <div className="rounded-[26px] border border-rose-100 bg-[linear-gradient(180deg,_rgba(255,255,255,0.98),_rgba(246,239,228,0.92))] p-5 shadow-soft">
             <div className="space-y-3">
+              <SummaryRow
+                label={selectedStructure.tiers?.label || "Structura"}
+                value={`+${selectedStructure.tiers?.price || 0} MDL`}
+              />
+              <SummaryRow
+                label={`Profil ${selectedStructure.heightProfile?.label || "echilibrat"}`}
+                value={`+${selectedStructure.heightProfile?.price || 0} MDL`}
+              />
               <SummaryRow label="Preț de bază" value={`${BASE_PRICE} MDL`} />
               <SummaryRow label="Blat" value={`+${selectedOptions.blat?.price || 0} MDL`} />
               <SummaryRow label="Cremă" value={`+${selectedOptions.crema?.price || 0} MDL`} />

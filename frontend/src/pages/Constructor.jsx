@@ -3,9 +3,9 @@ import CakeConstructor2D from "../components/CakeConstructor2D";
 import { buttons, cards, containers } from "../lib/tailwindComponents";
 
 const STEPS = [
-  "Alegi compozitia, stilul si culoarea dominanta.",
-  "Comuti intre Exterior si Sectiune pentru a valida finisajul si interiorul.",
-  "Salvezi draftul, exporti PNG sau trimiti conceptul direct catre laborator.",
+  "Alegi mai intai cate etaje vrei si cat de inalt sa fie tortul.",
+  "Stabilesti interiorul, apoi exteriorul, iar preview-ul comuta intre Sectiune si Exterior.",
+  "Poti descrie liber decorul dorit, iar AI-ul genereaza un preview mai apropiat de un tort real.",
 ];
 
 export default function Constructor() {
@@ -29,9 +29,9 @@ export default function Constructor() {
                 </h1>
               </div>
               <p className="max-w-2xl text-base leading-8 text-[#655c53]">
-                Instrumentul de compozitie este gandit ca un studio premium: vezi exteriorul final,
-                intelegi sectiunea interioara, sincronizezi estimarea de pret si salvezi conceptul
-                fara sa iesi din fluxul comenzii.
+                Constructorul 2D este acum gandit in pasi mai simpli: pleci de la structura
+                tortului, alegi interiorul, rafinezi exteriorul si poti cere un preview AI
+                mai realist pentru decorul final.
               </p>
               <div className="flex flex-wrap gap-3">
                 <Link to="/personalizeaza" className={buttons.outline}>

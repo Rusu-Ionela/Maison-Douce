@@ -338,6 +338,8 @@ export const CAKE_PRESETS = [
     label: "Clasic elegant",
     description: "Vanilie luminoasă, umplutură de căpșuni și finisaj minimalist ivoire.",
     values: {
+      tiers: 1,
+      heightProfile: "balanced",
       blat: "vanilie",
       crema: "vanilie",
       umplutura: "capsuni",
@@ -352,6 +354,8 @@ export const CAKE_PRESETS = [
     label: "Romantic floral",
     description: "Red Velvet, cremă de fructe și accente rose cu flori elegante.",
     values: {
+      tiers: 2,
+      heightProfile: "balanced",
       blat: "redvelvet",
       crema: "fructe",
       umplutura: "fructe-padure",
@@ -366,6 +370,8 @@ export const CAKE_PRESETS = [
     label: "Statement Lambeth",
     description: "Ciocolată, pistachio, Oreo și piping vintage în tonuri lavandă.",
     values: {
+      tiers: 2,
+      heightProfile: "tall",
       blat: "ciocolata",
       crema: "pistachio",
       umplutura: "oreo",
@@ -376,6 +382,64 @@ export const CAKE_PRESETS = [
     },
   },
 ];
+
+export const CAKE_STRUCTURE_OPTIONS = {
+  tiers: [
+    {
+      id: 1,
+      label: "1 etaj",
+      description: "Compact si usor de comandat.",
+      servings: "8-14 portii",
+      price: 0,
+      prepHours: 0,
+    },
+    {
+      id: 2,
+      label: "2 etaje",
+      description: "Mai festiv, cu silueta eleganta.",
+      servings: "18-28 portii",
+      price: 220,
+      prepHours: 10,
+    },
+    {
+      id: 3,
+      label: "3 etaje",
+      description: "Impact vizual pentru evenimente mari.",
+      servings: "32-48 portii",
+      price: 420,
+      prepHours: 18,
+    },
+  ],
+  heightProfiles: [
+    {
+      id: "compact",
+      label: "Scund",
+      description: "Aspect delicat, straturi mai joase.",
+      detail: "Mai usor de portionat si transportat.",
+      bodyScale: 0.88,
+      price: 0,
+      prepHours: 0,
+    },
+    {
+      id: "balanced",
+      label: "Echilibrat",
+      description: "Proportii clasice de atelier.",
+      detail: "Recomandat pentru cele mai multe comenzi.",
+      bodyScale: 1,
+      price: 40,
+      prepHours: 2,
+    },
+    {
+      id: "tall",
+      label: "Inalt",
+      description: "Mai mult volum si o sectiune bogata.",
+      detail: "Potrivit pentru un efect premium in poze.",
+      bodyScale: 1.14,
+      price: 95,
+      prepHours: 6,
+    },
+  ],
+};
 
 export const BASE_PRICE = 250;
 export const BASE_PREP_HOURS = 24;
@@ -402,6 +466,11 @@ export const DEFAULT_CAKE_OPTIONS = {
   topping: CAKE_OPTIONS.topping[0].id,
   culoare: CAKE_OPTIONS.culori[0].id,
   font: CAKE_OPTIONS.font[0].id,
+};
+
+export const DEFAULT_CAKE_STRUCTURE = {
+  tiers: CAKE_STRUCTURE_OPTIONS.tiers[0].id,
+  heightProfile: CAKE_STRUCTURE_OPTIONS.heightProfiles[1].id,
 };
 
 function normalizeCakeText(value = "") {
@@ -884,6 +953,14 @@ export function findCakeOption(section, optionId) {
   return (CAKE_OPTIONS[section] || []).find((item) => item.id === optionId) || null;
 }
 
+export function findCakeStructureOption(section, optionId) {
+  return (
+    (CAKE_STRUCTURE_OPTIONS[section] || []).find(
+      (item) => String(item.id) === String(optionId)
+    ) || null
+  );
+}
+
 export function resolveConstructorPrefillFromFilling(fillingName = "") {
   const normalized = normalizeCakeText(fillingName);
   if (!normalized) return null;
@@ -958,6 +1035,9 @@ export function resolveConstructorPrefillFromCake(cake) {
 export function getRecommendedPreviewModeForField(field) {
   if (SECTION_PRIORITY_FIELDS.has(field)) return "section";
   if (EXTERIOR_PRIORITY_FIELDS.has(field)) return "exterior";
+  if (field === "tiers" || field === "heightProfile" || field === "structure") {
+    return "exterior";
+  }
   return "exterior";
 }
 
@@ -967,14 +1047,459 @@ export function getCakePreviewMessage(message = "") {
   return trimmed.length > 42 ? `${trimmed.slice(0, 42)}…` : trimmed;
 }
 
-export function getCakeDesignSummary(selectedOptions) {
+export function getCakeDesignSummary(selectedOptions, structureOptions = {}) {
+  const tierOption = findCakeStructureOption("tiers", structureOptions.tiers);
+  const heightOption = findCakeStructureOption(
+    "heightProfiles",
+    structureOptions.heightProfile
+  );
+
   return [
+    tierOption?.label || "1 etaj",
+    heightOption ? `profil ${heightOption.label.toLowerCase()}` : "",
     `Blat ${selectedOptions.blat?.label || ""}`,
     `cremă ${selectedOptions.crema?.label || ""}`,
     `umplutură ${selectedOptions.umplutura?.label || ""}`,
     `stil ${selectedOptions.decor?.label || ""}`,
     `topping ${selectedOptions.topping?.label || ""}`,
-  ].join(", ");
+  ]
+    .filter(Boolean)
+    .join(", ");
+}
+
+function buildLayerPattern({ filling, tierCount, heightProfile }) {
+  const fillingRatio =
+    filling.texture === "cookie" ? 0.058 : filling.texture === "jam" ? 0.042 : 0.05;
+
+  if (tierCount > 1 || heightProfile === "tall") {
+    return [
+      { key: "sponge-1", role: "sponge", ratio: 0.16 },
+      { key: "cream-1", role: "cream", ratio: 0.06 },
+      { key: "filling-1", role: "filling", ratio: fillingRatio },
+      { key: "cream-2", role: "cream", ratio: 0.06 },
+      { key: "sponge-2", role: "sponge", ratio: 0.13 },
+      { key: "cream-3", role: "cream", ratio: 0.05 },
+      { key: "filling-2", role: "filling", ratio: fillingRatio },
+      { key: "cream-4", role: "cream", ratio: 0.05 },
+      { key: "sponge-3", role: "sponge", ratio: 0.13 },
+      { key: "cream-5", role: "cream", ratio: 0.05 },
+      { key: "sponge-4", role: "sponge", ratio: 0.11 },
+    ];
+  }
+
+  return [
+    { key: "sponge-1", role: "sponge", ratio: 0.2 },
+    { key: "cream-1", role: "cream", ratio: 0.07 },
+    { key: "filling-1", role: "filling", ratio: fillingRatio },
+    { key: "cream-2", role: "cream", ratio: 0.07 },
+    { key: "sponge-2", role: "sponge", ratio: 0.2 },
+    { key: "cream-3", role: "cream", ratio: 0.07 },
+    { key: "filling-2", role: "filling", ratio: fillingRatio },
+    { key: "cream-4", role: "cream", ratio: 0.07 },
+    { key: "sponge-3", role: "sponge", ratio: 0.16 },
+  ];
+}
+
+function getTierWidthRatios(tierCount) {
+  if (tierCount === 3) return [0.46, 0.72, 1];
+  if (tierCount === 2) return [0.64, 1];
+  return [1];
+}
+
+function getBodyRatioForTierCount(tierCount) {
+  if (tierCount === 3) return 0.48;
+  if (tierCount === 2) return 0.58;
+  return 0.8;
+}
+
+function buildTierModel({
+  centerX,
+  topY,
+  cakeWidth,
+  bodyHeight,
+  stageHeight,
+  themes,
+  tierCount,
+  heightProfile,
+  message,
+  tierIndex,
+  includeTopDetails,
+}) {
+  const {
+    sponge,
+    cream,
+    filling,
+    decor,
+    colorTheme,
+    topping,
+    fontTheme,
+    selectedDecorId,
+    selectedToppingId,
+  } = themes;
+
+  const topHeight = cakeWidth * 0.18;
+  const cakeBottom = topY + bodyHeight;
+  const bodyX = centerX - cakeWidth / 2;
+  const shellThickness = Math.max(
+    12,
+    Math.min(cakeWidth * 0.13, decor.shellThickness * (cakeWidth / 258))
+  );
+  const cutawayX = bodyX + shellThickness;
+  const cutawayY = topY + shellThickness * 0.28;
+  const cutawayWidth = cakeWidth - shellThickness * 2;
+  const cutawayHeight = bodyHeight - shellThickness * 0.4;
+  const layerGap = Math.max(3, stageHeight * 0.008);
+  const layerPattern = buildLayerPattern({ filling, tierCount, heightProfile });
+  const totalRatio = layerPattern.reduce((sum, layer) => sum + layer.ratio, 0);
+  const usableHeight = cutawayHeight - layerGap * (layerPattern.length - 1);
+
+  let currentY = cutawayY;
+  const layers = layerPattern.map((layer, index) => {
+    const height =
+      index === layerPattern.length - 1
+        ? cutawayY + cutawayHeight - currentY
+        : (layer.ratio / totalRatio) * usableHeight;
+
+    const base = {
+      id: `${layer.key}-${tierIndex}`,
+      role: layer.role,
+      x: cutawayX,
+      y: currentY,
+      width: cutawayWidth,
+      height,
+      radius: Math.max(8, Math.min(18, height * 0.36)),
+      fill: "#ffffff",
+      accent: "#ffffff",
+      shade: "#ffffff",
+      dots: [],
+      ribbons: [],
+    };
+
+    if (layer.role === "sponge") {
+      base.fill = sponge.fill;
+      base.accent = sponge.crumb;
+      base.shade = sponge.edge;
+      base.dots = buildDistributedDots({
+        count: 16,
+        x: base.x,
+        y: base.y,
+        width: base.width,
+        height: base.height,
+        minRadius: Math.max(1.4, base.height * 0.05),
+        maxRadius: Math.max(2.2, base.height * 0.09),
+        colors: [sponge.crumb, sponge.crumbDark],
+        seed: index + 1 + tierIndex * 4,
+        opacity: 0.65,
+      });
+    }
+
+    if (layer.role === "cream") {
+      base.fill = cream.fill;
+      base.accent = cream.highlight;
+      base.shade = cream.shadow;
+      base.ribbons = buildRibbonLines({
+        x: base.x,
+        y: base.y,
+        width: base.width,
+        height: base.height,
+        count: 2,
+        stroke: cream.highlight,
+        seed: index + 1 + tierIndex * 3,
+      });
+    }
+
+    if (layer.role === "filling") {
+      base.fill = filling.fill;
+      base.accent = filling.accent;
+      base.shade = filling.speck;
+      base.dots = buildDistributedDots({
+        count: filling.texture === "cookie" ? 18 : 10,
+        x: base.x,
+        y: base.y,
+        width: base.width,
+        height: base.height,
+        minRadius: Math.max(1.2, base.height * 0.08),
+        maxRadius: Math.max(2.4, base.height * 0.16),
+        colors:
+          filling.texture === "cookie"
+            ? [filling.speck, darken(filling.speck, 0.1)]
+            : [filling.accent, filling.speck],
+        seed: index + 3 + tierIndex * 4,
+        opacity: filling.texture === "cookie" ? 0.9 : 0.74,
+      });
+    }
+
+    currentY += height + layerGap;
+    return base;
+  });
+
+  const beadRadius = Math.max(4, cakeWidth * 0.012 * decor.pipingScale);
+  const pipingColor = colorTheme.piping;
+  const topRowBaseY = topY - topHeight * 0.06;
+  const topRows = Array.from({ length: decor.topRows }, (_, rowIndex) =>
+    buildBeadRow({
+      startX: bodyX + shellThickness * 0.58,
+      endX: bodyX + cakeWidth - shellThickness * 0.58,
+      y: topRowBaseY + rowIndex * beadRadius * 1.62,
+      count: Math.max(10, Math.round(cakeWidth / (beadRadius * 2.8))),
+      radius: beadRadius * (1 - rowIndex * 0.08),
+      fill: rowIndex === 0 ? pipingColor : lighten(pipingColor, 0.08),
+      shadow: colorTheme.shadow,
+    })
+  ).flat();
+
+  const bottomRows = Array.from({ length: decor.bottomRows }, (_, rowIndex) =>
+    buildBeadRow({
+      startX: bodyX + shellThickness * 0.55,
+      endX: bodyX + cakeWidth - shellThickness * 0.55,
+      y: cakeBottom - beadRadius * 1.1 - rowIndex * beadRadius * 1.5,
+      count: Math.max(10, Math.round(cakeWidth / (beadRadius * 2.8))),
+      radius: beadRadius * (1 - rowIndex * 0.06),
+      fill: rowIndex === 0 ? pipingColor : lighten(pipingColor, 0.08),
+      shadow: colorTheme.shadow,
+    })
+  ).flat();
+
+  const swags =
+    decor.swagRows > 0
+      ? Array.from({ length: decor.swagRows }, (_, rowIndex) =>
+          buildSwags({
+            startX: cutawayX + cutawayWidth * 0.05,
+            endX: cutawayX + cutawayWidth * 0.95,
+            y: topY + bodyHeight * (0.24 + rowIndex * 0.2),
+            count: 3,
+            drop: stageHeight * 0.05,
+            stroke: lighten(colorTheme.accent, 0.04),
+            strokeWidth: Math.max(2.4, cakeWidth * 0.012),
+          })
+        ).flat()
+      : [];
+
+  const sideBands = Array.from({ length: decor.sideBands }, (_, index) => {
+    const progress = (index + 1) / (decor.sideBands + 1);
+    const leftX = bodyX + shellThickness * (0.32 + progress * 0.18);
+    const rightX = bodyX + cakeWidth - shellThickness * (0.32 + progress * 0.18);
+    return [
+      {
+        x: leftX,
+        points: [
+          leftX,
+          topY + topHeight * 0.38,
+          leftX - shellThickness * 0.18,
+          topY + bodyHeight * 0.25,
+          leftX + shellThickness * 0.14,
+          topY + bodyHeight * 0.56,
+          leftX - shellThickness * 0.12,
+          cakeBottom - shellThickness * 0.24,
+        ],
+      },
+      {
+        x: rightX,
+        points: [
+          rightX,
+          topY + topHeight * 0.38,
+          rightX + shellThickness * 0.18,
+          topY + bodyHeight * 0.25,
+          rightX - shellThickness * 0.14,
+          topY + bodyHeight * 0.56,
+          rightX + shellThickness * 0.12,
+          cakeBottom - shellThickness * 0.24,
+        ],
+      },
+    ];
+  }).flat();
+
+  const floralClusters =
+    selectedDecorId === "floral"
+      ? [
+          buildFlowerCluster({
+            x: centerX + cakeWidth * 0.22,
+            y: topY - topHeight * 0.42,
+            size: cakeWidth * (includeTopDetails ? 0.04 : 0.03),
+            petalColor: lighten(colorTheme.floral, 0.15),
+            accentColor: lighten(colorTheme.accent, 0.12),
+            leafColor: colorTheme.leaf,
+            rotation: 0.25,
+          }),
+          buildFlowerCluster({
+            x: centerX + cakeWidth * 0.29,
+            y: topY - topHeight * 0.1,
+            size: cakeWidth * (includeTopDetails ? 0.032 : 0.025),
+            petalColor: colorTheme.floral,
+            accentColor: lighten(colorTheme.accent, 0.08),
+            leafColor: colorTheme.leaf,
+            rotation: -0.1,
+          }),
+          buildFlowerCluster({
+            x: centerX - cakeWidth * 0.24,
+            y: topY + bodyHeight * 0.3,
+            size: cakeWidth * (includeTopDetails ? 0.03 : 0.024),
+            petalColor: lighten(colorTheme.floral, 0.1),
+            accentColor: lighten(colorTheme.accent, 0.16),
+            leafColor: colorTheme.leaf,
+            rotation: 0.4,
+          }),
+        ]
+      : [];
+
+  const toppingModel = {
+    pearls: [],
+    fruits: [],
+    chocolates: [],
+    drizzles: [],
+  };
+
+  if (includeTopDetails && selectedToppingId === "perle") {
+    toppingModel.pearls = buildBeadRow({
+      startX: centerX - cakeWidth * 0.2,
+      endX: centerX + cakeWidth * 0.2,
+      y: topY - topHeight * 0.1,
+      count: 8,
+      radius: Math.max(3.5, cakeWidth * 0.01),
+      fill: colorTheme.pearl,
+      shadow: colorTheme.shadow,
+    });
+  }
+
+  if (includeTopDetails && selectedToppingId === "fructe") {
+    toppingModel.fruits = [
+      buildFruitCluster({
+        x: centerX - cakeWidth * 0.12,
+        y: topY - topHeight * 0.12,
+        scale: cakeWidth * 0.05,
+        berry: topping.accent,
+        berryDark: topping.berryDark,
+        leaf: topping.leaf,
+      }),
+      buildFruitCluster({
+        x: centerX + cakeWidth * 0.14,
+        y: topY - topHeight * 0.06,
+        scale: cakeWidth * 0.044,
+        berry: topping.accent,
+        berryDark: topping.berryDark,
+        leaf: topping.leaf,
+      }),
+    ];
+  }
+
+  if (includeTopDetails && selectedToppingId === "ciocolata") {
+    const leftChocolate = buildChocolateDecor({
+      x: centerX - cakeWidth * 0.12,
+      y: topY - topHeight * 0.2,
+      scale: cakeWidth * 0.04,
+      accent: topping.accent,
+      dark: topping.dark,
+      glaze: topping.glaze,
+    });
+    const rightChocolate = buildChocolateDecor({
+      x: centerX + cakeWidth * 0.06,
+      y: topY - topHeight * 0.1,
+      scale: cakeWidth * 0.036,
+      accent: topping.accent,
+      dark: topping.dark,
+      glaze: topping.glaze,
+    });
+    toppingModel.chocolates = [...leftChocolate.shards, ...rightChocolate.shards];
+    toppingModel.drizzles = [...leftChocolate.drizzles, ...rightChocolate.drizzles];
+  }
+
+  const previewText = includeTopDetails ? getCakePreviewMessage(message) : "";
+  const messageVisible = Boolean(previewText);
+  const plaqueWidth = cakeWidth * (messageVisible ? 0.45 : 0.28);
+  const plaqueHeight = topHeight * (messageVisible ? 0.8 : 0.5);
+
+  return {
+    cake: {
+      bodyX,
+      bodyY: topY,
+      bodyWidth: cakeWidth,
+      bodyHeight,
+      topX: centerX,
+      topY,
+      topRadiusX: cakeWidth / 2,
+      topRadiusY: topHeight / 2,
+      shellColor: colorTheme.shell,
+      shellTop: colorTheme.shellTop,
+      shellShadow: colorTheme.shadow,
+      shellStroke: darken(colorTheme.shell, 0.12),
+      cutawayX,
+      cutawayY,
+      cutawayWidth,
+      cutawayHeight,
+      cutawayRadius: Math.max(10, cutawayWidth * 0.05),
+      innerTopRadiusX: cakeWidth / 2 - shellThickness * 0.62,
+      innerTopRadiusY: topHeight / 2 - Math.max(5, shellThickness * 0.1),
+      innerTopFill: mixHex(cream.fill, colorTheme.shellTop, 0.45),
+      sideHighlight: {
+        x: bodyX + shellThickness * 0.42,
+        y: topY + shellThickness * 0.24,
+        width: shellThickness * 0.48,
+        height: bodyHeight - shellThickness * 0.6,
+        fill: withAlpha(lighten(colorTheme.shellTop, 0.08), 0.42),
+      },
+      sideShadow: {
+        x: bodyX + cakeWidth - shellThickness * 0.78,
+        y: topY + shellThickness * 0.4,
+        width: shellThickness * 0.46,
+        height: bodyHeight - shellThickness * 0.8,
+        fill: withAlpha(darken(colorTheme.shadow, 0.04), 0.22),
+      },
+    },
+    layers,
+    topRows,
+    bottomRows,
+    swags,
+    sideBands,
+    sideBandStyle: {
+      stroke: lighten(colorTheme.accent, 0.12),
+      strokeWidth: Math.max(2.2, cakeWidth * 0.01 * decor.pipingScale),
+    },
+    floralClusters,
+    topping: toppingModel,
+    message: {
+      visible: messageVisible,
+      text: previewText,
+      fontFamily: fontTheme.fontFamily,
+      fontStyle: fontTheme.fontStyle,
+      plaque: {
+        x: centerX - plaqueWidth / 2,
+        y: topY - plaqueHeight / 2,
+        width: plaqueWidth,
+        height: plaqueHeight,
+        fill: withAlpha(colorTheme.plaque, 0.95),
+        stroke: lighten(colorTheme.accent, 0.1),
+      },
+      textFill: darken(colorTheme.accent, 0.34),
+    },
+  };
+}
+
+export function buildCakeAiPrompt({
+  selectedOptions,
+  structureOptions = {},
+  message = "",
+  customRequest = "",
+}) {
+  const tierOption =
+    findCakeStructureOption("tiers", structureOptions.tiers) ||
+    CAKE_STRUCTURE_OPTIONS.tiers[0];
+  const heightOption =
+    findCakeStructureOption("heightProfiles", structureOptions.heightProfile) ||
+    CAKE_STRUCTURE_OPTIONS.heightProfiles[1];
+  const trimmedMessage = getCakePreviewMessage(message);
+  const trimmedRequest = String(customRequest || "").trim();
+
+  return [
+    "Tort fotorealist de cofetarie artizanala, fotografie de produs premium.",
+    `${tierOption.label}, profil ${heightOption.label.toLowerCase()}, aspect realist de crema si finisaj lucrat manual.`,
+    `Interior: blat ${selectedOptions.blat?.label || "vanilie"}, crema ${selectedOptions.crema?.label || "vanilie"}, umplutura ${selectedOptions.umplutura?.label || "capsuni"}.`,
+    `Exterior: stil ${selectedOptions.decor?.label || "minimal"}, culoare ${selectedOptions.culoare?.label || "ivoire"}, topping ${selectedOptions.topping?.label || "perle"}.`,
+    trimmedMessage ? `Mesaj pe tort: "${trimmedMessage}".` : "",
+    "Lumina naturala, textura credibila, detalii elegante, fundal curat de studio, fara elemente desenate sau cartoon.",
+    trimmedRequest ? `Cerinta personalizata a clientului: ${trimmedRequest}.` : "",
+  ]
+    .filter(Boolean)
+    .join(" ");
 }
 
 export function buildCakePreviewModel({
@@ -982,6 +1507,7 @@ export function buildCakePreviewModel({
   stageHeight,
   selectedOptions,
   message,
+  structureOptions = {},
 }) {
   const sponge = selectedOptions.blat?.preview || SPONGE_PRESETS.vanilie;
   const cream = selectedOptions.crema?.preview || CREAM_PRESETS.vanilie;
@@ -990,6 +1516,126 @@ export function buildCakePreviewModel({
   const colorTheme = selectedOptions.culoare?.preview || COLOR_PRESETS["#f6d7c3"];
   const topping = selectedOptions.topping?.preview || TOPPING_PRESETS.perle;
   const fontTheme = selectedOptions.font?.preview || FONT_PRESETS.Georgia;
+
+  const tierOption =
+    findCakeStructureOption("tiers", structureOptions.tiers) ||
+    CAKE_STRUCTURE_OPTIONS.tiers[0];
+  const heightOption =
+    findCakeStructureOption("heightProfiles", structureOptions.heightProfile) ||
+    CAKE_STRUCTURE_OPTIONS.heightProfiles[1];
+
+  if (tierOption && heightOption) {
+    const previewCenterX = stageWidth / 2;
+    const previewBoardY = stageHeight * 0.86;
+    const previewBoardHeight = stageHeight * 0.085;
+    const previewTierCount = Number(tierOption.id) || 1;
+    const widthRatios = getTierWidthRatios(previewTierCount);
+    const previewLargestTierWidth =
+      stageWidth * (previewTierCount === 1 ? 0.46 : previewTierCount === 2 ? 0.52 : 0.56);
+    const previewTierWidths = widthRatios.map((ratio) => previewLargestTierWidth * ratio);
+    const previewRawBodyHeights = previewTierWidths.map(
+      (width) =>
+        width * getBodyRatioForTierCount(previewTierCount) * heightOption.bodyScale
+    );
+    const previewTierGap = previewTierCount === 1 ? 0 : stageHeight * 0.024;
+    const previewCakeBottom = previewBoardY - previewBoardHeight * 0.35;
+    const previewAvailableBodyHeight =
+      previewCakeBottom - stageHeight * 0.16 - previewTierWidths[0] * 0.08;
+    const previewRawBodyTotal =
+      previewRawBodyHeights.reduce((sum, height) => sum + height, 0) +
+      previewTierGap * (previewTierCount - 1);
+    const previewFitScale =
+      previewRawBodyTotal > previewAvailableBodyHeight
+        ? previewAvailableBodyHeight / previewRawBodyTotal
+        : 1;
+    const previewBodyHeights = previewRawBodyHeights.map(
+      (height) => height * previewFitScale
+    );
+    const previewStackGap = previewTierGap * previewFitScale;
+    const previewThemes = {
+      sponge,
+      cream,
+      filling,
+      decor,
+      colorTheme,
+      topping,
+      fontTheme,
+      selectedDecorId: selectedOptions.decor?.id,
+      selectedToppingId: selectedOptions.topping?.id,
+    };
+    const previewTiers = Array.from({ length: previewTierCount });
+    let previewCurrentBottom = previewCakeBottom;
+
+    for (let index = previewTierCount - 1; index >= 0; index -= 1) {
+      const previewTopY = previewCurrentBottom - previewBodyHeights[index];
+      previewTiers[index] = buildTierModel({
+        centerX: previewCenterX,
+        topY: previewTopY,
+        cakeWidth: previewTierWidths[index],
+        bodyHeight: previewBodyHeights[index],
+        stageHeight,
+        themes: previewThemes,
+        tierCount: previewTierCount,
+        heightProfile: heightOption.id,
+        message,
+        tierIndex: index,
+        includeTopDetails: index === 0,
+      });
+      previewCurrentBottom = previewTopY - previewStackGap;
+    }
+
+    const previewTopTier = previewTiers[0];
+    const previewPrimaryTier = previewTiers[previewTiers.length - 1];
+    const previewBoardWidth = previewLargestTierWidth * 1.55;
+
+    return {
+      background: {
+        base: "#fff9f6",
+        orbs: [
+          {
+            x: stageWidth * 0.22,
+            y: stageHeight * 0.18,
+            radius: stageWidth * 0.12,
+            fill: withAlpha(lighten(colorTheme.shell, 0.08), 0.55),
+          },
+          {
+            x: stageWidth * 0.78,
+            y: stageHeight * 0.16,
+            radius: stageWidth * 0.1,
+            fill: withAlpha(lighten(colorTheme.accent, 0.38), 0.22),
+          },
+        ],
+      },
+      board: {
+        x: previewCenterX,
+        y: previewBoardY,
+        radiusX: previewBoardWidth / 2,
+        radiusY: previewBoardHeight / 2,
+        fill: "#ece0d4",
+        highlight: "#fffaf7",
+        shadow: "#d6c7b9",
+      },
+      tiers: previewTiers,
+      primaryTier: previewPrimaryTier,
+      structure: {
+        tierCount: previewTierCount,
+        tierLabel: tierOption.label,
+        servings: tierOption.servings,
+        heightLabel: heightOption.label,
+        heightDetail: heightOption.detail,
+      },
+      cake: previewTopTier.cake,
+      layers: previewPrimaryTier.layers,
+      topRows: previewTopTier.topRows,
+      bottomRows: previewTopTier.bottomRows,
+      swags: previewTopTier.swags,
+      sideBands: previewTopTier.sideBands,
+      sideBandStyle: previewTopTier.sideBandStyle,
+      floralClusters: previewTopTier.floralClusters,
+      topping: previewTopTier.topping,
+      message: previewTopTier.message,
+    };
+  }
 
   const centerX = stageWidth / 2;
   const boardY = stageHeight * 0.84;
