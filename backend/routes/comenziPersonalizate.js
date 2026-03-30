@@ -40,6 +40,13 @@ router.post("/", authRequired, async (req, res) => {
       options: options || {},
       pretEstimat: Number(pretEstimat || 0),
       timpPreparareOre: Number(timpPreparareOre || 0),
+      statusHistory: [
+        {
+          status: "noua",
+          note: "Cerere noua trimisa din constructor.",
+          at: new Date(),
+        },
+      ],
       data: data || new Date(),
     });
 
@@ -75,7 +82,7 @@ router.get("/", authRequired, async (req, res) => {
 // PATCH - Actualizare status/pret (admin/patiser)
 router.patch("/:id/status", authRequired, roleCheck("admin", "patiser"), async (req, res) => {
   try {
-    const { status, pretEstimat } = req.body || {};
+    const { status, pretEstimat, statusNote } = req.body || {};
     const update = {};
     if (status) update.status = status;
     if (pretEstimat != null) update.pretEstimat = Number(pretEstimat || 0);
@@ -86,6 +93,14 @@ router.patch("/:id/status", authRequired, roleCheck("admin", "patiser"), async (
       return res.status(403).json({ mesaj: "Acces interzis" });
     }
     Object.assign(doc, update);
+    if (status) {
+      doc.statusHistory = Array.isArray(doc.statusHistory) ? doc.statusHistory : [];
+      doc.statusHistory.push({
+        status,
+        note: String(statusNote || "").trim(),
+        at: new Date(),
+      });
+    }
     await doc.save();
     res.json(doc);
   } catch (err) {

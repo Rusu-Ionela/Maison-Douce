@@ -390,6 +390,8 @@ export const CAKE_STRUCTURE_OPTIONS = {
       label: "1 etaj",
       description: "Compact si usor de comandat.",
       servings: "8-14 portii",
+      minServings: 8,
+      maxServings: 14,
       price: 0,
       prepHours: 0,
     },
@@ -398,6 +400,8 @@ export const CAKE_STRUCTURE_OPTIONS = {
       label: "2 etaje",
       description: "Mai festiv, cu silueta eleganta.",
       servings: "18-28 portii",
+      minServings: 18,
+      maxServings: 28,
       price: 220,
       prepHours: 10,
     },
@@ -406,6 +410,8 @@ export const CAKE_STRUCTURE_OPTIONS = {
       label: "3 etaje",
       description: "Impact vizual pentru evenimente mari.",
       servings: "32-48 portii",
+      minServings: 32,
+      maxServings: 48,
       price: 420,
       prepHours: 18,
     },
@@ -1047,16 +1053,73 @@ export function getCakePreviewMessage(message = "") {
   return trimmed.length > 42 ? `${trimmed.slice(0, 42)}…` : trimmed;
 }
 
+function toInspirationList(inspirationItems = []) {
+  if (!Array.isArray(inspirationItems)) return [];
+  return inspirationItems
+    .map((item, index) => ({
+      id: String(item?.id || item?.url || index),
+      label: String(item?.label || item?.note || item?.name || "").trim(),
+      url: String(item?.url || item?.previewUrl || "").trim(),
+      name: String(item?.name || "").trim(),
+    }))
+    .filter((item) => item.label || item.url || item.name);
+}
+
+export function estimateCakeOrderMetrics(structureOptions = {}) {
+  const tierOption =
+    findCakeStructureOption("tiers", structureOptions.tiers) ||
+    CAKE_STRUCTURE_OPTIONS.tiers[0];
+  const heightOption =
+    findCakeStructureOption("heightProfiles", structureOptions.heightProfile) ||
+    CAKE_STRUCTURE_OPTIONS.heightProfiles[1];
+  const bodyScale = Number(heightOption?.bodyScale || 1);
+  const minServings = Math.max(
+    1,
+    Math.round(Number(tierOption?.minServings || 8) * (bodyScale < 1 ? 0.94 : bodyScale))
+  );
+  const maxServings = Math.max(
+    minServings,
+    Math.round(Number(tierOption?.maxServings || 14) * (bodyScale > 1 ? bodyScale : 1))
+  );
+  const minWeightKg = Number((minServings * 0.14).toFixed(1));
+  const maxWeightKg = Number((maxServings * 0.16).toFixed(1));
+
+  return {
+    minServings,
+    maxServings,
+    servingsLabel: `${minServings}-${maxServings} portii`,
+    minWeightKg,
+    maxWeightKg,
+    weightLabel: `${minWeightKg}-${maxWeightKg} kg`,
+  };
+}
+
+export function buildCakeInspirationSummary(inspirationItems = []) {
+  const normalized = toInspirationList(inspirationItems);
+  if (!normalized.length) return "";
+
+  return normalized
+    .slice(0, 3)
+    .map((item, index) => {
+      const label = item.label || item.name || `referinta ${index + 1}`;
+      return `Referinta ${index + 1}: ${label}`;
+    })
+    .join("; ");
+}
+
 export function getCakeDesignSummary(selectedOptions, structureOptions = {}) {
   const tierOption = findCakeStructureOption("tiers", structureOptions.tiers);
   const heightOption = findCakeStructureOption(
     "heightProfiles",
     structureOptions.heightProfile
   );
+  const metrics = estimateCakeOrderMetrics(structureOptions);
 
   return [
     tierOption?.label || "1 etaj",
     heightOption ? `profil ${heightOption.label.toLowerCase()}` : "",
+    metrics.servingsLabel,
+    metrics.weightLabel,
     `Blat ${selectedOptions.blat?.label || ""}`,
     `cremă ${selectedOptions.crema?.label || ""}`,
     `umplutură ${selectedOptions.umplutura?.label || ""}`,
@@ -1479,6 +1542,7 @@ export function buildCakeAiPrompt({
   structureOptions = {},
   message = "",
   customRequest = "",
+  inspirationItems = [],
 }) {
   const tierOption =
     findCakeStructureOption("tiers", structureOptions.tiers) ||
@@ -1488,18 +1552,31 @@ export function buildCakeAiPrompt({
     CAKE_STRUCTURE_OPTIONS.heightProfiles[1];
   const trimmedMessage = getCakePreviewMessage(message);
   const trimmedRequest = String(customRequest || "").trim();
+  const metrics = estimateCakeOrderMetrics(structureOptions);
+  const inspirationSummary = buildCakeInspirationSummary(inspirationItems);
 
   return [
     "Tort fotorealist de cofetarie artizanala, fotografie de produs premium.",
     `${tierOption.label}, profil ${heightOption.label.toLowerCase()}, aspect realist de crema si finisaj lucrat manual.`,
+    `Dimensiune estimata: ${metrics.servingsLabel}, aproximativ ${metrics.weightLabel}.`,
     `Interior: blat ${selectedOptions.blat?.label || "vanilie"}, crema ${selectedOptions.crema?.label || "vanilie"}, umplutura ${selectedOptions.umplutura?.label || "capsuni"}.`,
     `Exterior: stil ${selectedOptions.decor?.label || "minimal"}, culoare ${selectedOptions.culoare?.label || "ivoire"}, topping ${selectedOptions.topping?.label || "perle"}.`,
+    inspirationSummary ? `Imagini de inspiratie incarcate: ${inspirationSummary}.` : "",
     trimmedMessage ? `Mesaj pe tort: "${trimmedMessage}".` : "",
     "Lumina naturala, textura credibila, detalii elegante, fundal curat de studio, fara elemente desenate sau cartoon.",
     trimmedRequest ? `Cerinta personalizata a clientului: ${trimmedRequest}.` : "",
   ]
     .filter(Boolean)
     .join(" ");
+}
+
+export function buildCakeAiVariantPrompts(config = {}) {
+  const basePrompt = buildCakeAiPrompt(config);
+  return [
+    `${basePrompt} Varianta 1: look de studio luminos, compozitie echilibrata, focalizare clara pe tort.`,
+    `${basePrompt} Varianta 2: styling editorial premium, unghi usor lateral, accente decorative mai expresive.`,
+    `${basePrompt} Varianta 3: fotografiere close-up cu accent pe textura cremei si finisajele manuale.`,
+  ];
 }
 
 export function buildCakePreviewModel({

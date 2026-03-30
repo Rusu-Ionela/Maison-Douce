@@ -282,7 +282,32 @@ async function generateCakeImage(prompt, options = {}) {
   }
 }
 
+async function generateCakeImages(prompts = [], options = {}) {
+  const list = Array.isArray(prompts)
+    ? prompts.map((item) => String(item || "").trim()).filter(Boolean)
+    : [];
+
+  if (!list.length) {
+    return [];
+  }
+
+  const items = [];
+  for (const prompt of list) {
+    // Keep generation deterministic and easy to audit: one provider request per variant.
+    // This also works with the local fallback mode when the remote model is unavailable.
+    // eslint-disable-next-line no-await-in-loop
+    const result = await generateCakeImage(prompt, options);
+    items.push({
+      ...result,
+      prompt,
+    });
+  }
+
+  return items;
+}
+
 module.exports = {
   generateCakeImage,
+  generateCakeImages,
   buildOpenAIPayload,
 };

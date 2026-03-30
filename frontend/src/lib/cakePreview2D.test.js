@@ -1,7 +1,10 @@
 import { describe, expect, it } from "vitest";
 import {
+  buildCakeAiVariantPrompts,
+  buildCakeInspirationSummary,
   buildCakeAiPrompt,
   buildCakePreviewModel,
+  estimateCakeOrderMetrics,
   findCakeOption,
   getCakeDesignSummary,
 } from "./cakePreview2D";
@@ -46,11 +49,13 @@ describe("cakePreview2D", () => {
       },
       message: "Elena",
       customRequest: "trandafiri albi si accente aurii",
+      inspirationItems: [{ label: "dantela fina si flori naturale" }],
     });
 
     expect(prompt).toContain("3 etaje");
     expect(prompt).toContain("trandafiri albi si accente aurii");
     expect(prompt).toContain("Mesaj pe tort");
+    expect(prompt).toContain("Imagini de inspiratie");
   });
 
   it("mentions the chosen structure in the summary", () => {
@@ -61,5 +66,41 @@ describe("cakePreview2D", () => {
 
     expect(summary).toContain("2 etaje");
     expect(summary).toContain("profil echilibrat");
+    expect(summary).toContain("portii");
+  });
+
+  it("estimates servings and weight for the selected structure", () => {
+    const metrics = estimateCakeOrderMetrics({
+      tiers: 3,
+      heightProfile: "tall",
+    });
+
+    expect(metrics.minServings).toBeGreaterThanOrEqual(32);
+    expect(metrics.maxWeightKg).toBeGreaterThan(metrics.minWeightKg);
+    expect(metrics.servingsLabel).toContain("portii");
+  });
+
+  it("builds three AI variant prompts from the same configuration", () => {
+    const prompts = buildCakeAiVariantPrompts({
+      selectedOptions: buildSelectedOptions(),
+      structureOptions: {
+        tiers: 2,
+        heightProfile: "balanced",
+      },
+      customRequest: "flori albe elegante",
+    });
+
+    expect(prompts).toHaveLength(3);
+    expect(prompts[1]).toContain("Varianta 2");
+  });
+
+  it("summarizes inspiration references for the AI prompt", () => {
+    const summary = buildCakeInspirationSummary([
+      { label: "forma inalta" },
+      { label: "perle si accente aurii" },
+    ]);
+
+    expect(summary).toContain("Referinta 1");
+    expect(summary).toContain("aurii");
   });
 });

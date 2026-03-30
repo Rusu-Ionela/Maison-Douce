@@ -1,6 +1,8 @@
 const OPTION_LABELS = {
   tiers: "Etaje",
   heightProfile: "Profil inaltime",
+  estimatedServings: "Portii estimate",
+  estimatedWeightKg: "Greutate estimata",
   blat: "Blat",
   crema: "Crema",
   umplutura: "Umplutura",
@@ -51,9 +53,13 @@ export function buildCustomOrderSections(order) {
   const structure = [];
   const interior = [];
   const exterior = [];
+  const inspiration = [];
+  const progress = [];
 
   appendField(structure, OPTION_LABELS.tiers, options.tiers);
   appendField(structure, OPTION_LABELS.heightProfile, options.heightProfile);
+  appendField(structure, OPTION_LABELS.estimatedServings, options.estimatedServings);
+  appendField(structure, OPTION_LABELS.estimatedWeightKg, options.estimatedWeightKg);
 
   appendField(interior, OPTION_LABELS.blat, options.blat);
   appendField(interior, OPTION_LABELS.crema, options.crema);
@@ -89,6 +95,40 @@ export function buildCustomOrderSections(order) {
       ],
     });
   }
+  if (Array.isArray(options.inspirationImages)) {
+    options.inspirationImages.forEach((item, index) => {
+      appendField(
+        inspiration,
+        `Referinta ${index + 1}`,
+        normalizeText(item?.label || item?.note || item?.name || item?.url)
+      );
+    });
+  }
+  if (inspiration.length > 0) {
+    sections.push({
+      id: "inspiration",
+      title: "Imagini inspiratie",
+      items: inspiration,
+    });
+  }
+  if (Array.isArray(order?.statusHistory)) {
+    order.statusHistory
+      .slice(-3)
+      .forEach((entry, index) => {
+        appendField(
+          progress,
+          `Actualizare ${index + 1}`,
+          [normalizeText(entry?.status), normalizeText(entry?.note)].filter(Boolean).join(" • ")
+        );
+      });
+  }
+  if (progress.length > 0) {
+    sections.push({
+      id: "progress",
+      title: "Istoric",
+      items: progress,
+    });
+  }
 
   return sections;
 }
@@ -98,6 +138,20 @@ export function buildCustomOrderPreviewImages(order) {
   const images = [
     { id: "constructor", label: "Preview 2D", url: normalizeText(order?.imagine) },
     { id: "ai", label: "Preview AI", url: normalizeText(options.aiPreviewUrl) },
+    ...(Array.isArray(options.aiPreviewVariants)
+      ? options.aiPreviewVariants.map((item, index) => ({
+          id: `ai-variant-${index}`,
+          label: `Varianta AI ${index + 1}`,
+          url: normalizeText(item?.imageUrl || item?.url),
+        }))
+      : []),
+    ...(Array.isArray(options.inspirationImages)
+      ? options.inspirationImages.map((item, index) => ({
+          id: `reference-${index}`,
+          label: `Inspiratie ${index + 1}`,
+          url: normalizeText(item?.url || item?.previewUrl),
+        }))
+      : []),
   ].filter((item) => item.url);
 
   return images.filter(

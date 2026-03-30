@@ -6,6 +6,12 @@ import { useAuth } from "../context/AuthContext";
 import api from "/src/lib/api.js";
 import { badges, buttons, cards, containers, inputs } from "../lib/tailwindComponents.js";
 import {
+  buildOrderChatLink,
+  buildOrderTimeline,
+  canReviewDeliveredOrder,
+  getOrderStatusTone,
+} from "../lib/orderExperience";
+import {
   fetchClientOrders,
   fetchMyNotifications,
   fetchPhotoNotifications,
@@ -80,9 +86,25 @@ function Panel({ title, description = "", action = null, children }) {
 }
 
 function orderBadgeClass(order) {
+  const tone = getOrderStatusTone(order);
   if (order?.paymentStatus === "paid" || order?.statusPlata === "paid") return badges.success;
-  if (String(order?.status || "").includes("astept")) return badges.warning;
+  if (tone === "success") return badges.success;
+  if (tone === "error") return badges.error;
+  if (tone === "warning") return badges.warning;
   return badges.info;
+}
+
+function timelineStepClass(state) {
+  if (state === "done") {
+    return "border-emerald-200 bg-emerald-50 text-emerald-700";
+  }
+  if (state === "current") {
+    return "border-rose-200 bg-rose-50 text-pink-700";
+  }
+  if (state === "blocked") {
+    return "border-red-200 bg-red-50 text-red-700";
+  }
+  return "border-stone-200 bg-stone-50 text-stone-500";
 }
 
 function getOrderDisplayTotal(order) {
@@ -357,6 +379,9 @@ export default function ProfilClient() {
               </p>
             </div>
             <div className="flex flex-wrap gap-3">
+              <Link className={buttons.outline} to="/personalizari">
+                Designurile mele
+              </Link>
               {reviewPrestatorId ? (
                 <Link className={buttons.outline} to={`/recenzii/prestator/${reviewPrestatorId}`}>
                   Recenzie pentru patiser
@@ -524,7 +549,11 @@ export default function ProfilClient() {
                 <div className="rounded-2xl border border-dashed border-rose-200 px-4 py-5 text-sm text-gray-500">Nu ai comenzi inca.</div>
               ) : (
                 <div className="space-y-4">
-                  {orders.map((order) => (
+                  {orders.map((order) => {
+                    const timeline = buildOrderTimeline(order);
+                    const canReview = canReviewDeliveredOrder(order);
+
+                    return (
                     <article key={order._id} className="rounded-[26px] border border-rose-100 bg-white px-5 py-5 shadow-soft space-y-4">
                       <div className="flex flex-wrap items-start justify-between gap-3">
                         <div>
@@ -554,6 +583,31 @@ export default function ProfilClient() {
                       <div className="grid gap-3 rounded-[24px] border border-rose-100 bg-[rgba(255,249,242,0.88)] p-4 md:grid-cols-2">
                         <div><div className="text-sm text-gray-500">Metoda predare</div><div className="font-semibold text-gray-900">{order.metodaLivrare || "ridicare"}</div></div>
                         <div><div className="text-sm text-gray-500">Total</div><div className="font-semibold text-gray-900">{getOrderDisplayTotal(order) > 0 ? money(getOrderDisplayTotal(order)) : "Se confirma dupa analiza"}</div></div>
+                        {order.deliveryWindow ? (
+                          <div><div className="text-sm text-gray-500">Fereastra livrare</div><div className="font-semibold text-gray-900">{order.deliveryWindow}</div></div>
+                        ) : null}
+                        {order.deliveryInstructions ? (
+                          <div><div className="text-sm text-gray-500">Instructiuni</div><div className="font-semibold text-gray-900">{order.deliveryInstructions}</div></div>
+                        ) : null}
+                      </div>
+
+                      <div className="rounded-[24px] border border-rose-100 bg-white/80 p-4 shadow-soft">
+                        <div className="text-xs font-semibold uppercase tracking-[0.16em] text-pink-500">
+                          Status live
+                        </div>
+                        <div className="mt-3 grid gap-3 md:grid-cols-5">
+                          {timeline.map((step) => (
+                            <div
+                              key={`${order._id}-${step.id}`}
+                              className={`rounded-[18px] border px-3 py-3 text-sm ${timelineStepClass(step.state)}`}
+                            >
+                              <div className="font-semibold">{step.label}</div>
+                              {step.note ? (
+                                <div className="mt-2 text-xs leading-5 opacity-80">{step.note}</div>
+                              ) : null}
+                            </div>
+                          ))}
+                        </div>
                       </div>
                       <div className="space-y-2">
                         {(order.items || []).map((item, index) => (
@@ -563,9 +617,29 @@ export default function ProfilClient() {
                           </div>
                         ))}
                       </div>
-                      <div className="border-t border-rose-100 pt-4"><RecenzieComanda comandaId={order._id} /></div>
+                      <div className="flex flex-wrap gap-3 border-t border-rose-100 pt-4">
+                        <Link className={buttons.outline} to={buildOrderChatLink(order)}>
+                          Discutie pe comanda
+                        </Link>
+                        {order.paymentStatus !== "paid" && order.statusPlata !== "paid" && getOrderDisplayTotal(order) > 0 ? (
+                          <Link to={`/plata?comandaId=${encodeURIComponent(order._id)}`} className={buttons.secondary}>
+                            Continua plata
+                          </Link>
+                        ) : null}
+                      </div>
+
+                      <div className="border-t border-rose-100 pt-4">
+                        {canReview ? (
+                          <RecenzieComanda comandaId={order._id} />
+                        ) : (
+                          <div className="rounded-[20px] border border-dashed border-rose-200 bg-[rgba(255,249,242,0.68)] px-4 py-4 text-sm text-gray-600">
+                            Recenzia se activeaza dupa ce comanda este livrata sau ridicata.
+                          </div>
+                        )}
+                      </div>
                     </article>
-                  ))}
+                    );
+                  })}
                 </div>
               )}
             </Panel>

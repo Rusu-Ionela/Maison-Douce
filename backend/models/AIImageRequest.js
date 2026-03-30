@@ -7,6 +7,8 @@ const AIImageRequestSchema = new mongoose.Schema(
     prompt: { type: String, required: true, trim: true },
     imageUrl: { type: String, default: "" },
     source: { type: String, default: "local" },
+    variantIndex: { type: Number, default: 0 },
+    referenceCount: { type: Number, default: 0 },
     status: {
       type: String,
       enum: ["success", "fallback", "error"],

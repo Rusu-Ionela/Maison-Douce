@@ -2,7 +2,7 @@ const express = require("express");
 const router = express.Router();
 const AIImageRequest = require("../models/AIImageRequest");
 const { authOptional, authRequired } = require("../middleware/auth");
-const { generateCakeImage } = require("../services/aiImages");
+const { generateCakeImage, generateCakeImages } = require("../services/aiImages");
 const { resolveProviderForRequest } = require("../utils/providerDirectory");
 const { isStaffRole } = require("../utils/roles");
 const { createLogger, serializeError } = require("../utils/log");
@@ -39,10 +39,28 @@ async function persistHistoryEntry(payload, requestId) {
 
 router.post("/generate-cake", authOptional, async (req, res) => {
   const prompt = String(req.body?.prompt || "").trim() || "tort personalizat";
+  const requestedVariantCount = Math.max(
+    1,
+    Math.min(3, Number.parseInt(req.body?.variants, 10) || 1)
+  );
+  const variantPrompts = Array.isArray(req.body?.variantPrompts)
+    ? req.body.variantPrompts
+        .map((item) => String(item || "").trim())
+        .filter(Boolean)
+        .slice(0, 3)
+    : [];
+  const prompts = variantPrompts.length
+    ? variantPrompts
+    : Array.from({ length: requestedVariantCount }, (_, index) =>
+        index === 0 ? prompt : `${prompt} Varianta ${index + 1}, cu compozitie si styling usor diferite.`
+      );
   const userId = normalizeId(req.user?._id || req.user?.id);
   const prestatorId = normalizeId(
     await resolveProviderForRequest(req, req.body?.prestatorId || "")
   );
+  const referenceCount = Array.isArray(req.body?.referenceImages)
+    ? req.body.referenceImages.filter(Boolean).length
+    : 0;
 
   if (!prestatorId) {
     return res.status(400).json({
@@ -51,37 +69,63 @@ router.post("/generate-cake", authOptional, async (req, res) => {
   }
 
   try {
-    const result = await generateCakeImage(prompt, {
-      requestId: req.id,
-      userId,
-      prestatorId,
-    });
-    const status = result.fallback ? "fallback" : "success";
-    const { historyEntry, historyError } = userId
-      ? await persistHistoryEntry(
-          {
+    const items =
+      prompts.length > 1
+        ? await generateCakeImages(prompts, {
+            requestId: req.id,
             userId,
             prestatorId,
-            prompt,
-            imageUrl: result.imageUrl,
-            source: result.source,
-            status,
-            errorMessage: result.providerError?.message || "",
-          },
-          req.id
+          })
+        : [
+            {
+              ...(await generateCakeImage(prompt, {
+                requestId: req.id,
+                userId,
+                prestatorId,
+              })),
+              prompt,
+            },
+          ];
+    const primaryItem = items[0] || null;
+
+    let historyEntries = [];
+    let historyError = null;
+    if (userId && items.length > 0) {
+      const persisted = await Promise.all(
+        items.map((item, index) =>
+          persistHistoryEntry(
+            {
+              userId,
+              prestatorId,
+              prompt: item.prompt || prompt,
+              imageUrl: item.imageUrl,
+              source: item.source,
+              variantIndex: index,
+              referenceCount,
+              status: item.fallback ? "fallback" : "success",
+              errorMessage: item.providerError?.message || "",
+            },
+            req.id
+          )
         )
-      : { historyEntry: null, historyError: null };
+      );
+
+      historyEntries = persisted.map((item) => item.historyEntry).filter(Boolean);
+      historyError =
+        persisted.find((item) => item.historyError)?.historyError || null;
+    }
 
     return res.json({
       success: true,
-      imageUrl: result.imageUrl,
-      source: result.source,
-      mode: result.mode,
-      fallback: Boolean(result.fallback),
-      provider: result.provider || null,
-      providerRequestId: result.providerRequestId || null,
-      providerError: result.providerError || null,
-      historyEntry,
+      imageUrl: primaryItem?.imageUrl || "",
+      source: primaryItem?.source || "ai",
+      mode: primaryItem?.mode || "remote",
+      fallback: Boolean(primaryItem?.fallback),
+      provider: primaryItem?.provider || null,
+      providerRequestId: primaryItem?.providerRequestId || null,
+      providerError: primaryItem?.providerError || null,
+      items,
+      historyEntries,
       historyError,
     });
   } catch (error) {
@@ -102,6 +146,8 @@ router.post("/generate-cake", authOptional, async (req, res) => {
             userId,
             prestatorId,
             prompt,
+            variantIndex: 0,
+            referenceCount,
             status: "error",
             errorMessage,
           },

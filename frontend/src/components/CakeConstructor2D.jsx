@@ -18,8 +18,11 @@ import {
   DEFAULT_CAKE_OPTIONS,
   DEFAULT_CAKE_STRUCTURE,
   PREVIEW_MODES,
+  buildCakeAiVariantPrompts,
+  buildCakeInspirationSummary,
   buildCakeAiPrompt,
   buildCakePreviewModel,
+  estimateCakeOrderMetrics,
   findCakeOption,
   findCakeStructureOption,
   getCakeDesignSummary,
@@ -160,6 +163,7 @@ export default function CakeConstructor2D({
   const previewRef = useRef(null);
   const hintTimerRef = useRef(null);
   const manualModeLockRef = useRef(0);
+  const inspirationUrlRegistryRef = useRef(new Set());
   const { user, isAuthenticated } = useAuth() || {};
   const providerState = useProviderDirectory({ user });
 
@@ -184,7 +188,10 @@ export default function CakeConstructor2D({
   const [mesaj, setMesaj] = useState("");
   const [font, setFont] = useState(DEFAULT_CAKE_OPTIONS.font);
   const [aiDecorRequest, setAiDecorRequest] = useState("");
+  const [inspirationItems, setInspirationItems] = useState([]);
   const [aiPreview, setAiPreview] = useState(null);
+  const [aiPreviewVariants, setAiPreviewVariants] = useState([]);
+  const [activeAiPreviewIndex, setActiveAiPreviewIndex] = useState(0);
   const [productPrefill, setProductPrefill] = useState(null);
   const catalogPrefill = useMemo(() => {
     if (propDesignId) return null;
@@ -208,10 +215,19 @@ export default function CakeConstructor2D({
   }, []);
 
   useEffect(() => {
+    const inspirationUrls = inspirationUrlRegistryRef.current;
     return () => {
       if (hintTimerRef.current) {
         window.clearTimeout(hintTimerRef.current);
       }
+      inspirationUrls.forEach((url) => {
+        try {
+          URL.revokeObjectURL(url);
+        } catch {
+          // ignore local preview cleanup issues
+        }
+      });
+      inspirationUrls.clear();
     };
   }, []);
 
@@ -242,14 +258,48 @@ export default function CakeConstructor2D({
           setCuloare(data.options.culoare || DEFAULT_CAKE_OPTIONS.culoare);
           setFont(data.options.font || DEFAULT_CAKE_OPTIONS.font);
           setAiDecorRequest(data.options.aiDecorRequest || "");
-          if (data.options.aiPreviewUrl) {
-            setAiPreview({
+          const savedInspirationItems = Array.isArray(data.options.inspirationImages)
+            ? data.options.inspirationImages
+                .map((item, index) => ({
+                  id: String(item?.id || item?.url || `saved-${index}`),
+                  label: String(item?.label || item?.note || "").trim(),
+                  name: String(item?.name || "").trim(),
+                  url: String(item?.url || "").trim(),
+                  previewUrl: String(item?.url || "").trim(),
+                  file: null,
+                }))
+                .filter((item) => item.url || item.label)
+            : [];
+          setInspirationItems(savedInspirationItems);
+          const savedVariants = Array.isArray(data.options.aiPreviewVariants)
+            ? data.options.aiPreviewVariants
+                .map((item, index) => ({
+                  imageUrl: item?.imageUrl || item?.url || "",
+                  prompt: item?.prompt || data.options.aiPrompt || "",
+                  source: item?.source || data.options.aiSource || "saved",
+                  fallback: item?.fallback === true,
+                  label: item?.label || `Varianta ${index + 1}`,
+                }))
+                .filter((item) => item.imageUrl)
+            : [];
+          if (savedVariants.length) {
+            setAiPreviewVariants(savedVariants);
+            setActiveAiPreviewIndex(0);
+            setAiPreview(savedVariants[0]);
+          } else if (data.options.aiPreviewUrl) {
+            const legacyPreview = {
               imageUrl: data.options.aiPreviewUrl,
               prompt: data.options.aiPrompt || "",
               source: data.options.aiSource || "saved",
               fallback: data.options.aiFallback === true,
-            });
+              label: "Varianta 1",
+            };
+            setAiPreviewVariants([legacyPreview]);
+            setActiveAiPreviewIndex(0);
+            setAiPreview(legacyPreview);
           } else {
+            setAiPreviewVariants([]);
+            setActiveAiPreviewIndex(0);
             setAiPreview(null);
           }
         }
@@ -417,8 +467,33 @@ export default function CakeConstructor2D({
         },
         message: mesaj,
         customRequest: aiDecorRequest,
+        inspirationItems,
       }),
-    [aiDecorRequest, heightProfile, mesaj, selectedOptions, tiers]
+    [aiDecorRequest, heightProfile, inspirationItems, mesaj, selectedOptions, tiers]
+  );
+
+  const aiVariantPrompts = useMemo(
+    () =>
+      buildCakeAiVariantPrompts({
+        selectedOptions,
+        structureOptions: {
+          tiers,
+          heightProfile,
+        },
+        message: mesaj,
+        customRequest: aiDecorRequest,
+        inspirationItems,
+      }),
+    [aiDecorRequest, heightProfile, inspirationItems, mesaj, selectedOptions, tiers]
+  );
+
+  const estimateMetrics = useMemo(
+    () =>
+      estimateCakeOrderMetrics({
+        tiers,
+        heightProfile,
+      }),
+    [heightProfile, tiers]
   );
 
   const total = useMemo(() => {
@@ -504,11 +579,16 @@ export default function CakeConstructor2D({
       [
         selectedStructure.tiers?.label,
         selectedStructure.heightProfile?.label,
-        selectedStructure.tiers?.servings,
+        estimateMetrics.servingsLabel,
       ]
         .filter(Boolean)
         .join(" • "),
-    [selectedStructure]
+    [estimateMetrics.servingsLabel, selectedStructure]
+  );
+
+  const inspirationSummary = useMemo(
+    () => buildCakeInspirationSummary(inspirationItems),
+    [inspirationItems]
   );
 
   const activeModeMeta = PREVIEW_MODES.find((mode) => mode.id === previewMode) || PREVIEW_MODES[0];
@@ -594,6 +674,94 @@ export default function CakeConstructor2D({
     setAiStatus({ type: "", text: "" });
   };
 
+  const handleInspirationUpload = (event) => {
+    const files = Array.from(event.target.files || []).slice(0, 3);
+    if (!files.length) return;
+
+    setInspirationItems((current) => {
+      const availableSlots = Math.max(0, 3 - current.length);
+      const nextItems = files.slice(0, availableSlots).map((file, index) => {
+        const previewUrl = URL.createObjectURL(file);
+        inspirationUrlRegistryRef.current.add(previewUrl);
+        return {
+          id: `inspiration-${Date.now()}-${index}`,
+          file,
+          name: file.name,
+          label: "",
+          url: "",
+          previewUrl,
+        };
+      });
+      return [...current, ...nextItems];
+    });
+
+    event.target.value = "";
+  };
+
+  const updateInspirationItem = (itemId, nextLabel) => {
+    setInspirationItems((current) =>
+      current.map((item) =>
+        item.id === itemId ? { ...item, label: nextLabel } : item
+      )
+    );
+  };
+
+  const removeInspirationItem = (itemId) => {
+    setInspirationItems((current) =>
+      current.filter((item) => {
+        if (item.id !== itemId) return true;
+        if (item.previewUrl && inspirationUrlRegistryRef.current.has(item.previewUrl)) {
+          try {
+            URL.revokeObjectURL(item.previewUrl);
+          } catch {
+            // ignore local preview cleanup issues
+          }
+          inspirationUrlRegistryRef.current.delete(item.previewUrl);
+        }
+        return false;
+      })
+    );
+  };
+
+  const uploadInspirationImages = async () => {
+    if (!inspirationItems.length) return [];
+
+    const uploadedItems = [];
+    for (const item of inspirationItems) {
+      if (item.url) {
+        uploadedItems.push({
+          id: item.id,
+          url: item.url,
+          name: item.name || "",
+          label: item.label || "",
+        });
+        continue;
+      }
+
+      if (!item.file) continue;
+
+      const formData = new FormData();
+      formData.append("file", item.file);
+      const response = await api.post("/upload", formData);
+      uploadedItems.push({
+        id: item.id,
+        url: response?.data?.url || "",
+        name: item.name || item.file.name || "",
+        label: item.label || "",
+      });
+    }
+
+    setInspirationItems(
+      uploadedItems.map((item) => ({
+        ...item,
+        file: null,
+        previewUrl: item.url,
+      }))
+    );
+
+    return uploadedItems.filter((item) => item.url);
+  };
+
   const generateAiPreview = async () => {
     if (!activeProviderId) {
       setAiStatus({
@@ -611,20 +779,38 @@ export default function CakeConstructor2D({
     try {
       const response = await api.post("/ai/generate-cake", {
         prompt: aiPromptPreview,
+        variants: 3,
+        variantPrompts: aiVariantPrompts,
         prestatorId: activeProviderId,
+        referenceImages: inspirationItems.map((item) => item.label || item.name || item.url),
       });
-      const nextPreview = {
-        imageUrl: response?.data?.imageUrl || "",
-        prompt: aiPromptPreview,
-        source: response?.data?.source || response?.data?.mode || "ai",
-        fallback: Boolean(response?.data?.fallback),
-      };
+      const nextVariants = Array.isArray(response?.data?.items)
+        ? response.data.items
+            .map((item, index) => ({
+              imageUrl: item?.imageUrl || "",
+              prompt: item?.prompt || aiVariantPrompts[index] || aiPromptPreview,
+              source: item?.source || response?.data?.mode || "ai",
+              fallback: Boolean(item?.fallback),
+              label: `Varianta ${index + 1}`,
+            }))
+            .filter((item) => item.imageUrl)
+        : [];
+      const nextPreview =
+        nextVariants[0] || {
+          imageUrl: response?.data?.imageUrl || "",
+          prompt: aiPromptPreview,
+          source: response?.data?.source || response?.data?.mode || "ai",
+          fallback: Boolean(response?.data?.fallback),
+          label: "Varianta 1",
+        };
+      setAiPreviewVariants(nextVariants.length ? nextVariants : [nextPreview].filter((item) => item.imageUrl));
+      setActiveAiPreviewIndex(0);
       setAiPreview(nextPreview);
       setAiStatus({
         type: nextPreview.fallback ? "info" : "success",
         text: nextPreview.fallback
           ? "A fost generat un preview local. Adauga cheia AI pentru imagini complet fotorealiste."
-          : `Preview-ul realist a fost generat pentru ${activeProviderName}.`,
+          : `Au fost generate ${nextVariants.length || 1} variante realiste pentru ${activeProviderName}.`,
       });
     } catch (error) {
       setAiStatus({
@@ -657,6 +843,15 @@ export default function CakeConstructor2D({
   };
 
   const saveDesign = async (nextStatus = "draft") => {
+    if (!user?._id) {
+      setStatus({
+        type: "warning",
+        text: "Autentifica-te pentru a salva designul in cont.",
+      });
+      return { id: null, inspirationImages: [] };
+    }
+
+    const uploadedInspirationImages = await uploadInspirationImages();
     const imageData = exportImage();
     const payload = {
       clientId: user?._id || undefined,
@@ -680,6 +875,16 @@ export default function CakeConstructor2D({
         aiPreviewUrl: aiPreview?.imageUrl || "",
         aiSource: aiPreview?.source || "",
         aiFallback: aiPreview?.fallback === true,
+        aiPreviewVariants: aiPreviewVariants.map((item, index) => ({
+          imageUrl: item?.imageUrl || "",
+          prompt: item?.prompt || aiVariantPrompts[index] || aiPromptPreview,
+          source: item?.source || "",
+          fallback: item?.fallback === true,
+          label: item?.label || `Varianta ${index + 1}`,
+        })),
+        inspirationImages: uploadedInspirationImages,
+        estimatedServings: estimateMetrics.servingsLabel,
+        estimatedWeightKg: estimateMetrics.weightLabel,
       },
       pretEstimat: total,
       timpPreparareOre: timpOre,
@@ -690,7 +895,7 @@ export default function CakeConstructor2D({
     if (designId) {
       await api.put(`/personalizare/${designId}`, payload);
       setStatus({ type: "success", text: "Designul a fost actualizat." });
-      return designId;
+      return { id: designId, inspirationImages: uploadedInspirationImages };
     }
 
     const response = await api.post("/personalizare", payload);
@@ -699,7 +904,7 @@ export default function CakeConstructor2D({
       setDesignId(nextId);
     }
     setStatus({ type: "success", text: "Designul a fost salvat." });
-    return nextId;
+    return { id: nextId, inspirationImages: uploadedInspirationImages };
   };
 
   const handleSaveDraft = async () => {
@@ -712,8 +917,29 @@ export default function CakeConstructor2D({
     }
   };
 
-  const addToCart = () => {
-    setStatus({
+  const addToCart = async () => {
+    if (!user?._id) {
+      setStatus({
+        type: "warning",
+        text: "Autentifica-te pentru a salva designul in contul tau.",
+      });
+      return;
+    }
+
+    try {
+      await runAction("save", async () => {
+        const result = await saveDesign("draft");
+        if (result?.id) {
+          window.location.assign("/personalizari");
+        }
+      });
+    } catch {
+      setStatus({
+        type: "error",
+        text: "Nu am putut salva designul in cont.",
+      });
+    }
+    if (busyAction === "__legacy__") setStatus({
       type: "warning",
       text: "Designurile personalizate nu intră direct în checkout-ul public. Salvează draftul sau trimite cererea către patiser pentru confirmarea finală a prețului.",
     });
@@ -744,8 +970,8 @@ export default function CakeConstructor2D({
 
     try {
       await runAction("send", async () => {
-        const nextId = await saveDesign("trimis");
-        if (!nextId) return;
+        const result = await saveDesign("trimis");
+        if (!result?.id) return;
 
         await api.post("/comenzi-personalizate", {
           clientId: user._id,
@@ -753,7 +979,7 @@ export default function CakeConstructor2D({
           numeClient: user?.nume || user?.name || "Client",
           preferinte: mesaj || "Comandă personalizată",
           imagine: exportImage(),
-          designId: nextId,
+          designId: result.id,
           options: {
             tiers,
             heightProfile,
@@ -767,6 +993,23 @@ export default function CakeConstructor2D({
             aiDecorRequest,
             aiPrompt: aiPromptPreview,
             aiPreviewUrl: aiPreview?.imageUrl || "",
+            aiPreviewVariants: aiPreviewVariants.map((item, index) => ({
+              imageUrl: item?.imageUrl || "",
+              prompt: item?.prompt || aiVariantPrompts[index] || aiPromptPreview,
+              source: item?.source || "",
+              fallback: item?.fallback === true,
+              label: item?.label || `Varianta ${index + 1}`,
+            })),
+            inspirationImages: (result.inspirationImages || inspirationItems)
+              .map((item) => ({
+                id: item.id,
+                url: item.url || item.previewUrl || "",
+                name: item.name || "",
+                label: item.label || "",
+              }))
+              .filter((item) => item.url),
+            estimatedServings: estimateMetrics.servingsLabel,
+            estimatedWeightKg: estimateMetrics.weightLabel,
           },
           pretEstimat: total,
           timpPreparareOre: timpOre,
@@ -1020,6 +1263,66 @@ export default function CakeConstructor2D({
             }
           />
 
+          <div className="rounded-[22px] border border-rose-100 bg-white/85 px-4 py-4 shadow-soft">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <div className="text-xs font-semibold uppercase tracking-[0.16em] text-pink-500">
+                  Poze de inspiratie
+                </div>
+                <div className="mt-1 text-sm text-gray-600">
+                  Incarca pana la 3 referinte si descrie ce detalii vrei sa preluam.
+                </div>
+              </div>
+              <label className={buttons.outline}>
+                Incarca imagini
+                <input
+                  type="file"
+                  accept="image/*"
+                  multiple
+                  className="hidden"
+                  onChange={handleInspirationUpload}
+                />
+              </label>
+            </div>
+
+            {inspirationItems.length > 0 ? (
+              <div className="mt-4 grid gap-3">
+                {inspirationItems.map((item, index) => (
+                  <div
+                    key={item.id}
+                    className="grid gap-3 rounded-[20px] border border-rose-100 bg-[rgba(255,249,242,0.88)] p-3 md:grid-cols-[96px,1fr,auto]"
+                  >
+                    <img
+                      src={item.previewUrl || item.url}
+                      alt={item.label || item.name || `Inspiratie ${index + 1}`}
+                      className="h-24 w-24 rounded-2xl object-cover"
+                    />
+                    <label className="text-sm font-semibold text-gray-700">
+                      Ce pastrezi din aceasta poza?
+                      <input
+                        value={item.label || ""}
+                        onChange={(event) => updateInspirationItem(item.id, event.target.value)}
+                        placeholder="Ex: florile albe, silueta inalta, perlele mici..."
+                        className={`mt-2 ${inputs.default}`}
+                      />
+                    </label>
+                    <button
+                      type="button"
+                      className={buttons.outline}
+                      onClick={() => removeInspirationItem(item.id)}
+                    >
+                      Sterge
+                    </button>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="mt-4 rounded-[20px] border border-dashed border-rose-200 bg-[rgba(255,249,242,0.68)] px-4 py-4 text-sm text-[#6d625a]">
+                Poti genera tortul doar din text, dar referintele vizuale ajuta mult pentru decor.
+              </div>
+            )}
+          </div>
+
           <label className="block text-sm font-semibold text-gray-700">
             Ce vrei sa ceri liber pentru decor?
             <textarea
@@ -1035,6 +1338,11 @@ export default function CakeConstructor2D({
               Prompt compus automat
             </div>
             <div className="mt-2 text-sm leading-6 text-[#5c524a]">{aiPromptPreview}</div>
+            {inspirationSummary ? (
+              <div className="mt-3 rounded-[18px] border border-rose-100 bg-white/80 px-3 py-3 text-sm text-[#5c524a]">
+                {inspirationSummary}
+              </div>
+            ) : null}
           </div>
 
           {aiStatus.text ? <StatusBanner type={aiStatus.type || "info"} message={aiStatus.text} /> : null}
@@ -1057,8 +1365,36 @@ export default function CakeConstructor2D({
             </button>
           </div>
 
-          {aiPreview?.imageUrl ? (
-            <div className="overflow-hidden rounded-[28px] border border-rose-100 bg-white shadow-soft">
+          {aiPreviewVariants.length > 0 ? (
+            <div className="space-y-4">
+              <div className="grid gap-3 md:grid-cols-3">
+                {aiPreviewVariants.map((item, index) => (
+                  <button
+                    key={`${item.imageUrl}-${index}`}
+                    type="button"
+                    onClick={() => {
+                      setActiveAiPreviewIndex(index);
+                      setAiPreview(item);
+                    }}
+                    className={`overflow-hidden rounded-[24px] border bg-white text-left shadow-soft transition ${
+                      activeAiPreviewIndex === index
+                        ? "border-charcoal ring-2 ring-sage/30"
+                        : "border-rose-100 hover:-translate-y-0.5 hover:border-rose-300"
+                    }`}
+                  >
+                    <img
+                      src={item.imageUrl}
+                      alt={`${item.label || `Varianta ${index + 1}`} pentru ${designSummary}`}
+                      className="h-40 w-full object-cover"
+                    />
+                    <div className="px-3 py-3 text-sm font-semibold text-gray-900">
+                      {item.label || `Varianta ${index + 1}`}
+                    </div>
+                  </button>
+                ))}
+              </div>
+
+              <div className="overflow-hidden rounded-[28px] border border-rose-100 bg-white shadow-soft">
               <img
                 src={aiPreview.imageUrl}
                 alt={`Preview realist pentru ${designSummary}`}
@@ -1067,6 +1403,7 @@ export default function CakeConstructor2D({
               <div className="border-t border-rose-100 px-4 py-3 text-sm text-[#5f564d]">
                 Sursa: {aiPreview.source || "AI"}{aiPreview.fallback ? " • fallback local" : ""}
               </div>
+            </div>
             </div>
           ) : (
             <div className="rounded-[24px] border border-dashed border-rose-200 bg-white/80 px-4 py-6 text-sm leading-6 text-[#6d625a]">
@@ -1255,6 +1592,8 @@ export default function CakeConstructor2D({
               <div className="border-t border-rose-100 pt-3">
                 <SummaryRow label="Total estimat" value={`${total} MDL`} emphasize />
               </div>
+              <SummaryRow label="Portii estimate" value={estimateMetrics.servingsLabel} />
+              <SummaryRow label="Greutate estimata" value={estimateMetrics.weightLabel} />
               <SummaryRow label="Timp estimat" value={`${timpOre} ore`} />
               <SummaryRow
                 label="Mod export curent"
@@ -1309,6 +1648,12 @@ export default function CakeConstructor2D({
           <div className="rounded-[24px] border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
             Comenzile personalizate se confirmă manual. Designul se poate salva, exporta și trimite spre validare înainte de prețul final.
           </div>
+
+          {designId ? (
+            <div className="rounded-[24px] border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
+              Draftul este deja in contul tau si poate fi reluat din pagina Designurile mele.
+            </div>
+          ) : null}
 
           {loading ? (
             <div className="text-sm text-gray-500">Se încarcă designul salvat...</div>

@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { useCart } from "../context/CartContext";
 import { useAuth } from "../context/AuthContext";
 import { OrdersAPI } from "../api/orders";
+import { ProductsAPI } from "../api/products";
 import { getAvailability } from "../api/calendar";
 import SlotPicker from "../components/SlotPicker";
 import StatusBanner from "../components/StatusBanner";
@@ -17,7 +18,7 @@ function buildStatus(type, message, title = "") {
 }
 
 export default function Cart() {
-  const { items, updateQty, remove, clear, subtotal } = useCart();
+  const { items, add, updateQty, remove, clear, subtotal } = useCart();
   const { user } = useAuth() || {};
   const nav = useNavigate();
 
@@ -36,6 +37,8 @@ export default function Cart() {
   const [attachments, setAttachments] = useState([]);
   const [submitting, setSubmitting] = useState(false);
   const [checkoutStatus, setCheckoutStatus] = useState(buildStatus("", "", ""));
+  const [upsells, setUpsells] = useState([]);
+  const [loadingUpsells, setLoadingUpsells] = useState(false);
 
   const LIVRARE_FEE = 100;
   const providerState = useProviderDirectory({ user });
@@ -95,6 +98,12 @@ export default function Cart() {
   }, [items]);
 
   const total = subtotal + (metodaLivrare === "livrare" ? LIVRARE_FEE : 0);
+  const suggestedUpsells = useMemo(() => {
+    const existingIds = new Set(items.map((item) => String(item.id || "")));
+    return upsells
+      .filter((item) => !existingIds.has(String(item?._id || "")))
+      .slice(0, 3);
+  }, [items, upsells]);
 
   useEffect(() => {
     if (!date || !prestatorId) {
@@ -107,6 +116,42 @@ export default function Cart() {
       .catch(() => setSlots(null))
       .finally(() => setLoadingSlots(false));
   }, [date, prestatorId]);
+
+  useEffect(() => {
+    if (!prestatorId) {
+      setUpsells([]);
+      return;
+    }
+
+    let cancelled = false;
+    setLoadingUpsells(true);
+
+    ProductsAPI.list({
+      categorie: "prajituri",
+      activ: true,
+      limit: 6,
+      prestatorId,
+    })
+      .then((data) => {
+        if (!cancelled) {
+          setUpsells(Array.isArray(data?.items) ? data.items : []);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setUpsells([]);
+        }
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setLoadingUpsells(false);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [prestatorId]);
 
   const minDate = useMemo(() => {
     const now = new Date();
@@ -395,6 +440,73 @@ export default function Cart() {
                   </button>
                 </div>
               ))}
+
+              <div className={cards.default}>
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div>
+                    <div className="text-sm font-semibold uppercase tracking-[0.16em] text-pink-500">
+                      Extra potrivite
+                    </div>
+                    <div className="mt-2 text-lg font-semibold text-gray-900">
+                      Ce mai merge langa comanda ta
+                    </div>
+                    <div className="mt-1 text-sm text-gray-600">
+                      Sugestiile vin din catalogul prestatorului selectat si pot fi adaugate direct in cos.
+                    </div>
+                  </div>
+                  {loadingUpsells ? (
+                    <div className="text-sm text-gray-500">Se incarca...</div>
+                  ) : null}
+                </div>
+
+                {suggestedUpsells.length > 0 ? (
+                  <div className="mt-4 grid gap-3 md:grid-cols-3">
+                    {suggestedUpsells.map((item) => (
+                      <article
+                        key={item._id}
+                        className="rounded-[22px] border border-rose-100 bg-white px-4 py-4 shadow-soft"
+                      >
+                        <div className="overflow-hidden rounded-2xl bg-[rgba(255,249,242,0.88)]">
+                          <img
+                            src={item.imagine || "/images/placeholder.svg"}
+                            alt={item.nume || "Extra"}
+                            className="h-36 w-full object-cover"
+                          />
+                        </div>
+                        <div className="mt-3 font-semibold text-gray-900">{item.nume}</div>
+                        <div className="mt-1 text-sm text-gray-500">
+                          {item.descriere || "Extra potrivit pentru tort sau candy bar."}
+                        </div>
+                        <div className="mt-3 flex items-center justify-between">
+                          <div className="font-semibold text-pink-600">
+                            {Number(item.pret || 0).toFixed(2)} MDL
+                          </div>
+                          <button
+                            type="button"
+                            className={buttons.outline}
+                            onClick={() =>
+                              add({
+                                id: item._id,
+                                name: item.nume,
+                                price: item.pret,
+                                image: item.imagine,
+                                qty: 1,
+                                prepHours: item.timpPreparareOre || 0,
+                              })
+                            }
+                          >
+                            Adauga
+                          </button>
+                        </div>
+                      </article>
+                    ))}
+                  </div>
+                ) : !loadingUpsells ? (
+                  <div className="mt-4 rounded-[20px] border border-dashed border-rose-200 bg-white/80 px-4 py-4 text-sm text-gray-500">
+                    Nu exista extra-uri disponibile pentru prestatorul selectat sau le ai deja in cos.
+                  </div>
+                ) : null}
+              </div>
             </div>
 
             <aside className={cards.elevated}>

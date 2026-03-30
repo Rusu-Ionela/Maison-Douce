@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useLocation } from "react-router-dom";
 import api from "/src/lib/api.js";
 import { getSocket } from "/src/lib/socket.js";
 import ProviderSelector from "../components/ProviderSelector";
@@ -101,9 +102,17 @@ function MessageBubble({ message, currentUserId }) {
 
 export default function Chat() {
   const { user } = useAuth() || {};
+  const location = useLocation();
   const currentUserId = String(user?._id || user?.id || "");
   const currentUserName = user?.nume || user?.name || "Client";
   const providerState = useProviderDirectory({ user });
+  const query = useMemo(() => new URLSearchParams(location.search), [location.search]);
+  const chatContext = useMemo(() => String(query.get("context") || "").trim(), [query]);
+  const suggestedMessage = useMemo(() => String(query.get("message") || "").trim(), [query]);
+  const requestedProviderId = useMemo(
+    () => String(query.get("providerId") || "").trim(),
+    [query]
+  );
   const roomId = useMemo(
     () => buildConversationRoom(currentUserId, providerState.activeProviderId),
     [currentUserId, providerState.activeProviderId]
@@ -121,6 +130,18 @@ export default function Chat() {
   const [sending, setSending] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [notice, setNotice] = useState({ type: "", message: "" });
+
+  useEffect(() => {
+    if (requestedProviderId && requestedProviderId !== providerState.activeProviderId) {
+      providerState.setSelectedProviderId(requestedProviderId);
+    }
+  }, [providerState, requestedProviderId]);
+
+  useEffect(() => {
+    if (suggestedMessage && !text.trim()) {
+      setText(suggestedMessage);
+    }
+  }, [suggestedMessage, text]);
 
   useEffect(() => {
     scrollRef.current?.scrollTo({
@@ -454,6 +475,18 @@ export default function Chat() {
             Descrie exact ce ai nevoie. Poti adauga si un fisier de referinta.
           </p>
         </div>
+
+        {chatContext ? (
+          <div className="rounded-[22px] border border-rose-100 bg-[rgba(255,249,242,0.88)] px-4 py-4">
+            <div className="text-xs font-semibold uppercase tracking-[0.16em] text-pink-500">
+              Context activ
+            </div>
+            <div className="mt-2 text-sm font-semibold text-gray-900">{chatContext}</div>
+            <div className="mt-1 text-sm text-gray-600">
+              Mesajele trimise acum sunt pentru acest design sau aceasta comanda.
+            </div>
+          </div>
+        ) : null}
 
         <div className="grid gap-4 lg:grid-cols-[1fr,0.32fr]">
           <div className="space-y-3">

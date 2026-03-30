@@ -962,17 +962,26 @@ router.get("/client/:clientId", authRequired, async (req, res) => {
         ).sort({ createdAt: -1 });
         res.json(comenzi.map((c) => ({
             _id: c._id,
+            numeroComanda: c.numeroComanda || "",
             prestatorId: c.prestatorId || "",
             dataLivrare: c.dataLivrare,
             oraLivrare: c.oraLivrare,
             items: c.items,
             metodaLivrare: c.metodaLivrare,
             adresaLivrare: c.adresaLivrare,
+            deliveryInstructions: c.deliveryInstructions || "",
+            deliveryWindow: c.deliveryWindow || "",
+            attachments: Array.isArray(c.attachments) ? c.attachments : [],
             status: c.status,
+            statusHistory: Array.isArray(c.statusHistory) ? c.statusHistory : [],
             paymentStatus: c.paymentStatus || c.statusPlata || "",
             subtotal: c.subtotal,
             taxaLivrare: c.taxaLivrare,
             total: c.total,
+            totalFinal: c.totalFinal,
+            notesClient: c.notesClient || c.note || "",
+            customDetails: c.customDetails || null,
+            createdAt: c.createdAt || null,
         })));
     } catch (err) {
         console.error("Eroare la preluarea comenzilor clientului:", err);

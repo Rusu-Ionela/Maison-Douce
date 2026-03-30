@@ -5,7 +5,7 @@ import { buttons, cards, containers } from "../lib/tailwindComponents";
 const STEPS = [
   "Alegi mai intai cate etaje vrei si cat de inalt sa fie tortul.",
   "Stabilesti interiorul, apoi exteriorul, iar preview-ul comuta intre Sectiune si Exterior.",
-  "Poti descrie liber decorul dorit, iar AI-ul genereaza un preview mai apropiat de un tort real.",
+  "Poti incarca poze de inspiratie, descrii liber decorul dorit, iar AI-ul genereaza 3 variante mai apropiate de un tort real.",
 ];
 
 export default function Constructor() {
@@ -30,8 +30,8 @@ export default function Constructor() {
               </div>
               <p className="max-w-2xl text-base leading-8 text-[#655c53]">
                 Constructorul 2D este acum gandit in pasi mai simpli: pleci de la structura
-                tortului, alegi interiorul, rafinezi exteriorul si poti cere un preview AI
-                mai realist pentru decorul final.
+                tortului, alegi interiorul, rafinezi exteriorul, vezi estimari pentru
+                portii si greutate, apoi poti cere 3 preview-uri AI mai realiste pentru decorul final.
               </p>
               <div className="flex flex-wrap gap-3">
                 <Link to="/personalizeaza" className={buttons.outline}>

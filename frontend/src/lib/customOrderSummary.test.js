@@ -9,9 +9,12 @@ describe("customOrderSummary", () => {
   it("groups custom order options into readable sections", () => {
     const sections = buildCustomOrderSections({
       preferinte: "Vreau un tort elegant",
+      statusHistory: [{ status: "noua", note: "abia trimisa" }],
       options: {
         tiers: 2,
         heightProfile: "tall",
+        estimatedServings: "20-28 portii",
+        estimatedWeightKg: "3.1-4.4 kg",
         blat: "ciocolata",
         crema: "pistachio",
         umplutura: "oreo",
@@ -19,6 +22,7 @@ describe("customOrderSummary", () => {
         topping: "ciocolata",
         aiDecorRequest: "flori albe si accente aurii",
         aiPrompt: "prompt lung",
+        inspirationImages: [{ label: "dantela si perle", url: "/uploads/ref.png" }],
       },
     });
 
@@ -28,6 +32,8 @@ describe("customOrderSummary", () => {
       "Exterior",
       "Cerinta client",
       "AI decor",
+      "Imagini inspiratie",
+      "Istoric",
     ]);
     expect(sections[0].items[0]).toEqual({ label: "Etaje", value: "2" });
   });
@@ -37,10 +43,11 @@ describe("customOrderSummary", () => {
       imagine: "/uploads/design.png",
       options: {
         aiPreviewUrl: "/uploads/design.png",
+        inspirationImages: [{ url: "/uploads/design.png" }, { url: "/uploads/ref-2.png" }],
       },
     });
 
-    expect(images).toHaveLength(1);
+    expect(images).toHaveLength(2);
     expect(images[0].label).toBe("Preview 2D");
   });
 

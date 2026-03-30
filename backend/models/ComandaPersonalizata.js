@@ -12,8 +12,15 @@ const ComandaPersonalizataSchema = new mongoose.Schema({
     pretEstimat: { type: Number, default: 0 },
     timpPreparareOre: { type: Number, default: 0 },
     status: { type: String, default: "noua" },
+    statusHistory: [
+        {
+            status: { type: String, default: "" },
+            note: { type: String, default: "" },
+            at: { type: Date, default: Date.now },
+        },
+    ],
     data: { type: Date, default: Date.now }
-});
+}, { timestamps: true });
 
 ComandaPersonalizataSchema.index({ prestatorId: 1, data: -1 });
 
