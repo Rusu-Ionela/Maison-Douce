@@ -1,19 +1,17 @@
 const { normalizeUserRole } = require("../utils/roles");
 const AssistantKnowledgeEntry = require("../models/AssistantKnowledgeEntry");
 const AssistantQuestionGap = require("../models/AssistantQuestionGap");
+const {
+  APP_CONTACT,
+  ASSISTANT_STARTER_QUESTIONS,
+} = require("../config/publicSiteConfig");
 
-const CONTACT_EMAIL = "contact@maisondouce.md";
-const CONTACT_PHONE = "+373 600 000 00";
-const CONTACT_PHONE_URI = "tel:+37360000000";
-const CONTACT_EMAIL_URI = `mailto:${CONTACT_EMAIL}`;
+const CONTACT_EMAIL = APP_CONTACT.email;
+const CONTACT_PHONE = APP_CONTACT.phoneDisplay;
+const CONTACT_PHONE_URI = APP_CONTACT.phoneUri;
+const CONTACT_EMAIL_URI = APP_CONTACT.emailUri;
 
-const STARTER_QUESTIONS = [
-  "Nu gasesc constructorul 2D",
-  "Cum functioneaza livrarea?",
-  "Unde aplic voucherul?",
-  "Cum rezerv un slot?",
-  "Cum vorbesc cu patiserul?",
-];
+const STARTER_QUESTIONS = ASSISTANT_STARTER_QUESTIONS;
 
 const ROUTES = [
   { label: "Home", to: "/" },
@@ -297,7 +295,7 @@ const INTENTS = [
     ],
     buildResponse: () => ({
       text:
-        "Programul afisat in pagina de contact este Luni - Sambata, 09:00 - 19:00. Pentru discutii despre comenzi sau livrare poti folosi si formularul de contact.",
+        `Programul afisat in pagina de contact este ${APP_CONTACT.program}. Pentru discutii despre comenzi sau livrare poti folosi si formularul de contact.`,
       actions: [
         createRouteAction("Pagina contact", "/contact"),
         createHrefAction("Trimite email", CONTACT_EMAIL_URI),

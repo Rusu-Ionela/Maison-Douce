@@ -1,4 +1,5 @@
 import { Link, useLocation } from "react-router-dom";
+import { APP_CONTACT } from "../lib/publicSiteConfig";
 
 const FOOTER_COLUMNS = [
   {
@@ -49,13 +50,13 @@ export default function SiteFooter() {
           </p>
           <div className="flex flex-wrap gap-3 text-sm text-[#5f564d]">
             <span className="rounded-full border border-rose-200 bg-white/70 px-3 py-1.5">
-              contact@maisondouce.md
+              {APP_CONTACT.email}
             </span>
             <span className="rounded-full border border-rose-200 bg-white/70 px-3 py-1.5">
-              +373 600 000 00
+              {APP_CONTACT.phoneDisplay}
             </span>
             <span className="rounded-full border border-rose-200 bg-white/70 px-3 py-1.5">
-              Luni - Sambata, 09:00 - 19:00
+              {APP_CONTACT.program}
             </span>
           </div>
         </div>

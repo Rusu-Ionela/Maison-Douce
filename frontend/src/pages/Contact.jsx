@@ -10,17 +10,12 @@ import {
   listMyContactConversations,
   sendContactConversationMessage,
 } from "../api/contactConversations";
+import { APP_CONTACT, CONTACT_ITEMS } from "../lib/publicSiteConfig";
 import { buttons, cards, containers, inputs } from "/src/lib/tailwindComponents.js";
 
 function initialForm() {
   return { nume: "", email: "", telefon: "", subiect: "", mesaj: "" };
 }
-
-const CONTACT_ITEMS = [
-  { title: "Email atelier", value: "contact@maisondouce.md" },
-  { title: "Telefon", value: "+373 600 000 00" },
-  { title: "Program", value: "Luni - Sambata, 09:00 - 19:00" },
-];
 
 export default function Contact() {
   const { user, isAuthenticated } = useAuth();
@@ -424,7 +419,7 @@ export default function Contact() {
           </div>
 
           <div className="rounded-[24px] border border-rose-100 bg-[rgba(255,249,242,0.88)] px-4 py-3 text-sm leading-7 text-[#655c53]">
-            Chisinau, Republica Moldova
+            {APP_CONTACT.city}
           </div>
 
           <iframe

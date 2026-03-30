@@ -1,0 +1,19 @@
+{
+  "contact": {
+    "email": "contact@maisondouce.md",
+    "emailUri": "mailto:contact@maisondouce.md",
+    "phoneDisplay": "+373 600 000 00",
+    "phoneUri": "tel:+37360000000",
+    "program": "Luni - Sambata, 09:00 - 19:00",
+    "city": "Chisinau, Republica Moldova"
+  },
+  "assistant": {
+    "starterQuestions": [
+      "Nu gasesc constructorul 2D",
+      "Cum functioneaza livrarea?",
+      "Unde aplic voucherul?",
+      "Cum rezerv un slot?",
+      "Cum vorbesc cu patiserul?"
+    ]
+  }
+}
