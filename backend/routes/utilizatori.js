@@ -25,24 +25,25 @@ const {
 const { isProductionEnv } = require("../utils/runtime");
 
 const router = express.Router();
+const isTestEnv = process.env.NODE_ENV === "test";
 
 const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: 30,
+  max: isTestEnv ? 5000 : 30,
   standardHeaders: true,
   legacyHeaders: false,
 });
 
 const resetLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: 12,
+  max: isTestEnv ? 5000 : 12,
   standardHeaders: true,
   legacyHeaders: false,
 });
 
 const securityLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: 15,
+  max: isTestEnv ? 5000 : 15,
   standardHeaders: true,
   legacyHeaders: false,
 });

@@ -90,6 +90,7 @@ const AdminAddTort = lazyPage("./pages/AdminAddTort.jsx");
 const AdminEditProdus = lazyPage("./pages/AdminEditProdus.jsx");
 const AdminEditTort = lazyPage("./pages/AdminEditTort.jsx");
 const AdminCatalog = lazyPage("./pages/AdminCatalog.jsx");
+const AdminAssistantKnowledge = lazyPage("./pages/AdminAssistantKnowledge.jsx");
 const NotificariFoto = lazyPage("./pages/NotificariFoto.jsx");
 const RaportRezervariPrestator = lazyPage("./pages/RaportRezervariPrestator.jsx");
 const PatiserContabilitate = lazyPage("./pages/PatiserContabilitate.jsx");
@@ -579,6 +580,14 @@ export default function App() {
             element={
               <RequireStaff>
                 <AdminCatalog />
+              </RequireStaff>
+            }
+          />
+          <Route
+            path="/admin/asistent-ai"
+            element={
+              <RequireStaff>
+                <AdminAssistantKnowledge />
               </RequireStaff>
             }
           />

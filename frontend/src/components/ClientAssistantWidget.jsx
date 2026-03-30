@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { Link, useLocation } from "react-router-dom";
+import { requestAssistantReply } from "../api/assistant";
 import { useAuth } from "../context/AuthContext";
 import { buildAssistantReply, STARTER_QUESTIONS } from "../lib/clientAssistant";
 
@@ -41,6 +42,8 @@ export default function ClientAssistantWidget() {
   const { user } = useAuth() || {};
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [starterQuestions, setStarterQuestions] = useState(STARTER_QUESTIONS);
   const [messages, setMessages] = useState(() => [
     createMessage("assistant", {
       text:
@@ -61,23 +64,36 @@ export default function ClientAssistantWidget() {
     return null;
   }
 
-  const sendQuestion = (nextQuery) => {
+  const sendQuestion = async (nextQuery) => {
     const trimmedQuery = String(nextQuery || "").trim();
-    if (!trimmedQuery) return;
+    if (!trimmedQuery || busy) return;
 
-    const reply = buildAssistantReply({
-      query: trimmedQuery,
-      pathname,
-      user,
-    });
-
-    setMessages((prev) => [
-      ...prev,
-      createMessage("user", { text: trimmedQuery }),
-      createMessage("assistant", reply),
-    ]);
+    setMessages((prev) => [...prev, createMessage("user", { text: trimmedQuery })]);
     setQuery("");
     setOpen(true);
+
+    setBusy(true);
+    try {
+      const reply = await requestAssistantReply({
+        query: trimmedQuery,
+        pathname,
+      });
+
+      if (Array.isArray(reply?.starterQuestions) && reply.starterQuestions.length > 0) {
+        setStarterQuestions(reply.starterQuestions.slice(0, 5));
+      }
+
+      setMessages((prev) => [...prev, createMessage("assistant", reply)]);
+    } catch {
+      const fallbackReply = buildAssistantReply({
+        query: trimmedQuery,
+        pathname,
+        user,
+      });
+      setMessages((prev) => [...prev, createMessage("assistant", fallbackReply)]);
+    } finally {
+      setBusy(false);
+    }
   };
 
   return (
@@ -127,17 +143,24 @@ export default function ClientAssistantWidget() {
 
           <div className="border-t border-rose-100 bg-white/70 px-4 py-4">
             <div className="mb-3 flex flex-wrap gap-2">
-              {STARTER_QUESTIONS.map((item) => (
+              {starterQuestions.map((item) => (
                 <button
                   key={item}
                   type="button"
                   onClick={() => sendQuestion(item)}
+                  disabled={busy}
                   className="rounded-full border border-rose-200 bg-[rgba(255,249,242,0.92)] px-3 py-2 text-xs font-semibold text-[#6c6259] transition hover:border-rose-300 hover:bg-white hover:text-pink-700"
                 >
                   {item}
                 </button>
               ))}
             </div>
+
+            {busy ? (
+              <div className="mb-3 text-xs font-medium text-[#8a8178]">
+                Se cauta raspunsul in knowledge base...
+              </div>
+            ) : null}
 
             <div className="flex items-end gap-2">
               <textarea
@@ -149,15 +172,17 @@ export default function ClientAssistantWidget() {
                     sendQuestion(query);
                   }
                 }}
+                disabled={busy}
                 className="min-h-[52px] flex-1 rounded-[22px] border border-rose-200 bg-white px-4 py-3 text-sm text-ink outline-none focus:border-pink-400 focus:ring-4 focus:ring-sage/30"
                 placeholder="Ex: nu gasesc constructorul 2D"
               />
               <button
                 type="button"
                 onClick={() => sendQuestion(query)}
+                disabled={busy}
                 className="inline-flex h-[52px] items-center rounded-full bg-charcoal px-4 text-sm font-semibold text-white shadow-soft transition hover:bg-pink-700"
               >
-                Trimite
+                {busy ? "Caut..." : "Trimite"}
               </button>
             </div>
           </div>

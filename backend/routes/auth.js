@@ -6,10 +6,11 @@ const { withValidation } = require("../middleware/validate");
 const Utilizator = require("../models/Utilizator");
 const { signAuthToken } = require("../utils/jwt");
 const { readEmail, readEnum, readString } = require("../utils/validation");
+const isTestEnv = process.env.NODE_ENV === "test";
 
 const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: 30,
+  max: isTestEnv ? 5000 : 30,
   standardHeaders: true,
   legacyHeaders: false,
 });

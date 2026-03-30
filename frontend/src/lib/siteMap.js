@@ -97,6 +97,7 @@ export const SITE_SECTIONS = [
       { label: "Statistici", to: "/admin/stats", roles: ADMIN_ROLES },
       { label: "Notificari", to: "/admin/notificari", roles: STAFF_ROLES },
       { label: "Mesaje contact", to: "/admin/contact", roles: STAFF_ROLES },
+      { label: "Asistent AI", to: "/admin/asistent-ai", roles: STAFF_ROLES },
       { label: "Notificari foto", to: "/admin/notificari-foto", roles: STAFF_ROLES },
       { label: "Fidelizare admin", to: "/admin/fidelizare", roles: ADMIN_ROLES },
       { label: "Cupoane", to: "/admin/cupoane", roles: ADMIN_ROLES },
@@ -144,6 +145,7 @@ export const TOP_NAV_LINKS = [
   { label: "Stoc studio", to: "/admin/contabilitate", roles: STAFF_ROLES },
   { label: "Umpluturi", to: "/admin/umpluturi", roles: STAFF_ROLES },
   { label: "Mesaje", to: "/admin/contact", roles: STAFF_ROLES },
+  { label: "Asistent AI", to: "/admin/asistent-ai", roles: STAFF_ROLES },
   { label: "Harta site", to: "/harta-site" },
 ];
 

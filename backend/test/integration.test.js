@@ -588,6 +588,106 @@ test("backend integration flows", async (t) => {
       );
     });
 
+    await t.test("assistant replies use backend knowledge base for public and authenticated users", async () => {
+      await harness.resetDb();
+
+      const client = await registerUser("client");
+      const staff = await registerUser("patiser");
+      assert.equal(client.status, 201);
+      assert.equal(staff.status, 201);
+
+      const createCustomEntry = await harness.request("/assistant/admin", {
+        method: "POST",
+        token: staff.token,
+        body: {
+          title: "Unde gasesc ghidul pentru constructor?",
+          answer:
+            "Ghidul este in pagina de personalizare, iar pentru editarea directa a designului mergi in constructorul 2D.",
+          keywords: ["ghid constructor", "constructor", "ghid utilizare"],
+          priority: 10,
+          active: true,
+          actions: [
+            {
+              type: "route",
+              label: "Ghid de utilizare",
+              to: "/personalizeaza",
+            },
+            {
+              type: "route",
+              label: "Constructor 2D",
+              to: "/constructor",
+            },
+          ],
+        },
+      });
+      assert.equal(createCustomEntry.status, 201);
+      assert.equal(
+        createCustomEntry.data?.item?.title,
+        "Unde gasesc ghidul pentru constructor?"
+      );
+
+      const publicReply = await harness.request("/assistant/reply", {
+        method: "POST",
+        body: {
+          query: "unde gasesc ghidul pentru constructor",
+          pathname: "/",
+        },
+      });
+      assert.equal(publicReply.status, 200);
+      assert.match(publicReply.data?.intentId || "", /^custom:/);
+      assert.equal(publicReply.data?.source, "assistant_knowledge_base");
+      assert.ok(Array.isArray(publicReply.data?.starterQuestions));
+      assert.ok(
+        publicReply.data?.starterQuestions?.includes(
+          "Unde gasesc ghidul pentru constructor?"
+        )
+      );
+      assert.ok(
+        publicReply.data?.actions?.some((action) => action.to === "/personalizeaza")
+      );
+
+      const authReply = await harness.request("/assistant/reply", {
+        method: "POST",
+        token: client.token,
+        body: {
+          query: "cum vorbesc cu patiserul",
+          pathname: "/catalog",
+        },
+      });
+      assert.equal(authReply.status, 200);
+      assert.equal(authReply.data?.intentId, "contact");
+      assert.ok(authReply.data?.actions?.some((action) => action.to === "/chat"));
+
+      const listEntries = await harness.request("/assistant/admin", {
+        token: staff.token,
+      });
+      assert.equal(listEntries.status, 200);
+      assert.ok(Array.isArray(listEntries.data?.items));
+      assert.equal(listEntries.data.items.length, 1);
+
+      const customEntryId =
+        createCustomEntry.data?.item?.id || createCustomEntry.data?.item?._id;
+      const updatedEntry = await harness.request(`/assistant/admin/${customEntryId}`, {
+        method: "PATCH",
+        token: staff.token,
+        body: {
+          active: false,
+        },
+      });
+      assert.equal(updatedEntry.status, 200);
+      assert.equal(updatedEntry.data?.item?.active, false);
+
+      const fallbackReply = await harness.request("/assistant/reply", {
+        method: "POST",
+        body: {
+          query: "nu gasesc constructorul 2d",
+          pathname: "/",
+        },
+      });
+      assert.equal(fallbackReply.status, 200);
+      assert.equal(fallbackReply.data?.intentId, "constructor");
+    });
+
     await t.test("admin actions are persisted in the audit trail", async () => {
       await harness.resetDb();
 
@@ -1726,8 +1826,11 @@ test("backend integration flows", async (t) => {
         `/calendar/availability/${providerId}?from=${date}&to=${date}`
       );
       assert.equal(availability.status, 200);
-      assert.equal(availability.data?.slots?.[0]?.used, 1);
-      assert.equal(availability.data?.slots?.[0]?.free, 1);
+      const reservedSlot = (availability.data?.slots || []).find(
+        (slot) => slot?.time === "14:00"
+      );
+      assert.equal(reservedSlot?.used, 1);
+      assert.equal(reservedSlot?.free, 1);
     });
 
     await t.test("monthly provider availability uses providerId and booking removes only the selected provider slot", async () => {

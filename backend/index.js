@@ -92,7 +92,12 @@ app.use(
     },
   })
 );
-app.use(rateLimit({ windowMs: 15 * 60 * 1000, max: 200 }));
+app.use(
+  rateLimit({
+    windowMs: 15 * 60 * 1000,
+    max: process.env.NODE_ENV === "test" ? 5000 : 200,
+  })
+);
 app.use("/api", (req, res, next) => {
   res.setHeader("Cache-Control", "no-store");
   next();
@@ -219,6 +224,8 @@ mount("/api/coupon", "./routes/coupon");
 mount("/api/comenzi-personalizate", "./routes/comenziPersonalizate");
 mount("/api/cutie-lunara", "./routes/cutieLunara");
 mount("/api/ai", "./routes/ai");
+mount("/api/assistant", "./routes/assistant");
+mount("/api/assistant", "./routes/assistantAdmin");
 mount("/api/auth", "./routes/auth");
 
 mount("/api/mesaje-chat", "./routes/mesajChat");
