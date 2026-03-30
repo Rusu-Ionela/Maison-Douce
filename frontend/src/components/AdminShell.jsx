@@ -91,7 +91,7 @@ export default function AdminShell({
   description,
   eyebrow = "Panou operational",
   actions = null,
-  navLimit = 12,
+  navLimit = 16,
   children,
 }) {
   const { user } = useAuth() || {};

@@ -18,9 +18,12 @@ const {
   readUrl,
 } = require("../utils/validation");
 const AssistantKnowledgeEntry = require("../models/AssistantKnowledgeEntry");
+const AssistantQuestionGap = require("../models/AssistantQuestionGap");
 const {
   buildEntryResponse,
+  buildQuestionGapResponse,
   listAdminKnowledgeEntries,
+  listAssistantQuestionGaps,
 } = require("../services/assistantKnowledge");
 
 const router = express.Router();
@@ -140,6 +143,39 @@ function extractPayload(source, { partial = false } = {}) {
   return payload;
 }
 
+function extractQuestionGapPatchPayload(source) {
+  const payload = {};
+
+  if (hasField(source, "status")) {
+    payload.status = readEnum(source?.status, [
+      "noua",
+      "in_revizie",
+      "rezolvata",
+      "ignorata",
+    ], {
+      field: "status",
+      required: true,
+    });
+  }
+
+  if (hasField(source, "notes")) {
+    payload.notes = readString(source?.notes, {
+      field: "notes",
+      max: 2000,
+      defaultValue: "",
+    });
+  }
+
+  if (hasField(source, "linkedKnowledgeEntryId")) {
+    payload.linkedKnowledgeEntryId = readMongoId(source?.linkedKnowledgeEntryId, {
+      field: "linkedKnowledgeEntryId",
+      defaultValue: "",
+    });
+  }
+
+  return payload;
+}
+
 router.get(
   "/admin",
   authRequired,
@@ -158,6 +194,44 @@ router.get(
         .json({ message: "Nu am putut incarca knowledge base-ul asistentului." });
     }
   }
+);
+
+router.get(
+  "/admin/questions",
+  authRequired,
+  roleCheck("admin", "patiser"),
+  adminReadLimiter,
+  withValidation((req) => ({
+    status: readEnum(req.query?.status, ["", "noua", "in_revizie", "rezolvata", "ignorata"], {
+      field: "status",
+      defaultValue: "",
+    }),
+    search: readString(req.query?.search, {
+      field: "search",
+      max: 160,
+      defaultValue: "",
+    }),
+    limit: readNumber(req.query?.limit, {
+      field: "limit",
+      min: 1,
+      max: 200,
+      integer: true,
+      defaultValue: 50,
+    }),
+  }), async (req, res) => {
+    try {
+      const items = await listAssistantQuestionGaps(req.validated);
+      res.json({ items });
+    } catch (error) {
+      logger.error("assistant_question_gap_list_failed", {
+        requestId: req.id,
+        error: serializeError(error),
+      });
+      res.status(500).json({
+        message: "Nu am putut incarca intrebarile care necesita review.",
+      });
+    }
+  })
 );
 
 router.post(
@@ -279,6 +353,72 @@ router.delete(
           error: serializeError(error),
         });
         res.status(500).json({ message: "Nu am putut sterge intrarea." });
+      }
+    }
+  )
+);
+
+router.patch(
+  "/admin/questions/:id",
+  authRequired,
+  roleCheck("admin", "patiser"),
+  adminMutationLimiter,
+  withValidation(
+    (req) => ({
+      id: readMongoId(req.params?.id, { field: "id", required: true }),
+      ...extractQuestionGapPatchPayload(req.body),
+    }),
+    async (req, res) => {
+      try {
+        const item = await AssistantQuestionGap.findById(req.validated.id)
+          .populate("linkedKnowledgeEntryId", "title active")
+          .populate("updatedBy", "nume email");
+        if (!item) {
+          return res.status(404).json({ message: "Intrebarea nu exista." });
+        }
+
+        const { id, ...changes } = req.validated;
+        const hasChanges = Object.values(changes).some((value) => value !== undefined);
+        if (!hasChanges) {
+          return res.status(400).json({ message: "Nu exista campuri de actualizat." });
+        }
+
+        if (changes.status !== undefined) {
+          item.status = changes.status;
+          item.resolvedAt = changes.status === "rezolvata" ? new Date() : null;
+        }
+        if (changes.notes !== undefined) {
+          item.notes = changes.notes;
+        }
+        if (changes.linkedKnowledgeEntryId !== undefined) {
+          item.linkedKnowledgeEntryId = changes.linkedKnowledgeEntryId || null;
+        }
+
+        item.updatedBy = req.user?._id || null;
+        await item.save();
+        await item.populate("linkedKnowledgeEntryId", "title active");
+        await item.populate("updatedBy", "nume email");
+
+        await recordAuditLog(req, {
+          action: "assistant.question_gap.updated",
+          entityType: "assistant_question_gap",
+          entityId: item._id,
+          summary: `Intrebarea nerecunoscuta "${item.query}" a fost actualizata.`,
+          metadata: buildQuestionGapResponse(item),
+        });
+
+        res.json({
+          ok: true,
+          item: buildQuestionGapResponse(item),
+        });
+      } catch (error) {
+        logger.error("assistant_question_gap_update_failed", {
+          requestId: req.id,
+          error: serializeError(error),
+        });
+        res.status(500).json({
+          message: "Nu am putut actualiza intrebarile pentru review.",
+        });
       }
     }
   )

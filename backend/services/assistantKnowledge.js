@@ -1,5 +1,6 @@
 const { normalizeUserRole } = require("../utils/roles");
 const AssistantKnowledgeEntry = require("../models/AssistantKnowledgeEntry");
+const AssistantQuestionGap = require("../models/AssistantQuestionGap");
 
 const CONTACT_EMAIL = "contact@maisondouce.md";
 const CONTACT_PHONE = "+373 600 000 00";
@@ -331,6 +332,51 @@ function buildEntryResponse(entry) {
   };
 }
 
+function buildQuestionGapResponse(entry) {
+  const linkedKnowledgeEntry = entry?.linkedKnowledgeEntryId;
+  const updatedBy = entry?.updatedBy;
+
+  return {
+    id: String(entry?._id || ""),
+    query: String(entry?.query || ""),
+    normalizedQuery: String(entry?.normalizedQuery || ""),
+    sampleQueries: Array.isArray(entry?.sampleQueries)
+      ? entry.sampleQueries.map((item) => String(item || ""))
+      : [],
+    pathnames: Array.isArray(entry?.pathnames)
+      ? entry.pathnames.map((item) => String(item || ""))
+      : [],
+    status: String(entry?.status || "noua"),
+    hitCount: Number(entry?.hitCount || 0),
+    lastAskedAt: entry?.lastAskedAt || null,
+    lastPathname: String(entry?.lastPathname || "/"),
+    lastIntentId: String(entry?.lastIntentId || ""),
+    lastSource: String(entry?.lastSource || ""),
+    lastUserRole: String(entry?.lastUserRole || "guest"),
+    lastUserId: String(entry?.lastUserId || ""),
+    notes: String(entry?.notes || ""),
+    linkedKnowledgeEntry: linkedKnowledgeEntry
+      ? {
+          id: String(
+            linkedKnowledgeEntry?._id || linkedKnowledgeEntry?.id || linkedKnowledgeEntry
+          ),
+          title: String(linkedKnowledgeEntry?.title || ""),
+          active: linkedKnowledgeEntry?.active !== false,
+        }
+      : null,
+    resolvedAt: entry?.resolvedAt || null,
+    updatedBy: updatedBy
+      ? {
+          id: String(updatedBy?._id || updatedBy?.id || updatedBy),
+          nume: String(updatedBy?.nume || ""),
+          email: String(updatedBy?.email || ""),
+        }
+      : null,
+    createdAt: entry?.createdAt || null,
+    updatedAt: entry?.updatedAt || null,
+  };
+}
+
 function createRouteAction(label, to) {
   return { type: "route", label, to };
 }
@@ -500,6 +546,8 @@ function buildNavigationResponse(query, pathname, user) {
         ...matches.map(({ route }) => createRouteAction(route.label, route.to)),
         ...contextRoutes.map((route) => createRouteAction(route.label, route.to)),
       ],
+      navigationKind: "route_match",
+      routeMatchCount: matches.length,
     };
   }
 
@@ -507,6 +555,8 @@ function buildNavigationResponse(query, pathname, user) {
     text:
       "Te pot ajuta instant cu intrebari despre constructor, livrare, calendar, plata, voucher, cont sau contact. Daca vrei, incearca una dintre sugestiile rapide.",
     actions: contextRoutes.map((route) => createRouteAction(route.label, route.to)),
+    navigationKind: "generic_fallback",
+    routeMatchCount: 0,
   };
 }
 
@@ -529,6 +579,30 @@ function dedupeActions(actions) {
   return result.slice(0, 5);
 }
 
+function escapeRegex(value) {
+  return String(value || "").replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function mergeRecentUniqueStrings(list, nextValue, maxItems = 6) {
+  const result = [];
+  const seen = new Set();
+  const candidates = [
+    String(nextValue || "").trim(),
+    ...(Array.isArray(list) ? list : []).map((item) => String(item || "").trim()),
+  ];
+
+  for (const item of candidates) {
+    if (!item) continue;
+    const key = item.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    result.push(item);
+    if (result.length >= maxItems) break;
+  }
+
+  return result;
+}
+
 async function listAdminKnowledgeEntries() {
   const items = await AssistantKnowledgeEntry.find({})
     .populate("createdBy", "nume email")
@@ -545,6 +619,90 @@ async function listActiveKnowledgeEntries() {
     .lean();
 
   return items.map((item) => buildEntryResponse(item));
+}
+
+async function listAssistantQuestionGaps({ status = "", search = "", limit = 50 } = {}) {
+  const filter = {};
+  if (status) {
+    filter.status = status;
+  }
+
+  const trimmedSearch = String(search || "").trim();
+  if (trimmedSearch) {
+    const pattern = new RegExp(escapeRegex(trimmedSearch), "i");
+    filter.$or = [
+      { query: pattern },
+      { sampleQueries: pattern },
+      { notes: pattern },
+      { lastPathname: pattern },
+    ];
+  }
+
+  const items = await AssistantQuestionGap.find(filter)
+    .populate("linkedKnowledgeEntryId", "title active")
+    .populate("updatedBy", "nume email")
+    .sort({ lastAskedAt: -1, hitCount: -1, createdAt: -1 })
+    .limit(Math.max(1, Number(limit || 50)))
+    .lean();
+
+  return items.map((item) => buildQuestionGapResponse(item));
+}
+
+async function recordAssistantQuestionGap({ query, pathname = "/", user = null, reply = {} }) {
+  const normalizedQuery = normalizeText(query);
+  if (!normalizedQuery) {
+    return null;
+  }
+
+  const cleanQuery = String(query || "").trim().slice(0, 400);
+  const cleanPathname = String(pathname || "/").trim().slice(0, 200) || "/";
+  const now = new Date();
+  const lastUserId = String(user?._id || user?.id || "").trim();
+  const statusRole = getUserRole(user || null);
+
+  let item = await AssistantQuestionGap.findOne({ normalizedQuery });
+
+  if (!item) {
+    item = new AssistantQuestionGap({
+      query: cleanQuery,
+      normalizedQuery,
+      sampleQueries: cleanQuery ? [cleanQuery] : [],
+      pathnames: cleanPathname ? [cleanPathname] : [],
+      status: "noua",
+      hitCount: 1,
+      lastAskedAt: now,
+      lastPathname: cleanPathname,
+      lastIntentId: String(reply?.intentId || "navigation").slice(0, 120),
+      lastSource: String(reply?.source || "assistant_knowledge_base").slice(0, 120),
+      lastUserRole: statusRole,
+      lastUserId,
+    });
+  } else {
+    item.query = cleanQuery || item.query;
+    item.sampleQueries = mergeRecentUniqueStrings(item.sampleQueries, cleanQuery, 6);
+    item.pathnames = mergeRecentUniqueStrings(item.pathnames, cleanPathname, 8);
+    item.hitCount = Math.max(1, Number(item.hitCount || 0) + 1);
+    item.lastAskedAt = now;
+    item.lastPathname = cleanPathname;
+    item.lastIntentId = String(reply?.intentId || item.lastIntentId || "navigation").slice(
+      0,
+      120
+    );
+    item.lastSource = String(
+      reply?.source || item.lastSource || "assistant_knowledge_base"
+    ).slice(0, 120);
+    item.lastUserRole = statusRole;
+    item.lastUserId = lastUserId;
+
+    // If a "resolved" gap reappears in fallback, reopen it for review.
+    if (item.status === "rezolvata") {
+      item.status = "noua";
+      item.resolvedAt = null;
+    }
+  }
+
+  await item.save();
+  return buildQuestionGapResponse(item);
 }
 
 function scoreCustomEntry(query, entry) {
@@ -655,6 +813,9 @@ async function buildAssistantReply({ query, pathname = "/", user = null }) {
 module.exports = {
   STARTER_QUESTIONS,
   buildEntryResponse,
+  buildQuestionGapResponse,
   buildAssistantReply,
   listAdminKnowledgeEntries,
+  listAssistantQuestionGaps,
+  recordAssistantQuestionGap,
 };

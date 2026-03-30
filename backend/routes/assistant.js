@@ -3,13 +3,23 @@ const { authOptional } = require("../middleware/auth");
 const { withValidation } = require("../middleware/validate");
 const { readString } = require("../utils/validation");
 const { createLogger, serializeError } = require("../utils/log");
-const { buildAssistantReply } = require("../services/assistantKnowledge");
+const {
+  buildAssistantReply,
+  recordAssistantQuestionGap,
+} = require("../services/assistantKnowledge");
 
 const router = express.Router();
 const logger = createLogger("assistant_route");
 
 function sanitizePreview(value, max = 160) {
   return String(value || "").trim().slice(0, max);
+}
+
+function countTokens(value) {
+  return String(value || "")
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean).length;
 }
 
 router.post(
@@ -34,6 +44,27 @@ router.post(
           pathname: req.validated.pathname,
           user: req.user || null,
         });
+        const tokenCount = countTokens(req.validated.query);
+        const shouldRecordQuestionGap =
+          reply.intentId === "navigation" &&
+          (reply.navigationKind === "generic_fallback" || tokenCount >= 3);
+
+        if (shouldRecordQuestionGap) {
+          try {
+            await recordAssistantQuestionGap({
+              query: req.validated.query,
+              pathname: req.validated.pathname,
+              user: req.user || null,
+              reply,
+            });
+          } catch (gapError) {
+            logger.warn("assistant_question_gap_record_failed", {
+              requestId: req.id,
+              queryPreview: sanitizePreview(req.validated.query),
+              error: serializeError(gapError),
+            });
+          }
+        }
 
         logger.info("assistant_reply_generated", {
           requestId: req.id,
@@ -44,7 +75,11 @@ router.post(
           intentId: reply.intentId,
         });
 
-        res.json(reply);
+        const responsePayload = { ...reply };
+        delete responsePayload.navigationKind;
+        delete responsePayload.routeMatchCount;
+
+        res.json(responsePayload);
       } catch (error) {
         logger.error("assistant_reply_failed", {
           requestId: req.id,

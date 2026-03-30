@@ -98,6 +98,7 @@ export const SITE_SECTIONS = [
       { label: "Notificari", to: "/admin/notificari", roles: STAFF_ROLES },
       { label: "Mesaje contact", to: "/admin/contact", roles: STAFF_ROLES },
       { label: "Asistent AI", to: "/admin/asistent-ai", roles: STAFF_ROLES },
+      { label: "Intrebari AI", to: "/admin/asistent-ai/intrebari", roles: STAFF_ROLES },
       { label: "Notificari foto", to: "/admin/notificari-foto", roles: STAFF_ROLES },
       { label: "Fidelizare admin", to: "/admin/fidelizare", roles: ADMIN_ROLES },
       { label: "Cupoane", to: "/admin/cupoane", roles: ADMIN_ROLES },

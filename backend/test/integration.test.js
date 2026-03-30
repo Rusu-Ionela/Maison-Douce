@@ -658,6 +658,29 @@ test("backend integration flows", async (t) => {
       assert.equal(authReply.data?.intentId, "contact");
       assert.ok(authReply.data?.actions?.some((action) => action.to === "/chat"));
 
+      const unansweredReply = await harness.request("/assistant/reply", {
+        method: "POST",
+        body: {
+          query: "cum comand un tort vegan fara zahar",
+          pathname: "/catalog",
+        },
+      });
+      assert.equal(unansweredReply.status, 200);
+      assert.equal(unansweredReply.data?.intentId, "navigation");
+
+      const questionGaps = await harness.request("/assistant/admin/questions", {
+        token: staff.token,
+      });
+      assert.equal(questionGaps.status, 200);
+      assert.ok(Array.isArray(questionGaps.data?.items));
+      assert.equal(questionGaps.data.items.length, 1);
+      assert.equal(questionGaps.data.items[0]?.status, "noua");
+      assert.equal(questionGaps.data.items[0]?.hitCount, 1);
+      assert.equal(questionGaps.data.items[0]?.lastPathname, "/catalog");
+
+      const questionGapId = questionGaps.data.items[0]?.id || questionGaps.data.items[0]?._id;
+      assert.ok(questionGapId);
+
       const listEntries = await harness.request("/assistant/admin", {
         token: staff.token,
       });
@@ -667,6 +690,39 @@ test("backend integration flows", async (t) => {
 
       const customEntryId =
         createCustomEntry.data?.item?.id || createCustomEntry.data?.item?._id;
+      const reviewedGap = await harness.request(`/assistant/admin/questions/${questionGapId}`, {
+        method: "PATCH",
+        token: staff.token,
+        body: {
+          status: "rezolvata",
+          notes: "Necesita raspuns separat pentru optiuni vegane.",
+          linkedKnowledgeEntryId: customEntryId,
+        },
+      });
+      assert.equal(reviewedGap.status, 200);
+      assert.equal(reviewedGap.data?.item?.status, "rezolvata");
+      assert.equal(
+        reviewedGap.data?.item?.linkedKnowledgeEntry?.id,
+        String(customEntryId)
+      );
+
+      const repeatedGapReply = await harness.request("/assistant/reply", {
+        method: "POST",
+        body: {
+          query: "cum comand un tort vegan fara zahar",
+          pathname: "/catalog",
+        },
+      });
+      assert.equal(repeatedGapReply.status, 200);
+      assert.equal(repeatedGapReply.data?.intentId, "navigation");
+
+      const reopenedGaps = await harness.request("/assistant/admin/questions", {
+        token: staff.token,
+      });
+      assert.equal(reopenedGaps.status, 200);
+      assert.equal(reopenedGaps.data?.items?.[0]?.status, "noua");
+      assert.equal(reopenedGaps.data?.items?.[0]?.hitCount, 2);
+
       const updatedEntry = await harness.request(`/assistant/admin/${customEntryId}`, {
         method: "PATCH",
         token: staff.token,
