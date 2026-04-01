@@ -68,7 +68,10 @@ export default function PartajareFisiere() {
 
       {!user && (
         <div className="border rounded p-3 bg-rose-50 text-rose-700">
-          Autentifica-te pentru a putea partaja fisiere. <Link to="/login" className="underline">Login</Link>
+          Autentifica-te pentru a putea partaja fisiere.{" "}
+          <Link to="/login" className="underline">
+            Intra in cont
+          </Link>
         </div>
       )}
 

@@ -37,7 +37,7 @@ export const SITE_SECTIONS = [
     title: "Public",
     fullWidth: true,
     items: [
-      { label: "Home", to: "/" },
+      { label: "Acasa", to: "/" },
       { label: "Catalog", to: "/catalog" },
       { label: "Cos", to: "/cart" },
       { label: "Constructor", to: "/constructor" },
@@ -64,11 +64,11 @@ export const SITE_SECTIONS = [
     id: "auth",
     title: "Cont si autentificare",
     items: [
-      { label: "Login", to: "/login" },
+      { label: "Autentificare", to: "/login" },
       { label: "Inregistrare", to: "/register" },
       { label: "Reset parola", to: "/reset-parola" },
       { label: "Resetare parola", to: "/resetare-parola" },
-      { label: "Admin login", to: "/admin/login" },
+      { label: "Acces staff", to: "/admin/login" },
     ],
   },
   {
