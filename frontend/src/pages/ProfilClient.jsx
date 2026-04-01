@@ -752,6 +752,13 @@ export default function ProfilClient() {
                     <div key={notification._id} className="rounded-[24px] border border-rose-100 bg-white px-4 py-4 shadow-soft">
                       <div className="font-semibold text-gray-900">{notification.titlu || "Notificare"}</div>
                       <div className="mt-2 text-sm text-gray-700">{notification.mesaj}</div>
+                      {notification.link ? (
+                        <div className="mt-3">
+                          <Link className={buttons.outline} to={notification.link}>
+                            Deschide
+                          </Link>
+                        </div>
+                      ) : null}
                       <div className="mt-3 text-xs text-gray-500">{formatDateTime(notification.data || notification.createdAt)}</div>
                     </div>
                   ))}
