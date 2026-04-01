@@ -1,9 +1,8 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import StatusBanner from "../components/StatusBanner";
 import { useAuth } from "../context/AuthContext";
 import { buttons, cards, inputs } from "../lib/tailwindComponents";
-import api from "../lib/api";
 
 export default function Register() {
   const nav = useNavigate();
@@ -16,52 +15,8 @@ export default function Register() {
     telefon: "",
     adresa: "",
   });
-  const [role, setRole] = useState("client");
-  const [inviteCode, setInviteCode] = useState("");
-  const [inviteInfo, setInviteInfo] = useState({
-    loading: false,
-    message: "",
-    code: "",
-    source: "",
-  });
   const [err, setErr] = useState("");
   const [loading, setLoading] = useState(false);
-
-  useEffect(() => {
-    if (role !== "patiser") {
-      return undefined;
-    }
-
-    let isCancelled = false;
-    setInviteInfo((current) => ({ ...current, loading: true }));
-
-    api
-      .get("/utilizatori/provider-invite-info")
-      .then((response) => {
-        if (isCancelled) return;
-        setInviteInfo({
-          loading: false,
-          message: response.data?.message || "",
-          code: response.data?.code || "",
-          source: response.data?.source || "",
-        });
-      })
-      .catch(() => {
-        if (isCancelled) return;
-        setInviteInfo({
-          loading: false,
-          message: import.meta.env.DEV
-            ? "In mediul local, codul implicit pentru test este PATISER-INVITE."
-            : "Solicita codul de invitatie de la administrator.",
-          code: import.meta.env.DEV ? "PATISER-INVITE" : "",
-          source: import.meta.env.DEV ? "default" : "",
-        });
-      });
-
-    return () => {
-      isCancelled = true;
-    };
-  }, [role]);
 
   async function onSubmit(event) {
     event.preventDefault();
@@ -86,8 +41,7 @@ export default function Register() {
         name: form.name.trim(),
         email: form.email.trim(),
         password: form.password,
-        role,
-        inviteCode: role === "patiser" ? inviteCode : undefined,
+        role: "client",
         telefon: form.telefon,
         adresa: form.adresa,
       });
@@ -113,8 +67,8 @@ export default function Register() {
             </h1>
           </div>
           <p className="mt-5 text-base leading-8 text-[#655c53]">
-            Profilul tau salveaza preferintele, adresele si istoricul comenzilor. Pentru rolul
-            de patiser este necesar codul de invitatie primit din sistem.
+            Profilul tau salveaza preferintele, adresele si istoricul comenzilor. Conturile de
+            staff nu se creeaza din pagina publica de inregistrare.
           </p>
           <div className="mt-8 space-y-3 text-sm text-[#655c53]">
             <div className="rounded-[24px] border border-rose-100 bg-white/75 p-4 shadow-soft">
@@ -122,6 +76,9 @@ export default function Register() {
             </div>
             <div className="rounded-[24px] border border-rose-100 bg-white/75 p-4 shadow-soft">
               Parola trebuie sa aiba minim 8 caractere.
+            </div>
+            <div className="rounded-[24px] border border-rose-100 bg-white/75 p-4 shadow-soft">
+              Conturile interne sunt create doar de administrator.
             </div>
           </div>
         </section>
@@ -220,68 +177,13 @@ export default function Register() {
               </label>
             </div>
 
-            <label className="block text-sm font-semibold text-[#4f463e]">
-              Rol
-              <select
-                value={role}
-                onChange={(event) => setRole(event.target.value)}
-                className={`mt-2 ${inputs.default}`}
-              >
-                <option value="client">Client</option>
-                <option value="patiser">Patiser</option>
-              </select>
-            </label>
-
-            {role === "patiser" ? (
-              <div className="space-y-3">
-                <label className="block text-sm font-semibold text-[#4f463e]">
-                  Cod invitatie patiser
-                  <input
-                    className={`mt-2 ${inputs.default}`}
-                    placeholder="Introdu codul primit"
-                    value={inviteCode}
-                    onChange={(event) => setInviteCode(event.target.value)}
-                    autoComplete="one-time-code"
-                  />
-                </label>
-
-                <div className="rounded-[24px] border border-rose-100 bg-[rgba(255,249,242,0.88)] p-4 text-sm leading-7 text-[#655c53]">
-                  <div className="font-semibold text-ink">De unde iei codul?</div>
-                  <p className="mt-2">
-                    {inviteInfo.loading
-                      ? "Se verifica informatia pentru codul de invitatie..."
-                      : inviteInfo.message ||
-                        "Solicita codul de invitatie de la administrator."}
-                  </p>
-
-                  {inviteInfo.code ? (
-                    <div className="mt-3 rounded-[18px] border border-rose-100 bg-white/80 px-4 py-3">
-                      <div className="text-xs font-semibold uppercase tracking-[0.18em] text-[#8d775c]">
-                        Cod disponibil acum
-                      </div>
-                      <div className="mt-1 font-mono text-sm text-ink">
-                        {inviteInfo.code}
-                      </div>
-                      <div className="mt-1 text-xs text-[#8a8178]">
-                        {inviteInfo.source === "default"
-                          ? "Codul implicit de dezvoltare este activ."
-                          : "Codul este configurat din backend."}
-                      </div>
-                    </div>
-                  ) : null}
-
-                  {inviteInfo.code ? (
-                    <button
-                      type="button"
-                      onClick={() => setInviteCode(inviteInfo.code)}
-                      className={`mt-3 ${buttons.outline}`}
-                    >
-                      Completeaza automat codul
-                    </button>
-                  ) : null}
-                </div>
-              </div>
-            ) : null}
+            <div className="rounded-[24px] border border-rose-100 bg-[rgba(255,249,242,0.88)] p-4 text-sm leading-7 text-[#655c53]">
+              <div className="font-semibold text-ink">Tip cont</div>
+              <p className="mt-2">
+                Inregistrarea publica creeaza doar conturi de client. Daca ai nevoie de acces
+                intern pentru atelier, administratorul configureaza separat contul de staff.
+              </p>
+            </div>
 
             <button type="submit" disabled={loading} className={`w-full ${buttons.primary}`}>
               {loading ? "Se creeaza contul..." : "Inregistreaza-te"}

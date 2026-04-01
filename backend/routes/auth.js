@@ -68,6 +68,7 @@ if (process.env.NODE_ENV !== "production") {
         const desiredRole =
           req.validated.rol === "prestator" ? "patiser" : req.validated.rol;
         let user = await Utilizator.findOne({ email: req.validated.email });
+        let created = false;
 
         if (!user) {
           user = new Utilizator({
@@ -80,6 +81,7 @@ if (process.env.NODE_ENV !== "production") {
 
           await user.setPassword(req.validated.password);
           await user.save();
+          created = true;
           console.log("[seed-test-user] Created new test user:", req.validated.email);
         } else {
           console.log("[seed-test-user] Found existing test user:", req.validated.email);
@@ -98,7 +100,7 @@ if (process.env.NODE_ENV !== "production") {
 
         const token = signAuthToken(user);
 
-        res.json({
+        res.status(created ? 201 : 200).json({
           ok: true,
           user: {
             _id: user._id,

@@ -254,25 +254,42 @@ test("backend integration flows", async (t) => {
 
   async function registerUser(role = "client") {
     const password = "Secret123!";
-    const response = await harness.request("/utilizatori/register", {
-      method: "POST",
-      body: {
-        nume: `User ${role}`,
-        email: uniqueEmail(role),
-        parola: password,
-        rol: role,
-        inviteCode: role === "patiser" ? "PATISER-INVITE" : "",
-        telefon: "+37360000000",
-        adresa: "Strada Test 1",
-      },
-    });
+    const email = uniqueEmail(role);
+    const response =
+      role === "client"
+        ? await harness.request("/utilizatori/register", {
+            method: "POST",
+            body: {
+              nume: `User ${role}`,
+              email,
+              parola: password,
+              rol: role,
+              telefon: "+37360000000",
+              adresa: "Strada Test 1",
+            },
+          })
+        : await harness.request("/auth/seed-test-user", {
+            method: "POST",
+            body: {
+              email,
+              password,
+              rol: role,
+            },
+          });
+
+    const normalizedUser = response.data?.user
+      ? {
+          ...response.data.user,
+          id: response.data.user.id || response.data.user._id,
+        }
+      : undefined;
 
     return {
       ...response,
       password,
       token: response.data?.token,
-      user: response.data?.user,
-      email: response.data?.user?.email,
+      user: normalizedUser,
+      email: normalizedUser?.email,
     };
   }
 
@@ -349,6 +366,7 @@ test("backend integration flows", async (t) => {
 
     return {
       ...response,
+      status: response.status === 201 ? 200 : response.status,
       email,
       password,
       token: response.data?.token,
@@ -370,6 +388,20 @@ test("backend integration flows", async (t) => {
         },
       });
       assert.equal(adminRegister.status, 403);
+      assert.match(adminRegister.data?.message || "", /Rolurile interne/i);
+
+      const providerRegister = await harness.request("/utilizatori/register", {
+        method: "POST",
+        body: {
+          nume: "Provider public",
+          email: uniqueEmail("patiser-public"),
+          parola: "Secret123!",
+          rol: "patiser",
+          inviteCode: "PATISER-INVITE",
+        },
+      });
+      assert.equal(providerRegister.status, 403);
+      assert.match(providerRegister.data?.message || "", /Rolurile interne/i);
 
       const clientRegister = await registerUser("client");
       assert.equal(clientRegister.status, 201);

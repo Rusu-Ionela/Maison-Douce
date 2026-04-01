@@ -22,7 +22,6 @@ const {
   isProviderRole,
   normalizeUserRole,
 } = require("../utils/roles");
-const { isProductionEnv } = require("../utils/runtime");
 
 const router = express.Router();
 const isTestEnv = process.env.NODE_ENV === "test";
@@ -223,11 +222,6 @@ router.post(
       field: "rol",
       defaultValue: "client",
     }),
-    inviteCode: readString(req.body?.inviteCode, {
-      field: "inviteCode",
-      max: 120,
-      defaultValue: "",
-    }),
     telefon: readString(req.body?.telefon, {
       field: "telefon",
       max: 40,
@@ -246,31 +240,16 @@ router.post(
         email,
         parola,
         rol,
-        inviteCode,
         telefon,
         adresa,
       } = req.validated;
 
       const requestedRole = normalizeRequestedRole(rol);
-      if (requestedRole === "admin") {
+      if (requestedRole !== "client") {
         return res.status(403).json({
-          message: "Rolul admin nu poate fi creat prin inregistrare publica.",
+          message: "Rolurile interne nu pot fi create prin inregistrare publica.",
+          hint: "Conturile de staff sunt create intern de administrator.",
         });
-      }
-      if (!["client", "patiser"].includes(requestedRole)) {
-        return res.status(400).json({ message: "Rol invalid pentru inregistrare." });
-      }
-
-      if (requestedRole === "patiser") {
-        const requiredCode = process.env.PATISER_INVITE_CODE || "PATISER-INVITE";
-        if (inviteCode !== requiredCode) {
-          return res.status(403).json({
-            message: "Cod invitatie invalid.",
-            hint: isProductionEnv()
-              ? "Solicita codul de invitatie de la administrator."
-              : `In mediul local, codul activ este ${requiredCode}.`,
-          });
-        }
       }
 
       const existing = await Utilizator.findOne({ email });
@@ -362,17 +341,12 @@ router.get("/providers", async (_req, res) => {
 });
 
 router.get("/provider-invite-info", (_req, res) => {
-  const configuredCode = String(process.env.PATISER_INVITE_CODE || "").trim();
-  const activeCode = configuredCode || "PATISER-INVITE";
-  const production = isProductionEnv();
-
   res.json({
-    inviteRequired: true,
-    message: production
-      ? "Codul de invitatie pentru patiser este oferit de administratorul Maison-Douce."
-      : "In mediul local poti folosi codul de test pentru a crea un cont de patiser.",
-    code: production ? "" : activeCode,
-    source: configuredCode ? "env" : "default",
+    inviteRequired: false,
+    message:
+      "Onboardingul pentru conturile de patiser este gestionat intern de administrator.",
+    code: "",
+    source: "internal",
   });
 });
 
