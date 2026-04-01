@@ -494,6 +494,7 @@ export default function Catalog() {
   ].filter(Boolean).length;
   const directCheckoutCount = filteredItems.filter((item) => item.checkoutReady === true).length;
   const fastReadyCount = filteredItems.filter((item) => isFastReadyCatalogItem(item)).length;
+  const quoteOnlyCount = filteredItems.filter((item) => item.checkoutReady !== true).length;
   const fillingCategories = useMemo(
     () => Array.from(new Set(CATALOG_FILLINGS.map((item) => item.category))).slice(0, 5),
     []
@@ -522,6 +523,26 @@ export default function Catalog() {
     setOnlyFastReady(false);
     setOnlyDirectCheckout(false);
     setSort("recommended");
+  };
+
+  const applyCatalogPreset = (preset) => {
+    if (preset === "checkout") {
+      setOnlyDirectCheckout(true);
+      setOnlyFastReady(false);
+      setPriceBand("toate");
+      return;
+    }
+    if (preset === "quote") {
+      setOnlyDirectCheckout(false);
+      setOnlyFastReady(false);
+      setPriceBand("cerere_oferta");
+      return;
+    }
+    if (preset === "fast") {
+      setOnlyDirectCheckout(true);
+      setOnlyFastReady(true);
+      setPriceBand("toate");
+    }
   };
 
   const addToCart = (item) => {
@@ -977,6 +998,29 @@ export default function Catalog() {
               Cardurile cu produs live intra direct in cos. Modelele de inspiratie sau cele fara
               pret valid raman pe flux de cerere de oferta si personalizare.
             </p>
+            <div className="mt-4 flex flex-wrap gap-2">
+              <button
+                type="button"
+                className={buttons.secondary}
+                onClick={() => applyCatalogPreset("checkout")}
+              >
+                {`Doar checkout direct (${directCheckoutCount})`}
+              </button>
+              <button
+                type="button"
+                className={buttons.outline}
+                onClick={() => applyCatalogPreset("quote")}
+              >
+                {`Doar cerere de oferta (${quoteOnlyCount})`}
+              </button>
+              <button
+                type="button"
+                className={buttons.outline}
+                onClick={() => applyCatalogPreset("fast")}
+              >
+                {`Disponibil mai rapid (${fastReadyCount})`}
+              </button>
+            </div>
           </div>
           <div className="rounded-full border border-rose-100 bg-white px-4 py-2 text-sm text-[#665d54] shadow-soft">
             {`Sortare: ${sortLabel}`}
