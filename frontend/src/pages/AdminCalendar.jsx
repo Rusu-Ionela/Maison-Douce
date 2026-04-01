@@ -54,6 +54,16 @@ function getReservationAttentionFlags(item) {
   };
 }
 
+function buildReservationAttentionNotes(item) {
+  const flags = getReservationAttentionFlags(item);
+  const notes = [];
+  if (flags.unpaid) notes.push("Plata nu este confirmata.");
+  if (flags.missingAddress) notes.push("Lipseste adresa pentru livrare.");
+  if (flags.missingItems) notes.push("Descrierea produselor nu este completa.");
+  if (flags.missingContact) notes.push("Lipseste un canal clar de contact pentru client.");
+  return notes;
+}
+
 export default function AdminCalendar() {
   const { user } = useAuth() || {};
   const [selectedDate, setSelectedDate] = useState(new Date());
@@ -622,6 +632,8 @@ export default function AdminCalendar() {
                     const isDelivery = res.handoffMethod === "delivery";
                     const handoffLabel = formatHandoffMethod(res.handoffMethod);
                     const statusLabel = res.status || res.handoffStatus || "-";
+                    const attentionFlags = getReservationAttentionFlags(res);
+                    const attentionNotes = buildReservationAttentionNotes(res);
 
                     return (
                       <article
@@ -699,7 +711,32 @@ export default function AdminCalendar() {
                               {res.handoffStatus ? (
                                 <span className={badges.premium}>Predare: {res.handoffStatus}</span>
                               ) : null}
+                              {attentionFlags.unpaid ? (
+                                <span className={badges.warning}>Plata neconfirmata</span>
+                              ) : null}
+                              {attentionFlags.missingAddress ? (
+                                <span className={badges.error}>Adresa lipsa</span>
+                              ) : null}
+                              {attentionFlags.missingItems ? (
+                                <span className={badges.warning}>Produse neclare</span>
+                              ) : null}
+                              {attentionFlags.missingContact ? (
+                                <span className={badges.warning}>Contact incomplet</span>
+                              ) : null}
                             </div>
+
+                            {attentionNotes.length > 0 ? (
+                              <div className="rounded-[20px] border border-amber-200 bg-amber-50/80 px-4 py-3 text-sm text-amber-900">
+                                <div className="text-xs font-semibold uppercase tracking-[0.16em] text-amber-800">
+                                  Necesita follow-up
+                                </div>
+                                <div className="mt-2 space-y-1 leading-6">
+                                  {attentionNotes.map((note) => (
+                                    <div key={`${res._id}-${note}`}>{note}</div>
+                                  ))}
+                                </div>
+                              </div>
+                            ) : null}
 
                             {res.type === "rezervare" ? (
                               <div className="flex flex-wrap gap-2">
