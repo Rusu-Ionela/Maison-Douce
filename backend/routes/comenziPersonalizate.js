@@ -564,11 +564,13 @@ router.patch("/:id/status", authRequired, roleCheck("admin", "patiser"), async (
       update.status = normalizedStatus;
     }
 
+    let nextPrice = null;
     if (pretEstimat != null) {
       const numericPrice = Number(pretEstimat);
       if (!Number.isFinite(numericPrice) || numericPrice < 0) {
         return res.status(400).json({ mesaj: "Pretul estimat trebuie sa fie un numar valid." });
       }
+      nextPrice = numericPrice;
       update.pretEstimat = numericPrice;
     }
 
@@ -581,7 +583,15 @@ router.patch("/:id/status", authRequired, roleCheck("admin", "patiser"), async (
     if (String(req.user?.rol || req.user?.role || "") === "patiser" && String(doc.prestatorId || "") !== String(req.user._id)) {
       return res.status(403).json({ mesaj: "Acces interzis" });
     }
+    const priceChanged = nextPrice != null && nextPrice !== Number(doc.pretEstimat || 0);
     Object.assign(doc, update);
+    const resetsClientApproval =
+      Boolean(doc.clientApprovedAt) &&
+      (priceChanged || (normalizedStatus && normalizedStatus !== "comanda_generata"));
+    if (resetsClientApproval) {
+      doc.clientApprovedAt = null;
+      doc.clientApprovalNote = "";
+    }
     if (normalizedStatus) {
       doc.statusHistory = Array.isArray(doc.statusHistory) ? doc.statusHistory : [];
       doc.statusHistory.push({

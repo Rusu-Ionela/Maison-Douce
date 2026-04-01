@@ -2295,6 +2295,88 @@ test("backend integration flows", async (t) => {
       assert.equal(conversion.status, 201);
     });
 
+    await t.test("editing an approved offer resets client approval until the new version is confirmed", async () => {
+      await harness.resetDb();
+
+      const staff = await registerUser("patiser");
+      const client = await registerUser("client");
+      const providerId = staff.user?.id;
+      const date = futureDate(11);
+
+      assert.equal(staff.status, 201);
+      assert.equal(client.status, 201);
+      assert.ok(providerId);
+
+      const addSlot = await harness.request(`/calendar/availability/${providerId}`, {
+        method: "POST",
+        token: staff.token,
+        body: {
+          slots: [{ date, time: "15:30", capacity: 1 }],
+        },
+      });
+      assert.equal(addSlot.status, 200);
+
+      const customOrder = await harness.request("/comenzi-personalizate", {
+        method: "POST",
+        token: client.token,
+        body: {
+          prestatorId: providerId,
+          preferinte: "Tort minimalist cu fructe rosii",
+          pretEstimat: 750,
+          timpPreparareOre: 24,
+        },
+      });
+      assert.equal(customOrder.status, 201);
+
+      const customOrderId = customOrder.data?.comanda?._id;
+      assert.ok(customOrderId);
+
+      const readyOffer = await harness.request(`/comenzi-personalizate/${customOrderId}/status`, {
+        method: "PATCH",
+        token: staff.token,
+        body: {
+          status: "aprobata",
+        },
+      });
+      assert.equal(readyOffer.status, 200);
+
+      const initialApproval = await harness.request(`/comenzi-personalizate/${customOrderId}/approve`, {
+        method: "POST",
+        token: client.token,
+      });
+      assert.equal(initialApproval.status, 200);
+      assert.ok(initialApproval.data?.comanda?.clientApprovedAt);
+
+      const changedPrice = await harness.request(`/comenzi-personalizate/${customOrderId}/status`, {
+        method: "PATCH",
+        token: staff.token,
+        body: {
+          pretEstimat: 890,
+        },
+      });
+      assert.equal(changedPrice.status, 200);
+      assert.equal(changedPrice.data?.clientApprovedAt, null);
+
+      const ownerDetail = await harness.request(`/comenzi-personalizate/${customOrderId}`, {
+        token: client.token,
+      });
+      assert.equal(ownerDetail.status, 200);
+      assert.equal(ownerDetail.data?.pretEstimat, 890);
+      assert.equal(ownerDetail.data?.clientCanApprove, true);
+      assert.equal(ownerDetail.data?.clientCanPay, false);
+
+      const blockedConversion = await harness.request(`/comenzi-personalizate/${customOrderId}/convert`, {
+        method: "POST",
+        token: staff.token,
+        body: {
+          dataLivrare: date,
+          oraLivrare: "15:30",
+          metodaLivrare: "ridicare",
+        },
+      });
+      assert.equal(blockedConversion.status, 409);
+    });
+
     await t.test("client can read the custom order offer after conversion", async () => {
       await harness.resetDb();
 
