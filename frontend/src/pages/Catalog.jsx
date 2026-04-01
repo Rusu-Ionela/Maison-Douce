@@ -45,6 +45,28 @@ function formatCatalogPrice(item) {
   return formatPrice(item?.pret);
 }
 
+function formatLeadTimeLabel(item) {
+  const hours = Number(item?.timpPreparareOre || 0);
+  if (!Number.isFinite(hours) || hours <= 0) return "24-48h";
+  return `${hours}h`;
+}
+
+function getCatalogCommerceMeta(item) {
+  if (item?.requiresManualQuote === true || item?.checkoutReady !== true) {
+    return {
+      label: "Oferta manuala",
+      className: badgeToneClasses.amber,
+      detail: "Pret si executie confirmate de atelier",
+    };
+  }
+
+  return {
+    label: "Checkout direct",
+    className: badgeToneClasses.emerald,
+    detail: "Produs standard cu pret fix public",
+  };
+}
+
 function matchesSelectedFillingCake(item, filling) {
   if (!item || !filling) return true;
 
@@ -114,6 +136,7 @@ function RatingBadge({ item }) {
 
 function CatalogCard({ item, onAddToCart }) {
   const quoteOnly = item?.requiresManualQuote === true;
+  const commerceMeta = getCatalogCommerceMeta(item);
 
   return (
     <article className="group overflow-hidden rounded-[32px] border border-rose-100 bg-[rgba(255,252,247,0.94)] p-3 shadow-soft transition duration-300 hover:-translate-y-1.5 hover:shadow-card">
@@ -145,6 +168,42 @@ function CatalogCard({ item, onAddToCart }) {
               {tag}
             </span>
           ))}
+        </div>
+
+        <div className="grid gap-2 sm:grid-cols-3">
+          <div className="rounded-[18px] border border-rose-100 bg-white/90 px-3 py-3">
+            <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-pink-500">
+              Flux
+            </div>
+            <div className="mt-2">
+              <span className={`rounded-full border px-2.5 py-1 text-[11px] font-semibold ${commerceMeta.className}`}>
+                {commerceMeta.label}
+              </span>
+            </div>
+            <div className="mt-2 text-xs leading-5 text-[#786f66]">{commerceMeta.detail}</div>
+          </div>
+          <div className="rounded-[18px] border border-rose-100 bg-white/90 px-3 py-3">
+            <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-pink-500">
+              Predare
+            </div>
+            <div className="mt-2 text-sm font-semibold text-gray-900">
+              {quoteOnly ? "La confirmare" : "Livrare 100 MDL"}
+            </div>
+            <div className="mt-2 text-xs leading-5 text-[#786f66]">
+              {quoteOnly ? "Ridicare sau livrare stabilite dupa analiza." : "Pickup sau livrare din checkout."}
+            </div>
+          </div>
+          <div className="rounded-[18px] border border-rose-100 bg-white/90 px-3 py-3">
+            <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-pink-500">
+              Timp minim
+            </div>
+            <div className="mt-2 text-sm font-semibold text-gray-900">
+              {formatLeadTimeLabel(item)}
+            </div>
+            <div className="mt-2 text-xs leading-5 text-[#786f66]">
+              {quoteOnly ? "Se reconfirma pentru oferta finala." : "Valabil pentru varianta standard afisata."}
+            </div>
+          </div>
         </div>
 
         <div className="flex flex-wrap gap-2 pt-1">
