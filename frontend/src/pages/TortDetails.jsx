@@ -39,6 +39,58 @@ function formatProductPrice(tort) {
   return tort?.pret ? `${tort.pret} MDL` : "La cerere";
 }
 
+function formatDeliveryLabel(tort) {
+  if (tort?.pricingMode === "fixed") return "100 MDL";
+  return "La confirmare";
+}
+
+function buildOrderSteps(tort) {
+  if (tort?.pricingMode === "fixed") {
+    return [
+      "Adaugi produsul standard in cos, exact in varianta afisata pe pagina.",
+      "Stabilesti data, ora si metoda de primire direct in fluxul de plata standard.",
+      "Adaugi doar note logistice scurte sau mesajul pentru tort, fara sa schimbi structura produsului.",
+    ];
+  }
+
+  return [
+    "Pornesti din constructorul 2D sau din cererea de oferta, nu direct din plata standard.",
+    "Atelierul confirma pretul, disponibilitatea si toate detaliile comerciale importante.",
+    "Platesti doar dupa ce oferta finala este aprobata si comanda este pregatita pentru executie.",
+  ];
+}
+
+function buildStandardChecklist(tort) {
+  return [
+    tort?.marime
+      ? `Formatul standard afisat: ${tort.marime}.`
+      : "Formatul standard afisat pe pagina, fara schimbari de structura.",
+    tort?.servingLabel
+      ? `Numarul orientativ de portii pentru varianta standard: ${tort.servingLabel}.`
+      : "Numarul de portii aferent variantei standard afisate.",
+    "Ridicare din atelier sau livrare programata in checkout, cu taxa fixa de 100 MDL pentru livrare.",
+    "Note scurte in checkout pentru mesaj, alergii sau detalii de predare.",
+  ];
+}
+
+function buildCustomTriggers(tort) {
+  if (tort?.pricingMode === "fixed") {
+    return [
+      "Alta marime, mai multe portii sau schimbarea greutatii standard.",
+      "Etaje suplimentare, modificarea formei sau structura diferita fata de pagina.",
+      "Decor complet nou, paleta de culori diferita sau inspiratie din alta imagine.",
+      "Model de eveniment care are nevoie de aprobare manuala, mockup sau confirmare de pret.",
+    ];
+  }
+
+  return [
+    "Produsul nu are pret final publicat si necesita confirmare manuala.",
+    "Disponibilitatea, livrarea si executia se stabilesc dupa analiza cererii.",
+    "Eventualele modificari de gust, format sau design se valideaza direct cu atelierul.",
+    "Plata se deschide doar dupa aprobarea ofertei finale.",
+  ];
+}
+
 function StorefrontBadge({ tort }) {
   const rounded = Math.round(Number(tort?.ratingAvg || 0) * 10) / 10;
 
@@ -136,6 +188,15 @@ export default function TortDetails() {
     [storefrontTort]
   );
   const requiresManualQuote = Boolean(storefrontTort?.requiresManualQuote);
+  const orderSteps = useMemo(() => buildOrderSteps(storefrontTort), [storefrontTort]);
+  const standardChecklist = useMemo(
+    () => buildStandardChecklist(storefrontTort),
+    [storefrontTort]
+  );
+  const customTriggers = useMemo(
+    () => buildCustomTriggers(storefrontTort),
+    [storefrontTort]
+  );
 
   const gallery = useMemo(() => {
     const list = [];
@@ -329,7 +390,7 @@ export default function TortDetails() {
                 </div>
               ) : null}
 
-              <div className="grid gap-4 md:grid-cols-3">
+              <div className="grid gap-4 md:grid-cols-4">
                 <div className="rounded-[24px] border border-rose-100 bg-[rgba(255,249,242,0.9)] p-4">
                   <div className="text-xs uppercase tracking-[0.2em] text-pink-600">Pret</div>
                   <div className="mt-2 text-2xl font-semibold text-ink">{formatProductPrice(storefrontTort)}</div>
@@ -344,6 +405,12 @@ export default function TortDetails() {
                   <div className="text-xs uppercase tracking-[0.2em] text-pink-600">Portii</div>
                   <div className="mt-2 text-2xl font-semibold text-ink">
                     {storefrontTort.servingLabel || storefrontTort.portii || "-"}
+                  </div>
+                </div>
+                <div className="rounded-[24px] border border-rose-100 bg-[rgba(255,249,242,0.9)] p-4">
+                  <div className="text-xs uppercase tracking-[0.2em] text-pink-600">Livrare</div>
+                  <div className="mt-2 text-2xl font-semibold text-ink">
+                    {formatDeliveryLabel(storefrontTort)}
                   </div>
                 </div>
               </div>
@@ -413,6 +480,47 @@ export default function TortDetails() {
                     </div>
                     <div className="mt-2 text-sm leading-6 text-[#655c53]">
                       {storefrontTort.customizationSummary}
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div className="rounded-[26px] border border-rose-100 bg-white/90 p-5 shadow-soft">
+                <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-pink-600">
+                  Cum comanzi corect
+                </div>
+                <div className="mt-4 grid gap-3 md:grid-cols-3">
+                  {orderSteps.map((step, index) => (
+                    <div
+                      key={`${storefrontTort._id}-step-${index + 1}`}
+                      className="rounded-[20px] border border-rose-100 bg-[rgba(255,249,242,0.82)] p-4"
+                    >
+                      <div className="text-xs font-semibold uppercase tracking-[0.16em] text-pink-600">
+                        Pasul {index + 1}
+                      </div>
+                      <div className="mt-2 text-sm leading-6 text-[#655c53]">{step}</div>
+                    </div>
+                  ))}
+                </div>
+                <div className="mt-4 grid gap-4 md:grid-cols-2">
+                  <div className="rounded-[20px] border border-emerald-200 bg-emerald-50/60 p-4">
+                    <div className="text-xs font-semibold uppercase tracking-[0.16em] text-emerald-700">
+                      Inclus in varianta standard
+                    </div>
+                    <div className="mt-3 space-y-2 text-sm leading-6 text-[#4f5f50]">
+                      {standardChecklist.map((item) => (
+                        <div key={`${storefrontTort._id}-standard-${item}`}>• {item}</div>
+                      ))}
+                    </div>
+                  </div>
+                  <div className="rounded-[20px] border border-amber-200 bg-amber-50/70 p-4">
+                    <div className="text-xs font-semibold uppercase tracking-[0.16em] text-amber-800">
+                      Cand treci in constructor sau oferta
+                    </div>
+                    <div className="mt-3 space-y-2 text-sm leading-6 text-[#6a5646]">
+                      {customTriggers.map((item) => (
+                        <div key={`${storefrontTort._id}-custom-${item}`}>• {item}</div>
+                      ))}
                     </div>
                   </div>
                 </div>
