@@ -8,6 +8,17 @@ import { useCart } from "../context/CartContext";
 import { CATALOG_FILLINGS } from "../data/catalogFillings";
 import { buttons, cards } from "../lib/tailwindComponents";
 import {
+  STOREFRONT_ALLERGEN_AVOIDANCE,
+  STOREFRONT_PORTION_BANDS,
+  STOREFRONT_PRICE_BANDS,
+  isFastReadyCatalogItem,
+  isPopularCatalogItem,
+  isPremiumCatalogItem,
+  matchesCatalogAllergenAvoidance,
+  matchesCatalogPortionBand,
+  matchesCatalogPriceBand,
+} from "../lib/catalogFilters";
+import {
   STOREFRONT_FLAVOR_FILTERS,
   STOREFRONT_OCCASIONS,
   STOREFRONT_SORT_OPTIONS,
@@ -183,6 +194,13 @@ export default function Catalog() {
   const deferredQuery = useDeferredValue(query);
   const [occasion, setOccasion] = useState("toate");
   const [flavorTag, setFlavorTag] = useState("toate");
+  const [priceBand, setPriceBand] = useState("toate");
+  const [portionBand, setPortionBand] = useState("toate");
+  const [avoidAllergen, setAvoidAllergen] = useState("niciunul");
+  const [onlyPremium, setOnlyPremium] = useState(false);
+  const [onlyPopular, setOnlyPopular] = useState(false);
+  const [onlyFastReady, setOnlyFastReady] = useState(false);
+  const [onlyDirectCheckout, setOnlyDirectCheckout] = useState(false);
   const [sort, setSort] = useState("recommended");
   const [highlightedFillingId, setHighlightedFillingId] = useState("");
 
@@ -345,6 +363,13 @@ export default function Catalog() {
       if (selectedFilling && !matchesSelectedFillingCake(item, selectedFilling)) return false;
       if (occasion !== "toate" && !item.ocazii.includes(occasion)) return false;
       if (flavorTag !== "toate" && !item.displayTags.includes(flavorTag)) return false;
+      if (!matchesCatalogPriceBand(item, priceBand)) return false;
+      if (!matchesCatalogPortionBand(item, portionBand)) return false;
+      if (!matchesCatalogAllergenAvoidance(item, avoidAllergen)) return false;
+      if (onlyPremium && !isPremiumCatalogItem(item)) return false;
+      if (onlyPopular && !isPopularCatalogItem(item)) return false;
+      if (onlyFastReady && !isFastReadyCatalogItem(item)) return false;
+      if (onlyDirectCheckout && item.checkoutReady !== true) return false;
       if (normalizedQuery && !String(item.searchText || "").includes(normalizedQuery)) return false;
       return true;
     });
@@ -376,17 +401,40 @@ export default function Catalog() {
       }
       return Number(right.ratingAvg || 0) - Number(left.ratingAvg || 0);
     });
-  }, [catalogItems, flavorTag, normalizedQuery, occasion, selectedFilling, sort]);
+  }, [
+    avoidAllergen,
+    catalogItems,
+    flavorTag,
+    normalizedQuery,
+    occasion,
+    onlyDirectCheckout,
+    onlyFastReady,
+    onlyPopular,
+    onlyPremium,
+    portionBand,
+    priceBand,
+    selectedFilling,
+    sort,
+  ]);
 
-  const highlightedCount = filteredItems.filter((item) => item.badge?.label === "Popular").length;
-  const premiumCount = filteredItems.filter((item) => item.displayTags.includes("premium")).length;
+  const highlightedCount = filteredItems.filter((item) => isPopularCatalogItem(item)).length;
+  const premiumCount = filteredItems.filter((item) => isPremiumCatalogItem(item)).length;
   const activeFilterCount = [
     query,
     occasion !== "toate",
     flavorTag !== "toate",
+    priceBand !== "toate",
+    portionBand !== "toate",
+    avoidAllergen !== "niciunul",
+    onlyPremium,
+    onlyPopular,
+    onlyFastReady,
+    onlyDirectCheckout,
     sort !== "recommended",
     Boolean(selectedFilling),
   ].filter(Boolean).length;
+  const directCheckoutCount = filteredItems.filter((item) => item.checkoutReady === true).length;
+  const fastReadyCount = filteredItems.filter((item) => isFastReadyCatalogItem(item)).length;
   const fillingCategories = useMemo(
     () => Array.from(new Set(CATALOG_FILLINGS.map((item) => item.category))).slice(0, 5),
     []
@@ -407,6 +455,13 @@ export default function Catalog() {
     setQuery("");
     setOccasion("toate");
     setFlavorTag("toate");
+    setPriceBand("toate");
+    setPortionBand("toate");
+    setAvoidAllergen("niciunul");
+    setOnlyPremium(false);
+    setOnlyPopular(false);
+    setOnlyFastReady(false);
+    setOnlyDirectCheckout(false);
     setSort("recommended");
   };
 
@@ -636,7 +691,7 @@ export default function Catalog() {
               <div className="text-xs uppercase tracking-[0.24em] text-pink-600">Servicii incluse</div>
               <div className="mt-3 space-y-3 text-sm leading-7 text-[#625a52]">
                 <div>Fotografie coerenta pe carduri, fara placeholdere goale.</div>
-                <div>Filtre utile pentru ocazii, arome si selectii premium.</div>
+                <div>Filtre comerciale pentru pret, portii, checkout direct si disponibilitate rapida.</div>
                 <div>Actiuni rapide pentru detalii, cos si personalizare.</div>
               </div>
             </div>
@@ -646,7 +701,7 @@ export default function Catalog() {
 
       <section className="mx-auto max-w-editorial px-4 md:px-6">
         <div className="rounded-[32px] border border-rose-100 bg-[rgba(255,251,245,0.92)] p-5 shadow-card backdrop-blur md:p-6">
-          <div className="grid gap-4 xl:grid-cols-[1.35fr,0.85fr,0.7fr]">
+          <div className="grid gap-4 xl:grid-cols-[1.2fr,0.75fr,0.75fr,0.75fr,0.8fr]">
             <label className="block">
               <span className="text-sm font-semibold text-[#4f463e]">Cauta dupa nume sau gust</span>
               <input
@@ -672,16 +727,50 @@ export default function Catalog() {
               </select>
             </label>
 
+            <label className="block">
+              <span className="text-sm font-semibold text-[#4f463e]">Buget</span>
+              <select
+                value={priceBand}
+                onChange={(event) => setPriceBand(event.target.value)}
+                className="mt-2 w-full rounded-[22px] border border-rose-200 bg-white px-4 py-3 text-ink outline-none focus:border-pink-400 focus:ring-4 focus:ring-sage/30"
+              >
+                {STOREFRONT_PRICE_BANDS.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+
+            <label className="block">
+              <span className="text-sm font-semibold text-[#4f463e]">Portii</span>
+              <select
+                value={portionBand}
+                onChange={(event) => setPortionBand(event.target.value)}
+                className="mt-2 w-full rounded-[22px] border border-rose-200 bg-white px-4 py-3 text-ink outline-none focus:border-pink-400 focus:ring-4 focus:ring-sage/30"
+              >
+                {STOREFRONT_PORTION_BANDS.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+
             <div className="rounded-[24px] border border-rose-100 bg-[rgba(255,249,242,0.88)] p-4">
               <div className="text-sm font-semibold text-[#4f463e]">Rezumat filtrare</div>
               <div className="mt-2 text-2xl font-semibold text-ink">{filteredItems.length}</div>
               <div className="mt-1 text-sm text-[#7b736a]">
                 {activeFilterCount > 0 ? `${activeFilterCount} filtre active` : "fara filtre active"}
               </div>
+              <div className="mt-3 space-y-1 text-xs uppercase tracking-[0.12em] text-[#8a8178]">
+                <div>{directCheckoutCount} intra direct in checkout</div>
+                <div>{fastReadyCount} sunt disponibile mai rapid</div>
+              </div>
             </div>
           </div>
 
-          <div className="mt-6 grid gap-5 xl:grid-cols-[1fr,1fr,auto]">
+          <div className="mt-6 grid gap-5 xl:grid-cols-[1fr,1fr,1fr,0.95fr]">
             <div>
               <div className="text-sm font-semibold text-[#4f463e]">Ocazie</div>
               <div className="mt-3 flex flex-wrap gap-2.5">
@@ -710,7 +799,51 @@ export default function Catalog() {
               </div>
             </div>
 
-            <div className="flex items-end">
+            <div>
+              <div className="text-sm font-semibold text-[#4f463e]">Filtre comerciale</div>
+              <div className="mt-3 flex flex-wrap gap-2.5">
+                <FilterChip
+                  label="Doar checkout direct"
+                  active={onlyDirectCheckout}
+                  onClick={() => setOnlyDirectCheckout((current) => !current)}
+                />
+                <FilterChip
+                  label="Disponibil mai rapid"
+                  active={onlyFastReady}
+                  onClick={() => setOnlyFastReady((current) => !current)}
+                />
+                <FilterChip
+                  label="Bestseller"
+                  active={onlyPopular}
+                  onClick={() => setOnlyPopular((current) => !current)}
+                />
+                <FilterChip
+                  label="Premium"
+                  active={onlyPremium}
+                  onClick={() => setOnlyPremium((current) => !current)}
+                />
+              </div>
+            </div>
+
+            <div className="space-y-4">
+              <label className="block">
+                <span className="text-sm font-semibold text-[#4f463e]">Evita alergeni</span>
+                <select
+                  value={avoidAllergen}
+                  onChange={(event) => setAvoidAllergen(event.target.value)}
+                  className="mt-2 w-full rounded-[22px] border border-rose-200 bg-white px-4 py-3 text-ink outline-none focus:border-pink-400 focus:ring-4 focus:ring-sage/30"
+                >
+                  {STOREFRONT_ALLERGEN_AVOIDANCE.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <div className="text-xs leading-6 text-[#7b736a]">
+                Filtrul foloseste etichetele de alergeni din catalog si este orientativ. Pentru
+                comenzi sensibile, confirma manual ingredientele inainte de plasare.
+              </div>
               <button type="button" className={buttons.outline} onClick={resetFilters}>
                 Reseteaza filtrele
               </button>
