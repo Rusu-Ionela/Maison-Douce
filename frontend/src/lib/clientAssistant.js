@@ -22,7 +22,7 @@ const INTENTS = [
     ],
     buildResponse: ({ user }) => ({
       text:
-        "Constructorul 2D este in pagina /constructor. Acolo alegi compozitia, decorul si mesajul, apoi poti salva draftul sau trimite conceptul catre patiser.",
+        "Constructorul 2D este pentru cereri personalizate, in pagina /constructor. Acolo alegi compozitia, decorul si mesajul, apoi salvezi draftul sau trimiti cererea catre atelier pentru confirmarea pretului.",
       actions: [
         createRouteAction("Deschide constructorul", "/constructor"),
         createRouteAction("Ghid de utilizare", "/personalizeaza"),
@@ -45,7 +45,7 @@ const INTENTS = [
     ],
     buildResponse: () => ({
       text:
-        "Livrarea este 100 MDL, iar in calendar poti alege si ridicare personala. Daca selectezi livrare, completezi adresa si optional intervalul orar pentru curier.",
+        "Livrarea este 100 MDL, iar in calendar poti alege si ridicare personala. Calendarul este pentru rezervarea slotului de predare, nu pentru checkout-ul standard din cos.",
       actions: [
         createRouteAction("Rezervare si livrare", "/calendar"),
         createRouteAction("Vezi FAQ", "/faq"),
@@ -91,7 +91,7 @@ const INTENTS = [
     ],
     buildResponse: ({ user }) => ({
       text:
-        "Pentru rezervare mergi in /calendar, alegi prestatorul, data, ora si modul de predare. Dupa confirmare, comanda apare in profil, iar cand pretul este gata poti continua la plata.",
+        "Pentru rezervare mergi in /calendar, alegi prestatorul, data, ora si modul de predare. Dupa confirmare, rezervarea apare in profil, iar cand pretul este gata poti continua la plata.",
       actions: [
         createRouteAction("Deschide calendarul", "/calendar"),
         user
@@ -164,7 +164,7 @@ const INTENTS = [
     ],
     buildResponse: () => ({
       text:
-        "In catalog vezi produsele disponibile, iar pentru un tort complet personalizat poti continua direct in constructorul 2D.",
+        "In catalog vezi produsele standard cu pret fix, iar pentru un tort complet personalizat poti continua direct in constructorul 2D.",
       actions: [
         createRouteAction("Deschide catalogul", "/catalog"),
         createRouteAction("Constructor 2D", "/constructor"),
@@ -185,7 +185,7 @@ const INTENTS = [
     ],
     buildResponse: ({ user }) => ({
       text:
-        "Plata se face dupa ce ai o comanda activa si pretul final este confirmat. Din profil intri in comanda, apoi continui spre pagina de plata unde poti aplica voucher, puncte sau cupon.",
+        "Plata se face dupa ce ai o comanda standard sau o cerere personalizata confirmata. Din profil intri in comanda activa, apoi continui spre pagina de plata unde poti aplica voucher, puncte sau cupon.",
       actions: [
         user
           ? createRouteAction("Profilul meu", "/profil")

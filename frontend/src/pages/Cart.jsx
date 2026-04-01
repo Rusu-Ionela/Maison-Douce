@@ -5,6 +5,7 @@ import { useAuth } from "../context/AuthContext";
 import { OrdersAPI } from "../api/orders";
 import { ProductsAPI } from "../api/products";
 import { getAvailability } from "../api/calendar";
+import ClientOrderFlowGuide from "../components/ClientOrderFlowGuide";
 import SlotPicker from "../components/SlotPicker";
 import StatusBanner from "../components/StatusBanner";
 import ProviderSelector from "../components/ProviderSelector";
@@ -375,14 +376,22 @@ export default function Cart() {
   return (
     <div className="min-h-screen">
       <div className={`${containers.pageMax} space-y-6`}>
-        <div className="flex items-center justify-between">
-          <div>
-            <p className="text-pink-500 font-semibold uppercase tracking-wide">
-              Checkout
-            </p>
-            <h1 className="text-3xl font-bold text-gray-900">Cos</h1>
+        <div className="space-y-4">
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+            <div className="max-w-3xl space-y-2">
+              <p className="text-pink-500 font-semibold uppercase tracking-wide">
+                Comanda standard
+              </p>
+              <h1 className="text-3xl font-bold text-gray-900">Cos si checkout</h1>
+              <p className="text-sm leading-7 text-gray-600">
+                Acest flux este doar pentru produsele cu pret fix publicate in catalogul live. Daca
+                vrei un tort creat special pentru evenimentul tau, foloseste constructorul. Daca
+                vrei doar sa blochezi data si ora, foloseste calendarul.
+              </p>
+            </div>
+            <span className="text-gray-600">{items.length} produse</span>
           </div>
-          <span className="text-gray-600">{items.length} produse</span>
+          <ClientOrderFlowGuide activeFlow="checkout" />
         </div>
 
         <StatusBanner

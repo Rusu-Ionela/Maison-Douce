@@ -1,5 +1,6 @@
 import { Link, useLocation } from "react-router-dom";
 import CakeConstructor2D from "../components/CakeConstructor2D";
+import ClientOrderFlowGuide from "../components/ClientOrderFlowGuide";
 import { buttons, cards, containers } from "../lib/tailwindComponents";
 
 const STEPS = [
@@ -25,13 +26,13 @@ export default function Constructor() {
               <div>
                 <div className="font-script text-4xl text-pink-500">Maison-Douce atelier</div>
                 <h1 className="mt-2 font-serif text-4xl font-semibold text-ink md:text-5xl">
-                  Constructor 2D pentru torturi personalizate
+                  Cerere personalizata prin constructorul 2D
                 </h1>
               </div>
               <p className="max-w-2xl text-base leading-8 text-[#655c53]">
-                Constructorul 2D este acum gandit in pasi mai simpli: pleci de la structura
-                tortului, alegi interiorul, rafinezi exteriorul, vezi estimari pentru
-                portii si greutate, apoi poti cere 3 preview-uri AI mai realiste pentru decorul final.
+                Aici pornesti fluxul pentru torturi create de la zero sau pentru decoruri care au
+                nevoie de validare manuala. Configurezi structura, interiorul si exteriorul, apoi
+                trimiti cererea catre atelier pentru confirmarea finala a pretului.
               </p>
               <div className="flex flex-wrap gap-3">
                 <Link to="/personalizeaza" className={buttons.outline}>
@@ -66,6 +67,8 @@ export default function Constructor() {
             </div>
           </div>
         </header>
+
+        <ClientOrderFlowGuide activeFlow="custom" />
 
         <CakeConstructor2D
           designId={designId}

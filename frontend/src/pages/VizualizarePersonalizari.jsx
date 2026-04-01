@@ -169,6 +169,14 @@ export default function VizualizarePersonalizari() {
         </div>
 
         <StatusBanner type={status.type || "info"} message={status.message} />
+        <StatusBanner
+          type="info"
+          message={
+            list.length
+              ? "Drafturile salvate din constructor nu blocheaza data si nu pornesc plata. Ele devin cereri personalizate doar dupa trimiterea spre validare sau dupa discutia cu atelierul."
+              : ""
+          }
+        />
 
         {loading ? (
           <div className="rounded-[24px] border border-rose-100 bg-white/90 px-4 py-6 text-sm text-gray-600 shadow-soft">

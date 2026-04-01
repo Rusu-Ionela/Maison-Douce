@@ -4,6 +4,7 @@ import Calendar from "react-calendar";
 import "react-calendar/dist/Calendar.css";
 import { useNavigate } from "react-router-dom";
 import { bookSlot, getAvailability } from "../api/calendar";
+import ClientOrderFlowGuide from "../components/ClientOrderFlowGuide";
 import SlotPicker from "../components/SlotPicker";
 import StatusBanner from "../components/StatusBanner";
 import ProviderSelector from "../components/ProviderSelector";
@@ -272,8 +273,8 @@ export default function CalendarClient() {
         type: "success",
         message:
           data?.requiresPriceConfirmation !== false
-            ? "Comanda a fost trimisa. Echipa va confirma pretul final dupa analiza detaliilor."
-            : "Comanda a fost inregistrata si poti continua direct la plata.",
+            ? "Rezervarea a fost trimisa. Echipa va confirma pretul final dupa analiza detaliilor."
+            : "Rezervarea a fost inregistrata si poti continua direct la plata.",
       });
       queryClient.invalidateQueries({
         queryKey: ["calendar-availability-month", prestatorId],
@@ -282,7 +283,7 @@ export default function CalendarClient() {
     onError: (error) => {
       setStatus({
         type: "error",
-        message: getApiErrorMessage(error, "Nu am putut trimite comanda."),
+        message: getApiErrorMessage(error, "Nu am putut trimite rezervarea."),
       });
     },
   });
@@ -453,7 +454,7 @@ export default function CalendarClient() {
     if (!user?._id) {
       setStatus({
         type: "warning",
-        message: "Trebuie sa fii autentificat pentru a trimite comanda.",
+        message: "Trebuie sa fii autentificat pentru a trimite rezervarea.",
       });
       return;
     }
@@ -537,14 +538,16 @@ export default function CalendarClient() {
           <div className="flex flex-col gap-5 xl:flex-row xl:items-end xl:justify-between">
             <div className="max-w-3xl space-y-3">
               <p className="text-xs font-semibold uppercase tracking-[0.24em] text-pink-500">
-                Calendar comenzi
+                Rezervare slot
               </p>
               <h1 className="font-serif text-3xl font-semibold text-gray-900 md:text-4xl">
-                Selectezi data, apoi ora, apoi livrarea sau ridicarea
+                Rezervi data, ora si modul de predare
               </h1>
               <p className="max-w-2xl text-base leading-7 text-gray-600">
-                Fluxul este simplu: alegi ziua, intervalul, metoda de primire si confirmi
-                rezumatul final. Pentru livrare, taxa fixa este de {DELIVERY_FEE} MDL.
+                Calendarul este pentru blocarea slotului de productie sau predare. Daca produsul
+                tau este deja in cos si are pret fix, checkout-ul standard ramane in cos. Pentru un
+                tort complet personalizat, fluxul principal este constructorul 2D. Pentru livrare,
+                taxa fixa este de {DELIVERY_FEE} MDL.
               </p>
             </div>
             <div className="grid gap-3 sm:grid-cols-3">
@@ -576,6 +579,8 @@ export default function CalendarClient() {
             </div>
           </div>
         </header>
+
+        <ClientOrderFlowGuide activeFlow="booking" />
 
         <StatusBanner
           type="error"
@@ -954,8 +959,8 @@ export default function CalendarClient() {
 
               <FlowStepCard
                 step="5"
-                title="Verifica rezumatul si confirma"
-                description="Vezi toate detaliile intr-un singur loc, apoi trimiti comanda."
+                title="Verifica rezervarea si confirma"
+                description="Vezi toate detaliile intr-un singur loc, apoi trimiti rezervarea slotului."
                 active={currentStep === 5}
                 completed={Boolean(success)}
                 locked={!stepState.address}
@@ -968,7 +973,7 @@ export default function CalendarClient() {
                   <div className="space-y-5">
                     <div className="rounded-[26px] border border-rose-100 bg-[linear-gradient(180deg,_rgba(255,255,255,0.98),_rgba(246,239,228,0.92))] p-5">
                       <div className="text-xs font-semibold uppercase tracking-[0.2em] text-pink-500">
-                        Rezumat comanda
+                        Rezumat rezervare
                       </div>
                       <div className="mt-4 space-y-3">
                         <SummaryRow
@@ -1028,7 +1033,7 @@ export default function CalendarClient() {
                       <div className="rounded-[22px] border border-rose-100 bg-white px-4 py-3 text-sm text-[#6d645c]">
                         <div className="font-semibold text-ink">Confirmare finala</div>
                         <div className="mt-2 leading-6">
-                          Trimiti data, ora, metoda de predare si adresa, iar comanda ajunge
+                          Trimiti data, ora, metoda de predare si adresa, iar rezervarea ajunge
                           direct in sistemul intern al atelierului.
                         </div>
                       </div>
@@ -1062,13 +1067,13 @@ export default function CalendarClient() {
 
                     {!user?._id ? (
                       <div className="rounded-[22px] border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
-                        Trebuie sa fii autentificat pentru a confirma comanda.
+                        Trebuie sa fii autentificat pentru a confirma rezervarea.
                       </div>
                     ) : null}
 
                     {success?.comandaId ? (
                       <div className="rounded-[22px] border border-emerald-200 bg-emerald-50 px-4 py-4 text-sm text-emerald-800">
-                        <div className="font-semibold">Comanda a fost inregistrata.</div>
+                        <div className="font-semibold">Rezervarea a fost inregistrata.</div>
                         <div className="mt-2 leading-6">
                           Data: {formatLongDate(success.date)} | Ora: {success.time} | Metoda:{" "}
                           {success.metoda === "livrare" ? "Livrare" : "Ridicare"}
@@ -1089,7 +1094,7 @@ export default function CalendarClient() {
                             }
                           >
                             {success.requiresPriceConfirmation
-                              ? "Vezi comanda in profil"
+                              ? "Vezi rezervarea in profil"
                               : "Continua la plata"}
                           </button>
                         </div>
@@ -1101,7 +1106,7 @@ export default function CalendarClient() {
                       disabled={reservationBusy || !canConfirmReservation}
                       className={`w-full ${buttons.primary}`}
                     >
-                      {reservationBusy ? "Se trimite comanda..." : "Confirma comanda"}
+                      {reservationBusy ? "Se trimite rezervarea..." : "Confirma rezervarea"}
                     </button>
                   </div>
                 )}
