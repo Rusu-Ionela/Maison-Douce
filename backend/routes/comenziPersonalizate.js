@@ -2,8 +2,129 @@ const express = require("express");
 const router = express.Router();
 const ComandaPersonalizata = require("../models/ComandaPersonalizata");
 const Comanda = require("../models/Comanda");
+const Rezervare = require("../models/Rezervare");
+const CalendarPrestator = require("../models/CalendarPrestator");
+const CalendarSlotEntry = require("../models/CalendarSlotEntry");
 const { authRequired, roleCheck } = require("../middleware/auth");
 const { resolveProviderForRequest } = require("../utils/providerDirectory");
+const { notifyUser, notifyProviderById } = require("../utils/notifications");
+const { recordAuditLog } = require("../utils/audit");
+
+const LIVRARE_FEE = 100;
+
+function normalizeText(value) {
+  return String(value || "").trim();
+}
+
+function normalizeDeliveryMethod(value) {
+  const normalized = normalizeText(value).toLowerCase();
+  return normalized === "livrare" ? "livrare" : "ridicare";
+}
+
+function normalizeHandoffMethod(value) {
+  return normalizeDeliveryMethod(value) === "livrare" ? "delivery" : "pickup";
+}
+
+function buildReservationTimeSlot(time = "") {
+  const [h, m] = String(time || "00:00").split(":").map(Number);
+  const endH = String((Number.isFinite(h) ? h : 0) + 1).padStart(2, "0");
+  const endM = String(Number.isFinite(m) ? m : 0).padStart(2, "0");
+  return `${String(time || "00:00")}-${endH}:${endM}`;
+}
+
+async function reserveSlot(prestatorId, date, time) {
+  const entry = await CalendarSlotEntry.findOne({ prestatorId, date, time });
+  if (entry) {
+    const updated = await CalendarSlotEntry.updateOne(
+      { _id: entry._id, used: { $lt: entry.capacity } },
+      { $inc: { used: 1 } }
+    );
+    if (!updated?.modifiedCount) {
+      throw Object.assign(new Error("Slotul selectat este deja ocupat."), { statusCode: 409 });
+    }
+    return { source: "entry", prestatorId, date, time };
+  }
+
+  const calendar = await CalendarPrestator.findOne({ prestatorId });
+  if (!calendar) {
+    throw Object.assign(new Error("Calendar inexistent pentru prestator."), { statusCode: 404 });
+  }
+
+  const index = (calendar.slots || []).findIndex((slot) => slot.date === date && slot.time === time);
+  if (index === -1) {
+    throw Object.assign(new Error("Slotul selectat nu exista in calendarul activ."), {
+      statusCode: 404,
+    });
+  }
+
+  const slot = calendar.slots[index];
+  if (Number(slot.used || 0) >= Number(slot.capacity || 0)) {
+    throw Object.assign(new Error("Slotul selectat este deja ocupat."), { statusCode: 409 });
+  }
+
+  calendar.slots[index].used = Number(slot.used || 0) + 1;
+  await calendar.save();
+
+  return { source: "legacy", prestatorId, date, time };
+}
+
+async function releaseSlot(reservation = {}) {
+  const { source, prestatorId, date, time } = reservation || {};
+  if (!prestatorId || !date || !time) return;
+
+  if (source === "entry") {
+    const entry = await CalendarSlotEntry.findOne({ prestatorId, date, time });
+    if (entry && Number(entry.used || 0) > 0) {
+      await CalendarSlotEntry.updateOne(
+        { _id: entry._id, used: { $gt: 0 } },
+        { $inc: { used: -1 } }
+      );
+      return;
+    }
+  }
+
+  const calendar = await CalendarPrestator.findOne({ prestatorId });
+  if (!calendar) return;
+
+  const index = (calendar.slots || []).findIndex((slot) => slot.date === date && slot.time === time);
+  if (index === -1) return;
+
+  calendar.slots[index].used = Math.max(0, Number(calendar.slots[index].used || 0) - 1);
+  await calendar.save();
+}
+
+async function syncReservationFromOrder(comanda) {
+  const handoffMethod = normalizeHandoffMethod(comanda?.metodaLivrare);
+  const update = {
+    clientId: String(comanda?.clientId || ""),
+    prestatorId: normalizeText(comanda?.prestatorId),
+    comandaId: comanda?._id,
+    customDetails: comanda?.customDetails || undefined,
+    date: normalizeText(comanda?.dataLivrare),
+    timeSlot: buildReservationTimeSlot(comanda?.oraLivrare),
+    handoffMethod,
+    deliveryFee: Number(comanda?.taxaLivrare || comanda?.deliveryFee || 0),
+    deliveryAddress: handoffMethod === "delivery" ? normalizeText(comanda?.adresaLivrare) : "",
+    deliveryInstructions: normalizeText(comanda?.deliveryInstructions),
+    deliveryWindow: normalizeText(comanda?.deliveryWindow),
+    subtotal: Number(comanda?.subtotal || 0),
+    total: Number(comanda?.totalFinal ?? comanda?.total ?? 0),
+    notes: normalizeText(comanda?.preferinte || comanda?.note),
+    paymentStatus: normalizeText(comanda?.paymentStatus || comanda?.statusPlata || "unpaid"),
+    status: "pending",
+    handoffStatus: "scheduled",
+  };
+
+  return Rezervare.findOneAndUpdate(
+    { comandaId: comanda._id },
+    { $set: update },
+    {
+      new: true,
+      upsert: true,
+      setDefaultsOnInsert: true,
+    }
+  );
+}
 
 // POST - Salvare comanda personalizata (client)
 router.post("/", authRequired, async (req, res) => {
@@ -71,11 +192,214 @@ router.get("/", authRequired, async (req, res) => {
     } else {
       q.clientId = req.user._id;
     }
-    const comenzi = await ComandaPersonalizata.find(q).sort({ data: -1 });
+    const comenzi = await ComandaPersonalizata.find(q)
+      .populate("comandaId", "numeroComanda status total totalFinal paymentStatus dataLivrare oraLivrare metodaLivrare")
+      .sort({ data: -1 });
     res.json(comenzi);
   } catch (err) {
     console.error("Eroare la obtinerea comenzilor:", err);
     res.status(500).json({ mesaj: "Eroare la obtinerea comenzilor" });
+  }
+});
+
+router.post("/:id/convert", authRequired, roleCheck("admin", "patiser"), async (req, res) => {
+  let reservedSlot = null;
+  let createdOrderId = "";
+
+  try {
+    const {
+      dataLivrare,
+      oraLivrare,
+      metodaLivrare,
+      adresaLivrare,
+      deliveryInstructions,
+      deliveryWindow,
+      statusNote,
+    } = req.body || {};
+
+    const doc = await ComandaPersonalizata.findById(req.params.id);
+    if (!doc) return res.status(404).json({ mesaj: "Comanda personalizata inexistenta" });
+
+    if (
+      String(req.user?.rol || req.user?.role || "") === "patiser" &&
+      String(doc.prestatorId || "") !== String(req.user._id)
+    ) {
+      return res.status(403).json({ mesaj: "Acces interzis" });
+    }
+
+    const linkedOrder = doc.comandaId ? await Comanda.findById(doc.comandaId) : null;
+    if (linkedOrder) {
+      return res.json({
+        mesaj: "Cererea are deja o comanda generata.",
+        alreadyConverted: true,
+        comanda: linkedOrder,
+      });
+    }
+
+    const subtotal = Number(doc.pretEstimat || 0);
+    if (subtotal <= 0) {
+      return res.status(400).json({ mesaj: "Seteaza mai intai un pret estimat valid." });
+    }
+    if (!normalizeText(doc.clientId) || !normalizeText(doc.prestatorId)) {
+      return res.status(400).json({ mesaj: "Cererea nu are client sau prestator configurat." });
+    }
+    if (!normalizeText(dataLivrare) || !normalizeText(oraLivrare)) {
+      return res.status(400).json({ mesaj: "Data si ora sunt obligatorii pentru conversie." });
+    }
+
+    const normalizedMethod = normalizeDeliveryMethod(metodaLivrare);
+    const deliveryAddress = normalizedMethod === "livrare" ? normalizeText(adresaLivrare) : "";
+    if (normalizedMethod === "livrare" && !deliveryAddress) {
+      return res.status(400).json({ mesaj: "Adresa de livrare este obligatorie." });
+    }
+
+    reservedSlot = await reserveSlot(doc.prestatorId, normalizeText(dataLivrare), normalizeText(oraLivrare));
+
+    const deliveryFee = normalizedMethod === "livrare" ? LIVRARE_FEE : 0;
+    const total = subtotal + deliveryFee;
+    const itemName =
+      normalizeText(doc?.options?.aiDecorRequest) ||
+      normalizeText(doc.preferinte) ||
+      "Tort personalizat";
+
+    const comanda = await Comanda.create({
+      clientId: doc.clientId,
+      prestatorId: doc.prestatorId,
+      items: [
+        {
+          name: "Tort personalizat",
+          nume: "Tort personalizat",
+          qty: 1,
+          cantitate: 1,
+          price: subtotal,
+          pret: subtotal,
+          lineTotal: subtotal,
+          personalizari: {
+            mesaj: itemName.slice(0, 160),
+          },
+        },
+      ],
+      subtotal,
+      taxaLivrare: deliveryFee,
+      deliveryFee,
+      total,
+      totalFinal: total,
+      metodaLivrare: normalizedMethod,
+      adresaLivrare: deliveryAddress || undefined,
+      deliveryInstructions: normalizeText(deliveryInstructions),
+      deliveryWindow: normalizeText(deliveryWindow),
+      dataLivrare: normalizeText(dataLivrare),
+      oraLivrare: normalizeText(oraLivrare),
+      dataRezervare: normalizeText(dataLivrare),
+      oraRezervare: normalizeText(oraLivrare),
+      calendarSlot: {
+        date: normalizeText(dataLivrare),
+        time: normalizeText(oraLivrare),
+      },
+      status: "in_asteptare",
+      statusComanda: "inregistrata",
+      statusPlata: "unpaid",
+      paymentStatus: "unpaid",
+      tip: "personalizata",
+      preferinte: normalizeText(doc.preferinte),
+      imagineGenerata: normalizeText(doc.imagine),
+      customDetails: {
+        customOrderId: String(doc._id),
+        designId: doc.designId || undefined,
+        options: doc.options || {},
+      },
+      note: normalizeText(statusNote),
+      statusHistory: [
+        {
+          status: "in_asteptare",
+          note: "Comanda generata din cererea personalizata.",
+          at: new Date(),
+        },
+      ],
+    });
+    createdOrderId = String(comanda._id || "");
+
+    await syncReservationFromOrder(comanda);
+
+    doc.comandaId = comanda._id;
+    doc.status = "comanda_generata";
+    doc.statusHistory = Array.isArray(doc.statusHistory) ? doc.statusHistory : [];
+    doc.statusHistory.push({
+      status: "comanda_generata",
+      note: normalizeText(statusNote) || "Cererea a fost convertita intr-o comanda platibila.",
+      at: new Date(),
+    });
+    await doc.save();
+
+    await notifyUser(doc.clientId, {
+      titlu: "Cererea personalizata este gata de plata",
+      mesaj: `Atelierul a generat comanda pentru cererea ta personalizata. Totalul actual este ${total} MDL.`,
+      tip: "success",
+      link: `/plata?comandaId=${comanda._id}`,
+      prestatorId: doc.prestatorId,
+      actorId: req.user?._id || req.user?.id,
+      actorRole: String(req.user?.rol || req.user?.role || ""),
+      meta: {
+        comandaId: String(comanda._id),
+        customOrderId: String(doc._id),
+      },
+    });
+    await notifyProviderById(doc.prestatorId, {
+      titlu: "Comanda personalizata convertita",
+      mesaj: `Cererea #${String(doc._id).slice(-6)} a fost convertita intr-o comanda platibila.`,
+      tip: "info",
+      link: "/admin/comenzi-personalizate",
+      prestatorId: doc.prestatorId,
+      actorId: req.user?._id || req.user?.id,
+      actorRole: String(req.user?.rol || req.user?.role || ""),
+      meta: {
+        comandaId: String(comanda._id),
+        customOrderId: String(doc._id),
+      },
+    });
+
+    await recordAuditLog(req, {
+      action: "custom-order.converted",
+      entityType: "comanda_personalizata",
+      entityId: doc._id,
+      summary: "Cerere personalizata convertita in comanda",
+      metadata: {
+        comandaId: String(comanda._id),
+        dataLivrare: normalizeText(dataLivrare),
+        oraLivrare: normalizeText(oraLivrare),
+        metodaLivrare: normalizedMethod,
+        total,
+      },
+    });
+
+    res.status(201).json({
+      mesaj: "Comanda a fost generata cu succes din cererea personalizata.",
+      comanda,
+      customOrderId: doc._id,
+    });
+  } catch (err) {
+    if (createdOrderId) {
+      try {
+        await Rezervare.deleteOne({ comandaId: createdOrderId });
+        await Comanda.findByIdAndDelete(createdOrderId);
+      } catch (cleanupError) {
+        console.warn(
+          "Nu am putut curata comanda generata dupa eroare:",
+          cleanupError?.message || cleanupError
+        );
+      }
+    }
+    if (reservedSlot) {
+      try {
+        await releaseSlot(reservedSlot);
+      } catch (releaseError) {
+        console.warn("Nu am putut elibera slotul dupa eroare:", releaseError?.message || releaseError);
+      }
+    }
+    console.error("Eroare la conversia comenzii personalizate:", err);
+    res
+      .status(Number(err?.statusCode || 500))
+      .json({ mesaj: err?.message || "Eroare la conversia cererii personalizate." });
   }
 });
 

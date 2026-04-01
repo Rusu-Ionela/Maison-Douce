@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import api from "/src/lib/api.js";
+import StatusBanner from "../components/StatusBanner";
 import { buttons, cards, inputs } from "../lib/tailwindComponents";
 import {
   buildCustomOrderPreviewImages,
@@ -9,7 +10,23 @@ import {
   getCustomOrderStatusMeta,
 } from "../lib/customOrderSummary";
 
-const STATUS_OPTIONS = ["noua", "in_discutie", "aprobata", "respinsa"];
+const STATUS_OPTIONS = ["noua", "in_discutie", "aprobata", "comanda_generata", "respinsa"];
+
+function resolveLinkedOrder(comanda) {
+  return comanda?.comandaId && typeof comanda.comandaId === "object" ? comanda.comandaId : null;
+}
+
+function buildOrderDraft(comanda) {
+  const linkedOrder = resolveLinkedOrder(comanda);
+  return {
+    dataLivrare: linkedOrder?.dataLivrare || "",
+    oraLivrare: linkedOrder?.oraLivrare || "",
+    metodaLivrare: linkedOrder?.metodaLivrare === "livrare" ? "livrare" : "ridicare",
+    adresaLivrare: linkedOrder?.adresaLivrare || "",
+    deliveryInstructions: linkedOrder?.deliveryInstructions || "",
+    deliveryWindow: linkedOrder?.deliveryWindow || "",
+  };
+}
 
 function DetailSection({ section }) {
   return (
@@ -35,6 +52,9 @@ export default function AdminComenziPersonalizate() {
   const [comenzi, setComenzi] = useState([]);
   const [statusFilter, setStatusFilter] = useState("");
   const [loading, setLoading] = useState(false);
+  const [feedback, setFeedback] = useState({ type: "", message: "" });
+  const [conversionDrafts, setConversionDrafts] = useState({});
+  const [convertingId, setConvertingId] = useState("");
 
   const load = async () => {
     setLoading(true);
@@ -46,6 +66,10 @@ export default function AdminComenziPersonalizate() {
     } catch (error) {
       console.error("Eroare la incarcare comenzi personalizate:", error);
       setComenzi([]);
+      setFeedback({
+        type: "error",
+        message: error?.response?.data?.mesaj || "Nu am putut incarca comenzile personalizate.",
+      });
     } finally {
       setLoading(false);
     }
@@ -57,8 +81,76 @@ export default function AdminComenziPersonalizate() {
   }, [statusFilter]);
 
   const updateComanda = async (id, payload) => {
-    await api.patch(`/comenzi-personalizate/${id}/status`, payload);
-    await load();
+    try {
+      await api.patch(`/comenzi-personalizate/${id}/status`, payload);
+      setFeedback({ type: "success", message: "Cererea personalizata a fost actualizata." });
+      await load();
+    } catch (error) {
+      setFeedback({
+        type: "error",
+        message: error?.response?.data?.mesaj || "Nu am putut actualiza cererea personalizata.",
+      });
+    }
+  };
+
+  const getOrderDraft = (comanda) => ({
+    ...buildOrderDraft(comanda),
+    ...(conversionDrafts[comanda._id] || {}),
+  });
+
+  const setOrderDraftField = (comanda, field, value) => {
+    setConversionDrafts((current) => ({
+      ...current,
+      [comanda._id]: {
+        ...buildOrderDraft(comanda),
+        ...(current[comanda._id] || {}),
+        [field]: value,
+      },
+    }));
+  };
+
+  const convertToOrder = async (comanda) => {
+    const draft = getOrderDraft(comanda);
+    if (!draft.dataLivrare || !draft.oraLivrare) {
+      setFeedback({
+        type: "warning",
+        message: "Data si ora sunt obligatorii pentru generarea comenzii.",
+      });
+      return;
+    }
+    if (draft.metodaLivrare === "livrare" && !String(draft.adresaLivrare || "").trim()) {
+      setFeedback({
+        type: "warning",
+        message: "Adresa este obligatorie pentru comenzile cu livrare.",
+      });
+      return;
+    }
+
+    setConvertingId(comanda._id);
+    setFeedback({ type: "", message: "" });
+
+    try {
+      const response = await api.post(`/comenzi-personalizate/${comanda._id}/convert`, draft);
+      const orderNumber =
+        response?.data?.comanda?.numeroComanda ||
+        response?.data?.comanda?._id ||
+        response?.data?.customOrderId;
+
+      setFeedback({
+        type: "success",
+        message: response?.data?.alreadyConverted
+          ? "Cererea avea deja o comanda generata si a fost resincronizata in lista."
+          : `Comanda platibila a fost generata (${orderNumber}). Clientul o vede acum in profil.`,
+      });
+      await load();
+    } catch (error) {
+      setFeedback({
+        type: "error",
+        message: error?.response?.data?.mesaj || "Nu am putut genera comanda din cererea personalizata.",
+      });
+    } finally {
+      setConvertingId("");
+    }
   };
 
   return (
@@ -125,6 +217,8 @@ export default function AdminComenziPersonalizate() {
         </div>
       </section>
 
+      <StatusBanner type={feedback.type || "info"} message={feedback.message} />
+
       {loading ? (
         <div className="rounded-[24px] border border-rose-100 bg-white/90 px-4 py-6 text-sm text-gray-600 shadow-soft">
           Se incarca comenzile personalizate...
@@ -142,6 +236,8 @@ export default function AdminComenziPersonalizate() {
           const statusMeta = getCustomOrderStatusMeta(comanda.status);
           const sections = buildCustomOrderSections(comanda);
           const previewImages = buildCustomOrderPreviewImages(comanda);
+          const linkedOrder = resolveLinkedOrder(comanda);
+          const orderDraft = getOrderDraft(comanda);
 
           return (
             <article
@@ -279,6 +375,141 @@ export default function AdminComenziPersonalizate() {
                       />
                       <span className="text-sm text-gray-500">MDL</span>
                     </div>
+                  </div>
+
+                  <div className="rounded-[22px] border border-rose-100 bg-white/85 px-4 py-4 shadow-soft">
+                    <div className="text-xs font-semibold uppercase tracking-[0.16em] text-pink-500">
+                      Genereaza comanda platibila
+                    </div>
+
+                    {linkedOrder ? (
+                      <div className="mt-4 space-y-3">
+                        <div className="rounded-[18px] border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
+                          Cererea este deja legata de comanda{" "}
+                          <span className="font-semibold">
+                            {linkedOrder.numeroComanda || `#${String(linkedOrder._id || "").slice(-6)}`}
+                          </span>
+                          .
+                        </div>
+                        <div className="grid gap-3 md:grid-cols-2">
+                          <div className="rounded-[18px] border border-rose-100 bg-white px-4 py-3 text-sm text-gray-600">
+                            <div className="font-semibold text-gray-900">Programare</div>
+                            <div className="mt-2">
+                              {linkedOrder.dataLivrare || "-"} {linkedOrder.oraLivrare || ""}
+                            </div>
+                          </div>
+                          <div className="rounded-[18px] border border-rose-100 bg-white px-4 py-3 text-sm text-gray-600">
+                            <div className="font-semibold text-gray-900">Total</div>
+                            <div className="mt-2">
+                              {Number(linkedOrder.totalFinal || linkedOrder.total || 0)} MDL
+                            </div>
+                          </div>
+                        </div>
+                        <div className="flex flex-wrap gap-3">
+                          <Link to="/admin/comenzi" className={buttons.outline}>
+                            Vezi comenzi
+                          </Link>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="mt-4 space-y-4">
+                        <div className="grid gap-3 md:grid-cols-2">
+                          <label className="text-sm font-semibold text-[#4e453d]">
+                            Data livrare
+                            <input
+                              type="date"
+                              value={orderDraft.dataLivrare}
+                              onChange={(event) =>
+                                setOrderDraftField(comanda, "dataLivrare", event.target.value)
+                              }
+                              className={`mt-2 ${inputs.default}`}
+                            />
+                          </label>
+                          <label className="text-sm font-semibold text-[#4e453d]">
+                            Ora livrare
+                            <input
+                              type="time"
+                              value={orderDraft.oraLivrare}
+                              onChange={(event) =>
+                                setOrderDraftField(comanda, "oraLivrare", event.target.value)
+                              }
+                              className={`mt-2 ${inputs.default}`}
+                            />
+                          </label>
+                        </div>
+
+                        <div className="grid gap-3 md:grid-cols-2">
+                          <label className="text-sm font-semibold text-[#4e453d]">
+                            Metoda de predare
+                            <select
+                              value={orderDraft.metodaLivrare}
+                              onChange={(event) =>
+                                setOrderDraftField(comanda, "metodaLivrare", event.target.value)
+                              }
+                              className={`mt-2 ${inputs.default}`}
+                            >
+                              <option value="ridicare">Ridicare personala</option>
+                              <option value="livrare">Livrare</option>
+                            </select>
+                          </label>
+                          <label className="text-sm font-semibold text-[#4e453d]">
+                            Interval livrare
+                            <input
+                              type="text"
+                              value={orderDraft.deliveryWindow}
+                              onChange={(event) =>
+                                setOrderDraftField(comanda, "deliveryWindow", event.target.value)
+                              }
+                              className={`mt-2 ${inputs.default}`}
+                              placeholder="Ex: 16:00-17:00"
+                            />
+                          </label>
+                        </div>
+
+                        {orderDraft.metodaLivrare === "livrare" ? (
+                          <label className="text-sm font-semibold text-[#4e453d]">
+                            Adresa livrare
+                            <input
+                              type="text"
+                              value={orderDraft.adresaLivrare}
+                              onChange={(event) =>
+                                setOrderDraftField(comanda, "adresaLivrare", event.target.value)
+                              }
+                              className={`mt-2 ${inputs.default}`}
+                              placeholder="Strada, numar, bloc, apartament"
+                            />
+                          </label>
+                        ) : (
+                          <div className="rounded-[18px] border border-rose-100 bg-[rgba(255,249,242,0.78)] px-4 py-3 text-sm text-gray-600">
+                            Ridicarea personala nu necesita adresa. Clientul va vedea comanda in
+                            profil si poate continua la plata.
+                          </div>
+                        )}
+
+                        <label className="text-sm font-semibold text-[#4e453d]">
+                          Instructiuni suplimentare
+                          <textarea
+                            value={orderDraft.deliveryInstructions}
+                            onChange={(event) =>
+                              setOrderDraftField(comanda, "deliveryInstructions", event.target.value)
+                            }
+                            className={`mt-2 min-h-[88px] ${inputs.default}`}
+                            placeholder="Observatii pentru livrare sau predare"
+                          />
+                        </label>
+
+                        <button
+                          type="button"
+                          className={buttons.primary}
+                          disabled={convertingId === comanda._id}
+                          onClick={() => convertToOrder(comanda)}
+                        >
+                          {convertingId === comanda._id
+                            ? "Se genereaza comanda..."
+                            : "Genereaza comanda"}
+                        </button>
+                      </div>
+                    )}
                   </div>
 
                   <div className="rounded-[22px] border border-rose-100 bg-white/85 px-4 py-4 shadow-soft">

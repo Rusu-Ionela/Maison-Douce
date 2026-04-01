@@ -54,5 +54,6 @@ describe("customOrderSummary", () => {
   it("returns styled status metadata", () => {
     expect(getCustomOrderStatusMeta("in_discutie").label).toBe("In discutie");
     expect(getCustomOrderStatusMeta("in_discutie").className).toContain("amber");
+    expect(getCustomOrderStatusMeta("comanda_generata").label).toBe("Comanda generata");
   });
 });

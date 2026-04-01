@@ -8,6 +8,7 @@ const mongoose = require("mongoose");
 const Stripe = require("stripe");
 const CalendarSlotEntry = require("../models/CalendarSlotEntry");
 const Comanda = require("../models/Comanda");
+const ComandaPersonalizata = require("../models/ComandaPersonalizata");
 const Rezervare = require("../models/Rezervare");
 const Tort = require("../models/Tort");
 const Utilizator = require("../models/Utilizator");
@@ -2085,6 +2086,91 @@ test("backend integration flows", async (t) => {
       assert.equal(reservation?.deliveryInstructions, deliveryInstructions);
       assert.equal(reservation?.deliveryFee, 100);
       assert.equal(reservation?.total, 450);
+    });
+
+    await t.test("staff can convert a custom cake request into a payable order", async () => {
+      await harness.resetDb();
+
+      const staff = await registerUser("patiser");
+      const client = await registerUser("client");
+      const providerId = staff.user?.id;
+      const date = futureDate(9);
+
+      assert.equal(staff.status, 201);
+      assert.equal(client.status, 201);
+      assert.ok(providerId);
+
+      const addSlot = await harness.request(`/calendar/availability/${providerId}`, {
+        method: "POST",
+        token: staff.token,
+        body: {
+          slots: [{ date, time: "13:30", capacity: 1 }],
+        },
+      });
+      assert.equal(addSlot.status, 200);
+
+      const customOrder = await harness.request("/comenzi-personalizate", {
+        method: "POST",
+        token: client.token,
+        body: {
+          prestatorId: providerId,
+          preferinte: "Tort de nunta cu flori albe si accente aurii",
+          pretEstimat: 900,
+          timpPreparareOre: 48,
+          options: {
+            tiers: 2,
+            aiDecorRequest: "flori albe si accente aurii",
+          },
+        },
+      });
+
+      assert.equal(customOrder.status, 201);
+      const customOrderId = customOrder.data?.comanda?._id;
+      assert.ok(customOrderId);
+
+      const conversion = await harness.request(`/comenzi-personalizate/${customOrderId}/convert`, {
+        method: "POST",
+        token: staff.token,
+        body: {
+          dataLivrare: date,
+          oraLivrare: "13:30",
+          metodaLivrare: "livrare",
+          adresaLivrare: "Strada Stefan cel Mare 20, Chisinau",
+          deliveryWindow: "13:30-14:30",
+          deliveryInstructions: "Sunati inainte cu 10 minute.",
+        },
+      });
+
+      assert.equal(conversion.status, 201);
+      assert.ok(conversion.data?.comanda?._id);
+      assert.equal(conversion.data?.comanda?.tip, "personalizata");
+      assert.equal(conversion.data?.comanda?.metodaLivrare, "livrare");
+      assert.equal(conversion.data?.comanda?.totalFinal, 1000);
+
+      const savedCustomOrder = await ComandaPersonalizata.findById(customOrderId).lean();
+      assert.equal(String(savedCustomOrder?.comandaId || ""), String(conversion.data?.comanda?._id));
+      assert.equal(savedCustomOrder?.status, "comanda_generata");
+
+      const savedOrder = await Comanda.findById(conversion.data?.comanda?._id).lean();
+      assert.ok(savedOrder);
+      assert.equal(savedOrder?.dataLivrare, date);
+      assert.equal(savedOrder?.oraLivrare, "13:30");
+      assert.equal(savedOrder?.taxaLivrare || savedOrder?.deliveryFee || 0, 100);
+      assert.equal(savedOrder?.paymentStatus, "unpaid");
+      assert.equal(savedOrder?.customDetails?.customOrderId, String(customOrderId));
+
+      const reservation = await Rezervare.findOne({ comandaId: savedOrder._id }).lean();
+      assert.ok(reservation);
+      assert.equal(reservation?.date, date);
+      assert.equal(reservation?.handoffMethod, "delivery");
+      assert.equal(reservation?.deliveryAddress, "Strada Stefan cel Mare 20, Chisinau");
+
+      const slot = await CalendarSlotEntry.findOne({
+        prestatorId: providerId,
+        date,
+        time: "13:30",
+      }).lean();
+      assert.equal(slot?.used, 1);
     });
 
     await t.test("monthly provider availability uses providerId and booking removes only the selected provider slot", async () => {
