@@ -344,11 +344,14 @@ export default function Chat() {
                 onChange={providerState.setSelectedProviderId}
                 loading={providerState.loading}
                 disabled={!providerState.canChooseProvider}
+                hideIfSingleOption
                 label="Conversatie cu"
                 helpText={
                   providerState.activeProvider
                     ? `Mesajele sunt trimise catre ${providerState.activeProvider.displayName}.`
-                    : "Selecteaza atelierul cu care vrei sa discuti."
+                    : providerState.hasMultipleProviders
+                      ? "Selecteaza atelierul cu care vrei sa discuti."
+                      : "Conversatia va fi legata automat de atelierul disponibil."
                 }
               />
             </div>
@@ -444,9 +447,15 @@ export default function Chat() {
             </div>
           ) : !roomId ? (
             <div className="flex h-full flex-col items-center justify-center rounded-[20px] border border-dashed border-rose-200 bg-white/80 px-6 text-center text-sm text-gray-500">
-              <div className="font-semibold text-gray-900">Alege atelierul.</div>
+              <div className="font-semibold text-gray-900">
+                {providerState.hasMultipleProviders
+                  ? "Alege atelierul."
+                  : "Atelier indisponibil momentan."}
+              </div>
               <div className="mt-2">
-                Dupa selectare, istoricul conversatiei va fi incarcat automat.
+                {providerState.hasMultipleProviders
+                  ? "Dupa selectare, istoricul conversatiei va fi incarcat automat."
+                  : "Istoricul conversatiei se incarca automat imediat ce atelierul devine disponibil."}
               </div>
             </div>
           ) : messages.length ? (

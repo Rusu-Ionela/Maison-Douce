@@ -36,7 +36,7 @@ export default function DesignerAI() {
 
   const activeProviderId = providerState.activeProviderId;
   const activeProviderName =
-    providerState.activeProvider?.displayName || "prestatorul selectat";
+    providerState.activeProvider?.displayName || "atelierul selectat";
 
   useEffect(() => {
     if (!isAuthenticated || !activeProviderId) {
@@ -75,9 +75,9 @@ export default function DesignerAI() {
   const metrics = useMemo(
     () => [
       {
-        label: "Prestator activ",
+        label: "Atelier activ",
         value: providerState.activeProvider ? activeProviderName : "-",
-        hint: "Preview-ul si istoricul sunt legate de prestatorul selectat.",
+        hint: "Preview-ul si istoricul sunt legate de atelierul selectat.",
       },
       {
         label: "Istoric AI",
@@ -103,7 +103,7 @@ export default function DesignerAI() {
         type: "error",
         message:
           providerState.error ||
-          "Selecteaza un prestator valid inainte de a genera imaginea.",
+          "Selecteaza un atelier valid inainte de a genera imaginea.",
       });
       return;
     }
@@ -154,7 +154,7 @@ export default function DesignerAI() {
         <div className="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
           <div className="max-w-3xl">
             <div className="text-xs font-semibold uppercase tracking-[0.24em] text-pink-500">
-              Prompt to image
+              Preview AI
             </div>
             <h1 className="mt-3 font-serif text-3xl font-semibold text-gray-900">
               Designer AI pentru concepte de tort
@@ -171,11 +171,14 @@ export default function DesignerAI() {
               onChange={providerState.setSelectedProviderId}
               loading={providerState.loading}
               disabled={!providerState.canChooseProvider}
-              label="Prestator activ"
+              hideIfSingleOption
+              label="Atelier activ"
               helpText={
                 providerState.activeProvider
                   ? `Imaginile se salveaza in istoricul pentru ${activeProviderName}.`
-                  : "Selecteaza prestatorul pentru care vrei sa generezi preview-ul."
+                  : providerState.hasMultipleProviders
+                    ? "Selecteaza atelierul pentru care vrei sa generezi preview-ul."
+                    : "Atelierul disponibil se selecteaza automat pentru generare."
               }
             />
           </div>
@@ -197,7 +200,7 @@ export default function DesignerAI() {
         {!activeProviderId && !providerState.loading ? (
           <div className="rounded-[20px] border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-700">
             {providerState.error ||
-              "Nu exista niciun prestator disponibil pentru generarea imaginilor."}
+              "Nu exista niciun atelier disponibil pentru generarea imaginilor."}
           </div>
         ) : null}
 
@@ -316,13 +319,13 @@ export default function DesignerAI() {
           <div>
             <h2 className="text-xl font-semibold text-gray-900">Istoric generari</h2>
             <p className="mt-1 text-sm text-gray-600">
-              Ultimele prompturi salvate pentru utilizatorul conectat si prestatorul activ.
+              Ultimele prompturi salvate pentru utilizatorul conectat si atelierul activ.
             </p>
           </div>
           <div className="text-sm text-gray-500">
             {providerState.activeProvider
               ? activeProviderName
-              : "Fara prestator selectat"}
+              : "Fara atelier selectat"}
           </div>
         </div>
 
@@ -379,7 +382,7 @@ export default function DesignerAI() {
           </div>
         ) : (
           <div className="rounded-[24px] border border-dashed border-rose-200 bg-white/70 px-4 py-10 text-sm text-gray-500">
-            Nu exista inca generari salvate pentru prestatorul selectat.
+            Nu exista inca generari salvate pentru atelierul selectat.
           </div>
         )}
       </section>

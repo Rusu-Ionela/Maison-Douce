@@ -274,8 +274,8 @@ export default function Cart() {
         buildStatus(
           "error",
           providerState.error ||
-            "Alege un prestator valid inainte de a continua checkout-ul.",
-          "Prestator lipsa"
+            "Alege un atelier valid inainte de a continua plata standard.",
+          "Atelier lipsa"
         )
       );
       return false;
@@ -393,7 +393,11 @@ export default function Cart() {
     metodaLivrare === "livrare" ? "Livrare la domiciliu" : "Ridicare din atelier";
   const activeProviderLabel =
     providerState.activeProvider?.displayName ||
-    (providerState.loading ? "Se incarca..." : "Selecteaza prestatorul");
+    (providerState.loading
+      ? "Se incarca..."
+      : providerState.hasMultipleProviders
+        ? "Selecteaza atelierul"
+        : "Atelier indisponibil");
 
   return (
     <div className="min-h-screen">
@@ -404,7 +408,7 @@ export default function Cart() {
               <p className="text-pink-500 font-semibold uppercase tracking-wide">
                 Comanda standard
               </p>
-              <h1 className="text-3xl font-bold text-gray-900">Cos si checkout</h1>
+              <h1 className="text-3xl font-bold text-gray-900">Cos si plata</h1>
               <p className="text-sm leading-7 text-gray-600">
                 Acest flux este doar pentru produsele cu pret fix publicate in catalogul live. Daca
                 vrei un tort creat special pentru evenimentul tau, foloseste constructorul. Daca
@@ -432,10 +436,10 @@ export default function Cart() {
         />
         <StatusBanner
           type="error"
-          title="Prestator indisponibil"
+          title="Atelier indisponibil"
           message={
             !providerState.loading && !prestatorId
-              ? providerState.error || "Nu exista prestatori publici disponibili pentru checkout."
+              ? providerState.error || "Nu exista ateliere publice disponibile pentru plata standard."
               : ""
           }
         />
@@ -515,7 +519,7 @@ export default function Cart() {
                       Ce mai merge langa comanda ta
                     </div>
                     <div className="mt-1 text-sm text-gray-600">
-                      Sugestiile vin din catalogul prestatorului selectat si pot fi adaugate direct in cos.
+                      Sugestiile vin din catalogul atelierului selectat si pot fi adaugate direct in cos.
                     </div>
                   </div>
                   {loadingUpsells ? (
@@ -567,7 +571,7 @@ export default function Cart() {
                   </div>
                 ) : !loadingUpsells ? (
                   <div className="mt-4 rounded-[20px] border border-dashed border-rose-200 bg-white/80 px-4 py-4 text-sm text-gray-500">
-                    Nu exista extra-uri disponibile pentru prestatorul selectat sau le ai deja in cos.
+                    Nu exista extra-uri disponibile pentru atelierul selectat sau le ai deja in cos.
                   </div>
                 ) : null}
               </div>
@@ -603,10 +607,13 @@ export default function Cart() {
                   }}
                   loading={providerState.loading}
                   disabled={!providerState.canChooseProvider}
+                  hideIfSingleOption
                   helpText={
                     providerState.activeProvider
                       ? `Comanda se programeaza pentru ${providerState.activeProvider.displayName}.`
-                      : "Selecteaza prestatorul pentru care vrei sa vezi sloturile."
+                      : providerState.hasMultipleProviders
+                        ? "Selecteaza atelierul pentru care vrei sa vezi sloturile."
+                        : "Atelierul disponibil se selecteaza automat pentru acest flux."
                   }
                 />
 
@@ -671,7 +678,7 @@ export default function Cart() {
                     className={inputs.default}
                     disabled={submitting}
                   >
-                    <option value="ridicare">Ridicare de la patiserie</option>
+                    <option value="ridicare">Ridicare din atelier</option>
                     <option value="livrare">Livrare (+100 MDL)</option>
                   </select>
                 </div>
@@ -833,7 +840,7 @@ export default function Cart() {
                 <div className="rounded-[22px] border border-rose-100 bg-[rgba(255,249,242,0.88)] p-4 text-sm text-gray-700">
                   <div className="grid gap-3">
                     <div className="flex items-start justify-between gap-3">
-                      <span className="text-gray-500">Prestator</span>
+                      <span className="text-gray-500">Atelier</span>
                       <span className="text-right font-semibold text-gray-900">{activeProviderLabel}</span>
                     </div>
                     <div className="flex items-start justify-between gap-3">

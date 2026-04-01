@@ -15,7 +15,7 @@ function normalizeProvider(item) {
   if (!id) return null;
   return {
     id,
-    displayName: String(item.displayName || item.nume || item.email || "Prestator").trim(),
+    displayName: String(item.displayName || item.nume || item.email || "Atelier").trim(),
     slug: String(item.slug || "").trim(),
     bio: String(item.bio || "").trim(),
     isDefault: Boolean(item.isDefault || item.isDefaultProvider),
@@ -47,7 +47,7 @@ function buildProviderFromUser(user) {
       String(user?.providerProfile?.displayName || "").trim() ||
       [user?.nume, user?.prenume].filter(Boolean).join(" ").trim() ||
       String(user?.email || "").trim() ||
-      "Prestator",
+      "Atelier",
     slug: String(user?.providerProfile?.slug || "").trim(),
     bio: String(user?.providerProfile?.bio || "").trim(),
     isDefault: false,
@@ -117,7 +117,7 @@ export function formatConversationLabel(room, providers = []) {
   if (details.type !== "provider-client") return room || "Conversatie";
   const provider = providers.find((item) => item.id === details.prestatorId);
   const suffix = details.clientId.slice(-6) || details.clientId;
-  return `${provider?.displayName || "Prestator"} - Client #${suffix}`;
+  return `${provider?.displayName || "Atelier"} - Client #${suffix}`;
 }
 
 export function useProviderDirectory({ user, enabled = true } = {}) {
@@ -155,7 +155,7 @@ export function useProviderDirectory({ user, enabled = true } = {}) {
         setDefaultProviderId("");
         setError(
           requestError?.response?.data?.message ||
-            "Nu am putut incarca lista de prestatori."
+            "Nu am putut incarca lista de ateliere."
         );
       })
       .finally(() => {
@@ -214,9 +214,11 @@ export function useProviderDirectory({ user, enabled = true } = {}) {
     activeProvider,
     loading,
     error,
+    hasSingleProvider:
+      !isProviderRole(normalizedRole) && providerOptions.length === 1,
     hasMultipleProviders:
       !isProviderRole(normalizedRole) && providerOptions.length > 1,
-    canChooseProvider: !isProviderRole(normalizedRole),
+    canChooseProvider: !isProviderRole(normalizedRole) && providerOptions.length > 1,
     setSelectedProviderId: updateSelectedProviderId,
   };
 }

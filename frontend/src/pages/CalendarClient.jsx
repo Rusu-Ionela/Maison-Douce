@@ -343,7 +343,9 @@ export default function CalendarClient() {
   );
   const isCalendarLoading = availabilityQuery.isLoading || availabilityQuery.isFetching;
   const availabilityInfoMessage = !prestatorId
-    ? "Selecteaza atelierul pentru a vedea disponibilitatea."
+    ? providerState.hasMultipleProviders
+      ? "Selecteaza atelierul pentru a vedea disponibilitatea."
+      : ""
     : String(monthlyAvailability.message || "").trim();
 
   useEffect(() => {
@@ -618,7 +620,9 @@ export default function CalendarClient() {
               <div>
                 <h2 className="text-xl font-semibold text-gray-900">Disponibilitate</h2>
                 <p className="text-sm text-gray-600">
-                  Alege mai intai atelierul si apoi o zi evidentiata din calendar.
+                  {providerState.hasMultipleProviders
+                    ? "Alege mai intai atelierul si apoi o zi evidentiata din calendar."
+                    : "Atelierul activ este selectat automat. Alege o zi evidentiata din calendar."}
                 </p>
               </div>
               <div className="rounded-full border border-rose-200 bg-white px-3 py-1 text-xs font-semibold text-pink-700 shadow-soft">
@@ -638,11 +642,14 @@ export default function CalendarClient() {
               }}
               loading={providerState.loading}
               disabled={!providerState.canChooseProvider}
+              hideIfSingleOption
               label="Atelier"
               helpText={
                 providerState.activeProvider
                   ? `Vezi acum calendarul pentru ${providerState.activeProvider.displayName}.`
-                  : "Selecteaza atelierul pentru care vrei sa faci programarea."
+                  : providerState.hasMultipleProviders
+                    ? "Selecteaza atelierul pentru care vrei sa faci programarea."
+                    : "Atelierul disponibil se selecteaza automat pentru rezervare."
               }
             />
 
@@ -745,7 +752,9 @@ export default function CalendarClient() {
                     <div className="mt-2 leading-6">
                       {prestatorId
                         ? "Dupa alegerea datei poti trece direct la intervalul orar."
-                        : "Selecteaza mai intai atelierul din coloana din stanga."}
+                        : providerState.hasMultipleProviders
+                          ? "Selecteaza mai intai atelierul din coloana din stanga."
+                          : "Atelierul se incarca. Dupa selectie poti continua cu intervalul orar."}
                     </div>
                   </div>
                 </div>

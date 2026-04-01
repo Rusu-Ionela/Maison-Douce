@@ -573,7 +573,7 @@ export default function CakeConstructor2D({
 
   const activeProviderId = providerState.activeProviderId;
   const activeProviderName =
-    providerState.activeProvider?.displayName || "prestatorul selectat";
+    providerState.activeProvider?.displayName || "atelierul selectat";
   const structureSummary = useMemo(
     () =>
       [
@@ -768,7 +768,7 @@ export default function CakeConstructor2D({
         type: "error",
         text:
           providerState.error ||
-          "Selecteaza un prestator valid inainte de a genera un preview realist.",
+          "Selecteaza un atelier valid inainte de a genera un preview realist.",
       });
       return;
     }
@@ -1255,11 +1255,14 @@ export default function CakeConstructor2D({
             onChange={providerState.setSelectedProviderId}
             loading={providerState.loading}
             disabled={!providerState.canChooseProvider}
-            label="Prestator pentru preview"
+            hideIfSingleOption
+            label="Atelier pentru preview"
             helpText={
               activeProviderId
                 ? `Imaginea se genereaza pentru ${activeProviderName}.`
-                : "Selecteaza laboratorul pentru care vrei simularea vizuala."
+                : providerState.hasMultipleProviders
+                  ? "Selecteaza atelierul pentru care vrei simularea vizuala."
+                  : "Atelierul disponibil se selecteaza automat pentru acest preview."
             }
           />
 
@@ -1641,7 +1644,7 @@ export default function CakeConstructor2D({
               disabled={busyAction !== ""}
               onClick={sendToPatiser}
             >
-              {busyAction === "send" ? "Se trimite..." : "Trimite patiserului"}
+              {busyAction === "send" ? "Se trimite..." : "Trimite atelierului"}
             </button>
           </div>
 

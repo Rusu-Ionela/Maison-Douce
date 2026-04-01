@@ -24,7 +24,7 @@ function buildProviderDisplayName(user) {
     String(user?.providerProfile?.displayName || "").trim() ||
     [user?.nume, user?.prenume].filter(Boolean).join(" ").trim() ||
     String(user?.email || "").trim() ||
-    "Patiser"
+    "Atelier"
   );
 }
 
