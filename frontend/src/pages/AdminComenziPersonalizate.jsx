@@ -36,6 +36,19 @@ function buildReviewDraft(comanda) {
   };
 }
 
+function formatApprovalMoment(value) {
+  if (!value) return "";
+  const next = new Date(value);
+  if (Number.isNaN(next.getTime())) return "";
+  return next.toLocaleString("ro-RO", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
 function DetailSection({ section }) {
   return (
     <div className="rounded-[22px] border border-rose-100 bg-white/85 px-4 py-4 shadow-soft">
@@ -358,6 +371,8 @@ export default function AdminComenziPersonalizate() {
           const canSaveStatus =
             statusChanged &&
             !(reviewDraft.status === "respinsa" && !String(reviewDraft.statusNote || "").trim());
+          const clientApproved = Boolean(comanda.clientApprovedAt);
+          const approvalMoment = formatApprovalMoment(comanda.clientApprovedAt);
 
           return (
             <article
@@ -631,6 +646,22 @@ export default function AdminComenziPersonalizate() {
                           </div>
                         )}
 
+                        {clientApproved ? (
+                          <div className="rounded-[18px] border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
+                            Clientul a aprobat oferta{approvalMoment ? ` pe ${approvalMoment}` : ""}.
+                            {comanda.clientApprovalNote ? (
+                              <span className="block pt-2 text-emerald-900">
+                                Mesaj client: {comanda.clientApprovalNote}
+                              </span>
+                            ) : null}
+                          </div>
+                        ) : (
+                          <div className="rounded-[18px] border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+                            Asteapta confirmarea clientului din pagina ofertei inainte sa generezi
+                            comanda pentru plata.
+                          </div>
+                        )}
+
                         <label className="text-sm font-semibold text-[#4e453d]">
                           Instructiuni suplimentare
                           <textarea
@@ -646,7 +677,7 @@ export default function AdminComenziPersonalizate() {
                         <button
                           type="button"
                           className={buttons.primary}
-                          disabled={convertingId === comanda._id}
+                          disabled={convertingId === comanda._id || !clientApproved}
                           onClick={() => convertToOrder(comanda)}
                         >
                           {convertingId === comanda._id
