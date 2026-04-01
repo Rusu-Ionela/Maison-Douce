@@ -29,9 +29,9 @@ export default function NotFound() {
           </Link>
           <Link
             className="rounded-full border border-rose-200 px-5 py-3 text-sm font-semibold text-gray-700 transition hover:bg-gray-50"
-            to="/harta-site"
+            to="/constructor"
           >
-            Harta site
+            Constructor tort
           </Link>
         </div>
       </div>

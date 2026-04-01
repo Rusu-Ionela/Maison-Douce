@@ -24,12 +24,6 @@ export default function RouteContextBar() {
             {item.label}
           </Link>
         ))}
-        <Link
-          to="/harta-site"
-          className="rounded-full border border-transparent px-3 py-1.5 text-[#5f564d] hover:bg-white/70"
-        >
-          Harta completa
-        </Link>
       </div>
     </div>
   );

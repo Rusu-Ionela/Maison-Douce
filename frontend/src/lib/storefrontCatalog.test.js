@@ -3,6 +3,9 @@ import {
   getStorefrontCake,
   getStorefrontCatalogItems,
   getStorefrontFallbackCakeById,
+  STOREFRONT_FLAVOR_FILTERS,
+  STOREFRONT_OCCASIONS,
+  STOREFRONT_SORT_OPTIONS,
 } from "./storefrontCatalog";
 
 describe("storefrontCatalog", () => {
@@ -52,6 +55,21 @@ describe("storefrontCatalog", () => {
         pricingMode: "preview",
         checkoutReady: false,
       })
+    );
+  });
+
+  it("repairs public-facing fallback strings before they reach the UI", () => {
+    const cake = getStorefrontFallbackCakeById("curated-red-velvet");
+
+    expect(cake.descriere).toContain("cremă");
+    expect(cake.servingLabel).toContain("porții");
+    expect(STOREFRONT_OCCASIONS).toContain("nuntă");
+    expect(STOREFRONT_FLAVOR_FILTERS).toContain("ciocolată");
+    expect(STOREFRONT_SORT_OPTIONS).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ label: "Preț crescător" }),
+        expect.objectContaining({ label: "Preț descrescător" }),
+      ])
     );
   });
 });

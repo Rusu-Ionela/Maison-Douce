@@ -173,7 +173,14 @@ export default function App() {
           <Route path="/faq" element={<FAQ />} />
           <Route path="/termeni" element={<Termeni />} />
           <Route path="/confidentialitate" element={<Confidentialitate />} />
-          <Route path="/harta-site" element={<HartaSite />} />
+          <Route
+            path="/harta-site"
+            element={
+              <RequireStaff>
+                <HartaSite />
+              </RequireStaff>
+            }
+          />
           <Route path="/abonament" element={<Abonament />} />
           <Route path="/abonament/form" element={<Abonament />} />
           <Route path="/abonament/planuri" element={<Abonament />} />

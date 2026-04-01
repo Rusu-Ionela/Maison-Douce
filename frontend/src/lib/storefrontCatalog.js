@@ -1,3 +1,83 @@
+const MOJIBAKE_REPLACEMENTS = [
+  ["Ä‚", "Ă"],
+  ["Äƒ", "ă"],
+  ["Ã‚", "Â"],
+  ["Ã¢", "â"],
+  ["ÃŽ", "Î"],
+  ["Ã®", "î"],
+  ["È˜", "Ș"],
+  ["È™", "ș"],
+  ["Åž", "Ș"],
+  ["ÅŸ", "ș"],
+  ["Èš", "Ț"],
+  ["È›", "ț"],
+  ["Å¢", "Ț"],
+  ["Å£", "ț"],
+];
+
+const STOREFRONT_TEXT_FIXUPS = [
+  ["\u00C4\u0192", "\u0103"],
+  ["\u00C4\u201A", "\u0102"],
+  ["\u00C3\u00A2", "\u00E2"],
+  ["\u00C3\u201A", "\u00C2"],
+  ["\u00C3\u00AE", "\u00EE"],
+  ["\u00C3\u0160", "\u00CE"],
+  ["\u00C8\u2122", "\u0219"],
+  ["\u00C8\u02DC", "\u0218"],
+  ["\u00C5\u0178", "\u0219"],
+  ["\u00C5\u017E", "\u0218"],
+  ["\u00C8\u203A", "\u021B"],
+  ["\u00C8\u0161", "\u021A"],
+  ["\u00C5\u00A3", "\u021B"],
+  ["\u00C5\u00A2", "\u021A"],
+];
+
+function repairCatalogText(value = "") {
+  let text = String(value ?? "");
+
+  if (!/[\u00C3\u00C4\u00C5\u00C8]/.test(text)) {
+    return text;
+  }
+
+  for (const [broken, fixed] of STOREFRONT_TEXT_FIXUPS) {
+    text = text.replaceAll(broken, fixed);
+  }
+
+  return text;
+}
+
+function repairStorefrontText(value = "") {
+  let text = String(value ?? "");
+
+  if (!/[ÄÃÈÅ]/.test(text)) {
+    return text;
+  }
+
+  for (const [broken, fixed] of MOJIBAKE_REPLACEMENTS) {
+    text = text.replaceAll(broken, fixed);
+  }
+
+  return text;
+}
+
+function repairStorefrontValue(value) {
+  if (Array.isArray(value)) {
+    return value.map((item) => repairStorefrontValue(item));
+  }
+
+  if (value && typeof value === "object") {
+    return Object.fromEntries(
+      Object.entries(value).map(([key, item]) => [key, repairStorefrontValue(item)])
+    );
+  }
+
+  if (typeof value === "string") {
+    return repairCatalogText(value);
+  }
+
+  return value;
+}
+
 const OCCASION_MAP = {
   nunta: "nuntă",
   "zi de nastere": "zi de naștere",
@@ -33,8 +113,24 @@ export const STOREFRONT_SORT_OPTIONS = [
   { value: "newest", label: "Cele mai noi" },
 ];
 
+for (const key of Object.keys(OCCASION_MAP)) {
+  OCCASION_MAP[key] = repairCatalogText(OCCASION_MAP[key]);
+}
+
+for (let index = 0; index < STOREFRONT_OCCASIONS.length; index += 1) {
+  STOREFRONT_OCCASIONS[index] = repairCatalogText(STOREFRONT_OCCASIONS[index]);
+}
+
+for (let index = 0; index < STOREFRONT_FLAVOR_FILTERS.length; index += 1) {
+  STOREFRONT_FLAVOR_FILTERS[index] = repairCatalogText(STOREFRONT_FLAVOR_FILTERS[index]);
+}
+
+for (let index = 0; index < STOREFRONT_SORT_OPTIONS.length; index += 1) {
+  STOREFRONT_SORT_OPTIONS[index] = repairStorefrontValue(STOREFRONT_SORT_OPTIONS[index]);
+}
+
 function normalizeStorefrontText(value = "") {
-  return String(value || "")
+  return repairCatalogText(value)
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "")
     .toLowerCase()
@@ -890,7 +986,7 @@ export function getStorefrontCake(item, index = 0) {
     ingredients
   );
 
-  return storefrontCake;
+  return repairStorefrontValue(storefrontCake);
 }
 
 export function getStorefrontCatalogItems(items = []) {
@@ -910,4 +1006,4 @@ export function getStorefrontFallbackCakeById(id) {
   return getStorefrontCake(buildVirtualCake(preset, index), index);
 }
 
-export { normalizeStorefrontText };
+export { normalizeStorefrontText, repairStorefrontText };

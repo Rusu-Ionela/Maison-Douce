@@ -52,13 +52,12 @@ export const SITE_SECTIONS = [
       { label: "Plata", to: "/plata" },
       { label: "Plata succes", to: "/plata/succes", matchPrefix: "/plata/succes" },
       { label: "Plata eroare", to: "/plata/eroare", matchPrefix: "/plata/eroare" },
-      { label: "Partajare publica", to: "/harta-site", matchPrefix: "/partajare/", hidden: true },
+      { label: "Partajare publica", to: "/contact", matchPrefix: "/partajare/", hidden: true },
       { label: "Contact", to: "/contact" },
       { label: "Despre", to: "/despre" },
       { label: "FAQ", to: "/faq" },
       { label: "Termeni", to: "/termeni" },
       { label: "Confidentialitate", to: "/confidentialitate" },
-      { label: "Harta site", to: "/harta-site" },
     ],
   },
   {
@@ -200,6 +199,12 @@ export const SITE_SECTIONS = [
         group: "business-sistem",
       },
       {
+        label: "Arhitectura rute",
+        to: "/harta-site",
+        roles: STAFF_ROLES,
+        group: "business-sistem",
+      },
+      {
         label: "Edit produs",
         to: "/admin/produse",
         roles: STAFF_ROLES,
@@ -235,7 +240,6 @@ export const TOP_NAV_LINKS = [
   { label: "Umpluturi", to: "/admin/umpluturi", roles: STAFF_ROLES },
   { label: "Mesaje", to: "/admin/contact", roles: STAFF_ROLES },
   { label: "Asistent AI", to: "/admin/asistent-ai", roles: STAFF_ROLES },
-  { label: "Harta site", to: "/harta-site" },
 ];
 
 const CONTEXT_BRIDGES = [

@@ -134,7 +134,7 @@ export default function AdminDashboard() {
             to="/harta-site"
             className="rounded-full border border-rose-200 bg-white px-4 py-2 text-sm font-semibold text-pink-700 shadow-soft hover:bg-rose-50"
           >
-            Harta site
+            Arhitectura rute
           </Link>
           <button
             type="button"

@@ -21,9 +21,10 @@ export default function HartaSite() {
   return (
     <div className="max-w-6xl mx-auto px-4 py-10 space-y-8">
       <header className="space-y-2">
-        <h1 className="text-3xl font-bold text-gray-900">Harta site</h1>
+        <h1 className="text-3xl font-bold text-gray-900">Arhitectura interna a platformei</h1>
         <p className="text-gray-600">
-          Toate paginile sunt legate intr-un singur flux. Link-urile gri cer autentificare sau rol.
+          Vedere interna pentru staff. Te ajuta sa urmaresti rapid legaturile dintre module,
+          rutele protejate si zonele operationale ale platformei.
         </p>
       </header>
 
