@@ -1,15 +1,17 @@
-import { useMemo } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useMemo, useState } from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useParams } from "react-router-dom";
 import StatusBanner from "../components/StatusBanner";
 import { useAuth } from "../context/AuthContext";
 import { useProviderDirectory } from "../lib/providers";
 import {
+  approveCustomOrderOffer,
+  fetchClientCustomOrders,
   fetchCustomOrderDetail,
   getApiErrorMessage,
   queryKeys,
 } from "../lib/serverState";
-import { badges, buttons, cards, containers } from "../lib/tailwindComponents";
+import { badges, buttons, cards, containers, inputs } from "../lib/tailwindComponents";
 
 function money(value) {
   return `${Number(value || 0).toFixed(2)} MDL`;
@@ -141,12 +143,42 @@ function buildChatLink(customOrder) {
 export default function OfertaPersonalizata() {
   const { id } = useParams();
   const { user } = useAuth() || {};
+  const queryClient = useQueryClient();
+  const [approvalNote, setApprovalNote] = useState("");
+  const [approvalStatus, setApprovalStatus] = useState({ type: "", message: "" });
   const providerState = useProviderDirectory({ user, enabled: Boolean(user?._id) });
 
   const customOrderQuery = useQuery({
     queryKey: queryKeys.customOrderDetail(id),
     queryFn: () => fetchCustomOrderDetail(id),
     enabled: Boolean(id),
+  });
+  const clientCustomOrdersQuery = useQuery({
+    queryKey: queryKeys.clientCustomOrders(),
+    queryFn: fetchClientCustomOrders,
+    enabled: Boolean(user?._id),
+  });
+  const approveMutation = useMutation({
+    mutationFn: () => approveCustomOrderOffer(id, { note: approvalNote.trim() }),
+    onSuccess: async (response) => {
+      setApprovalStatus({
+        type: "success",
+        message:
+          response?.mesaj ||
+          "Oferta a fost aprobata. Atelierul poate genera acum comanda pentru plata.",
+      });
+      setApprovalNote("");
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: queryKeys.customOrderDetail(id) }),
+        queryClient.invalidateQueries({ queryKey: queryKeys.clientCustomOrders() }),
+      ]);
+    },
+    onError: (error) => {
+      setApprovalStatus({
+        type: "error",
+        message: getApiErrorMessage(error, "Nu am putut aproba oferta personalizata."),
+      });
+    },
   });
 
   const customOrder = customOrderQuery.data || null;
@@ -160,6 +192,12 @@ export default function OfertaPersonalizata() {
   const providerName = providerState.providers.find(
     (item) => String(item?.id || "") === String(customOrder?.prestatorId || "")
   )?.displayName;
+  const linkedClientOffer = Array.isArray(clientCustomOrdersQuery.data)
+    ? clientCustomOrdersQuery.data.find((item) => String(item?._id || "") === String(id || ""))
+    : null;
+  const linkedOrderId =
+    linkedOrder?._id || linkedClientOffer?.comandaId?._id || linkedClientOffer?.comandaId || "";
+  const approvalCompleted = Boolean(customOrder?.clientApprovedAt || linkedClientOffer?.clientApprovedAt);
 
   return (
     <div className="min-h-screen">
@@ -185,8 +223,21 @@ export default function OfertaPersonalizata() {
               <Link to={buildChatLink(customOrder)} className={buttons.secondary}>
                 Discuta cu atelierul
               </Link>
-              {customOrder?.clientCanPay && linkedOrder?._id ? (
-                <Link to={`/plata?comandaId=${encodeURIComponent(linkedOrder._id)}`} className={buttons.primary}>
+              {customOrder?.clientCanApprove ? (
+                <button
+                  type="button"
+                  className={buttons.primary}
+                  disabled={approveMutation.isPending}
+                  onClick={() => {
+                    setApprovalStatus({ type: "", message: "" });
+                    approveMutation.mutate();
+                  }}
+                >
+                  {approveMutation.isPending ? "Se confirma..." : "Aproba oferta"}
+                </button>
+              ) : null}
+              {customOrder?.clientCanPay && linkedOrderId ? (
+                <Link to={`/plata?comandaId=${encodeURIComponent(linkedOrderId)}`} className={buttons.primary}>
                   Continua la plata
                 </Link>
               ) : null}
@@ -202,6 +253,7 @@ export default function OfertaPersonalizata() {
               : ""
           }
         />
+        <StatusBanner type={approvalStatus.type || "info"} message={approvalStatus.message} />
 
         {customOrderQuery.isLoading ? (
           <div className={`${cards.elevated} text-sm text-gray-600`}>Se incarca oferta...</div>
@@ -425,10 +477,49 @@ export default function OfertaPersonalizata() {
                     ) : null}
                   </div>
 
+                  {customOrder?.clientCanApprove ? (
+                    <div className="rounded-[22px] border border-emerald-200 bg-emerald-50/80 p-4">
+                      <div className="text-xs font-semibold uppercase tracking-[0.16em] text-emerald-700">
+                        Aprobare client
+                      </div>
+                      <p className="mt-2 text-sm leading-6 text-emerald-900">
+                        Daca pretul, designul si predarea sunt corecte, confirma oferta aici. Dupa
+                        aprobare, atelierul iti genereaza comanda pentru plata.
+                      </p>
+                      <label className="mt-4 block text-sm font-medium text-emerald-900">
+                        Mesaj optional pentru atelier
+                        <textarea
+                          value={approvalNote}
+                          onChange={(event) => setApprovalNote(event.target.value)}
+                          className={`mt-2 min-h-[96px] ${inputs.default}`}
+                          placeholder="Ex: confirm varianta finala si puteti deschide plata."
+                        />
+                      </label>
+                      <div className="mt-4 flex flex-wrap gap-3">
+                        <button
+                          type="button"
+                          className={buttons.success}
+                          disabled={approveMutation.isPending}
+                          onClick={() => {
+                            setApprovalStatus({ type: "", message: "" });
+                            approveMutation.mutate();
+                          }}
+                        >
+                          {approveMutation.isPending ? "Se trimite confirmarea..." : "Confirm oferta"}
+                        </button>
+                      </div>
+                    </div>
+                  ) : null}
+
                   {customOrder.clientCanPay && linkedOrder?._id ? (
                     <div className="rounded-[22px] border border-emerald-200 bg-emerald-50/80 px-4 py-4 text-sm text-emerald-800">
                       Atelierul a generat comanda finala. Poti continua direct la plata pentru a
                       confirma executia si slotul rezervat.
+                    </div>
+                  ) : approvalCompleted ? (
+                    <div className="rounded-[22px] border border-sky-200 bg-sky-50 px-4 py-4 text-sm text-sky-800">
+                      Oferta este deja aprobata de tine. Atelierul pregateste acum comanda finala
+                      pentru plata si vei vedea aici butonul de checkout imediat ce este generata.
                     </div>
                   ) : customOrder.status === "respinsa" ? (
                     <div className="rounded-[22px] border border-red-200 bg-red-50 px-4 py-4 text-sm text-red-700">
