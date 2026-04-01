@@ -69,7 +69,7 @@ export default function Navbar() {
             Maison-Douce
           </div>
           <div className="font-serif text-[1.95rem] font-semibold leading-none text-ink">
-            Patisserie
+            Atelier de cofetarie
           </div>
         </Link>
 
@@ -105,7 +105,7 @@ export default function Navbar() {
                 className="hidden rounded-full bg-charcoal px-4 py-2 text-sm font-semibold text-white shadow-soft hover:-translate-y-0.5 hover:bg-pink-700 sm:inline-flex"
                 onClick={logout}
               >
-                Logout
+                Iesire
               </button>
             </>
           ) : (
@@ -114,7 +114,7 @@ export default function Navbar() {
                 to="/login"
                 className="hidden rounded-full border border-rose-200 bg-white/80 px-4 py-2 text-sm font-semibold text-pink-700 shadow-soft hover:-translate-y-0.5 hover:bg-white sm:inline-flex"
               >
-                Login
+                Autentificare
               </Link>
               <Link
                 to="/register"
@@ -130,7 +130,7 @@ export default function Navbar() {
             className="inline-flex items-center rounded-full border border-rose-200 bg-white/88 px-3 py-2 text-sm font-semibold text-[#5f564d] shadow-soft hover:-translate-y-0.5 hover:bg-white xl:hidden"
             onClick={() => setIsOpen((prev) => !prev)}
             aria-expanded={isOpen}
-            aria-label="Toggle menu"
+            aria-label="Deschide meniul"
           >
             Meniu
           </button>
@@ -174,7 +174,7 @@ export default function Navbar() {
                     setIsOpen(false);
                   }}
                 >
-                  Logout
+                  Iesire
                 </button>
               </>
             ) : (
@@ -184,7 +184,7 @@ export default function Navbar() {
                   className={mobileNavLinkClass}
                   onClick={() => setIsOpen(false)}
                 >
-                  Login
+                  Autentificare
                 </NavLink>
                 <NavLink
                   to="/register"

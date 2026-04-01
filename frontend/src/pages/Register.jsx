@@ -1,11 +1,13 @@
 import { useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 import StatusBanner from "../components/StatusBanner";
 import { useAuth } from "../context/AuthContext";
+import { resolvePostAuthRedirect } from "../lib/authRedirects";
 import { buttons, cards, inputs } from "../lib/tailwindComponents";
 
 export default function Register() {
   const nav = useNavigate();
+  const location = useLocation();
   const { register } = useAuth();
   const [form, setForm] = useState({
     name: "",
@@ -17,6 +19,7 @@ export default function Register() {
   });
   const [err, setErr] = useState("");
   const [loading, setLoading] = useState(false);
+  const requestedTarget = location.state?.from;
 
   async function onSubmit(event) {
     event.preventDefault();
@@ -45,7 +48,15 @@ export default function Register() {
         telefon: form.telefon,
         adresa: form.adresa,
       });
-      nav("/calendar", { replace: true });
+      nav(
+        resolvePostAuthRedirect({
+          user: { role: "client" },
+          requestedTarget,
+          clientFallback: "/calendar",
+          staffFallback: "/admin/calendar",
+        }),
+        { replace: true }
+      );
     } catch (error) {
       const message = error?.response?.data?.message || "Eroare la inregistrare.";
       const hint = error?.response?.data?.hint || "";
@@ -61,7 +72,7 @@ export default function Register() {
         <section className={`${cards.tinted} overflow-hidden p-8 md:p-10`}>
           <div className="eyebrow">Cont Maison-Douce</div>
           <div className="mt-5">
-            <div className="font-script text-4xl text-pink-500">Create your account</div>
+            <div className="font-script text-4xl text-pink-500">Creeaza-ti contul</div>
             <h1 className="mt-2 font-serif text-4xl font-semibold text-ink md:text-5xl">
               Creeaza un cont pentru comenzi, livrari si experiente personalizate.
             </h1>
@@ -81,6 +92,11 @@ export default function Register() {
               Conturile interne sunt create doar de administrator.
             </div>
           </div>
+          {requestedTarget ? (
+            <div className="mt-6 rounded-[24px] border border-gold/30 bg-white/70 p-4 text-sm leading-6 text-[#655c53] shadow-soft">
+              Dupa activarea contului continui direct in pagina din care ai pornit.
+            </div>
+          ) : null}
         </section>
 
         <section className={`${cards.elevated} p-8`}>

@@ -1,22 +1,31 @@
 import { useState } from "react";
-import { Navigate, Link, useNavigate } from "react-router-dom";
+import { Navigate, Link, useLocation, useNavigate } from "react-router-dom";
 import StatusBanner from "../components/StatusBanner";
 import { useAuth } from "../context/AuthContext";
+import { resolvePostAuthRedirect } from "../lib/authRedirects";
 import { isStaffRole } from "../lib/roles";
 import { buttons, cards, inputs } from "../lib/tailwindComponents";
 
 export default function Login() {
   const { login, isAuthenticated, user } = useAuth();
   const nav = useNavigate();
+  const location = useLocation();
   const [form, setForm] = useState({ email: "", parola: "" });
   const [err, setErr] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const requestedTarget = location.state?.from;
+  const fallbackTarget = isStaffRole(user?.rol || user?.role)
+    ? "/admin/calendar"
+    : "/calendar";
+  const redirectTarget = resolvePostAuthRedirect({
+    user,
+    requestedTarget,
+    clientFallback: "/calendar",
+    staffFallback: "/admin/calendar",
+  });
 
   if (isAuthenticated) {
-    if (isStaffRole(user?.rol || user?.role)) {
-      return <Navigate to="/admin/calendar" replace />;
-    }
-    return <Navigate to="/calendar" replace />;
+    return <Navigate to={redirectTarget || fallbackTarget} replace />;
   }
 
   async function onSubmit(event) {
@@ -26,11 +35,15 @@ export default function Login() {
     try {
       setSubmitting(true);
       const loggedUser = await login(form);
-      if (isStaffRole(loggedUser?.rol || loggedUser?.role)) {
-        nav("/admin/calendar");
-        return;
-      }
-      nav("/calendar");
+      nav(
+        resolvePostAuthRedirect({
+          user: loggedUser,
+          requestedTarget,
+          clientFallback: "/calendar",
+          staffFallback: "/admin/calendar",
+        }),
+        { replace: true }
+      );
     } catch (error) {
       setErr(
         error?.response?.data?.message ||
@@ -49,7 +62,7 @@ export default function Login() {
           <div className="mt-5">
             <div className="font-script text-4xl text-pink-500">Bine ai revenit</div>
             <h1 className="mt-2 font-serif text-4xl font-semibold text-ink md:text-5xl">
-              Intra in contul tau Maison-Douce
+              Conecteaza-te in contul tau Maison-Douce
             </h1>
           </div>
           <p className="mt-5 max-w-xl text-base leading-8 text-[#655c53]">
@@ -70,6 +83,11 @@ export default function Login() {
               </div>
             </div>
           </div>
+          {requestedTarget ? (
+            <div className="mt-6 rounded-[24px] border border-gold/30 bg-white/70 p-4 text-sm leading-6 text-[#655c53] shadow-soft">
+              Dupa autentificare te trimitem inapoi exact in pasul din care ai venit.
+            </div>
+          ) : null}
         </section>
 
         <section className={`${cards.elevated} p-8`}>

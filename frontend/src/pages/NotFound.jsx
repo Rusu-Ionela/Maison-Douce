@@ -5,7 +5,7 @@ export default function NotFound() {
     <div className="min-h-[70vh] bg-[radial-gradient(circle_at_top,_rgba(255,248,244,1),_rgba(250,235,240,0.92),_rgba(255,255,255,1))] px-4 py-16">
       <div className="mx-auto max-w-3xl rounded-[32px] border border-rose-100 bg-white p-10 text-center shadow-xl shadow-rose-100/70">
         <p className="text-sm font-semibold uppercase tracking-[0.26em] text-pink-500">
-          Error 404
+          Pagina lipsa
         </p>
         <h1 className="mt-4 font-serif text-5xl text-gray-900">
           Pagina nu exista
@@ -19,7 +19,7 @@ export default function NotFound() {
             className="rounded-full bg-pink-600 px-5 py-3 text-sm font-semibold text-white transition hover:bg-pink-700"
             to="/"
           >
-            Inapoi la Home
+            Inapoi la prima pagina
           </Link>
           <Link
             className="rounded-full border border-rose-200 px-5 py-3 text-sm font-semibold text-pink-600 transition hover:bg-rose-50"

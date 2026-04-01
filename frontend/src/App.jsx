@@ -5,6 +5,7 @@ import RouteContextBar from "./components/RouteContextBar";
 import ClientAssistantWidget from "./components/ClientAssistantWidget";
 import SiteFooter from "./components/SiteFooter";
 import { useAuth } from "./context/AuthContext";
+import { buildRedirectState } from "./lib/authRedirects";
 import { normalizeRole } from "./lib/roles";
 
 const pageModules = import.meta.glob("./pages/*.jsx");
@@ -115,21 +116,27 @@ function ScrollToTop() {
 }
 
 function RequireAuth({ children }) {
+  const location = useLocation();
   const { isAuthenticated, loading } =
     useAuth() || { isAuthenticated: false, loading: false };
   if (loading) return <Loading />;
-  if (!isAuthenticated) return <Navigate to="/login" replace />;
+  if (!isAuthenticated) {
+    return <Navigate to="/login" state={buildRedirectState(location)} replace />;
+  }
   return children;
 }
 
 function RequireRole({ children, roles }) {
+  const location = useLocation();
   const { isAuthenticated, user, loading } =
     useAuth() || { isAuthenticated: false, user: null, loading: false };
   const role = normalizeRole(user?.rol || user?.role);
   const normalizedRoles = (roles || []).map((item) => normalizeRole(item));
   const isAllowed = isAuthenticated && normalizedRoles.includes(role);
   if (loading) return <Loading />;
-  if (!isAuthenticated) return <Navigate to="/admin/login" replace />;
+  if (!isAuthenticated) {
+    return <Navigate to="/admin/login" state={buildRedirectState(location)} replace />;
+  }
   if (!isAllowed) return <Navigate to="/" replace />;
   return children;
 }
