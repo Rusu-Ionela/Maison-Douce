@@ -64,8 +64,31 @@ function buildDesignGallery(design) {
     .slice(0, 5);
 }
 
+function buildCustomOrderIndex(list) {
+  const map = new Map();
+  for (const item of Array.isArray(list) ? list : []) {
+    const designId = String(item?.designId || "").trim();
+    if (!designId || map.has(designId)) continue;
+    map.set(designId, item);
+  }
+  return map;
+}
+
+function customOrderLabel(status = "") {
+  const normalized = String(status || "").trim().toLowerCase();
+  const labels = {
+    noua: "Cerere trimisa",
+    in_discutie: "In clarificare",
+    aprobata: "Oferta pregatita",
+    comanda_generata: "Gata de plata",
+    respinsa: "Cerere oprita",
+  };
+  return labels[normalized] || "Cerere personalizata";
+}
+
 export default function VizualizarePersonalizari() {
   const [list, setList] = useState([]);
+  const [customOrdersByDesign, setCustomOrdersByDesign] = useState(() => new Map());
   const [loading, setLoading] = useState(false);
   const [status, setStatus] = useState({ type: "", message: "" });
   const nav = useNavigate();
@@ -79,10 +102,15 @@ export default function VizualizarePersonalizari() {
       try {
         if (!clientId) {
           setList([]);
+          setCustomOrdersByDesign(new Map());
           return;
         }
-        const { data } = await api.get(`/personalizare/client/${clientId}`);
+        const [{ data }, customOrdersResponse] = await Promise.all([
+          api.get(`/personalizare/client/${clientId}`),
+          api.get("/comenzi-personalizate"),
+        ]);
         setList(Array.isArray(data) ? data : []);
+        setCustomOrdersByDesign(buildCustomOrderIndex(customOrdersResponse?.data || []));
       } catch (error) {
         setStatus({
           type: "error",
@@ -202,6 +230,7 @@ export default function VizualizarePersonalizari() {
           {list.map((design) => {
             const highlights = buildDesignHighlights(design);
             const gallery = buildDesignGallery(design);
+            const linkedCustomOrder = customOrdersByDesign.get(String(design._id || ""));
             const aiVariantCount = Array.isArray(design?.options?.aiPreviewVariants)
               ? design.options.aiPreviewVariants.length
               : design?.options?.aiPreviewUrl
@@ -229,6 +258,11 @@ export default function VizualizarePersonalizari() {
                     <span className="rounded-full border border-rose-200 bg-rose-50 px-3 py-1 text-xs font-semibold text-pink-700">
                       {design.status || "draft"}
                     </span>
+                    {linkedCustomOrder ? (
+                      <span className="rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700">
+                        {customOrderLabel(linkedCustomOrder.status)}
+                      </span>
+                    ) : null}
                     <span className="rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700">
                       {aiVariantCount} variante AI
                     </span>
@@ -324,6 +358,14 @@ export default function VizualizarePersonalizari() {
                   >
                     Continua editarea
                   </button>
+                  {linkedCustomOrder?._id ? (
+                    <Link
+                      className={buttons.secondary}
+                      to={`/personalizari/oferta/${linkedCustomOrder._id}`}
+                    >
+                      Vezi oferta
+                    </Link>
+                  ) : null}
                   <Link className={buttons.outline} to={buildDesignChatLink(design)}>
                     Discuta cu atelierul
                   </Link>
