@@ -12,6 +12,7 @@ import {
   getOrderStatusTone,
 } from "../lib/orderExperience";
 import {
+  fetchClientCustomOrders,
   fetchClientOrders,
   fetchMyNotifications,
   fetchPhotoNotifications,
@@ -119,6 +120,27 @@ function getOrderDisplayTotal(order) {
     : Number(order?.total || 0);
 }
 
+function customOrderBadgeClass(status = "") {
+  const normalized = String(status || "").trim().toLowerCase();
+  if (normalized === "comanda_generata") return badges.success;
+  if (normalized === "aprobata") return badges.info;
+  if (normalized === "respinsa") return badges.error;
+  if (normalized === "in_discutie") return badges.warning;
+  return badges.info;
+}
+
+function customOrderStatusLabel(status = "") {
+  const normalized = String(status || "").trim().toLowerCase();
+  const labels = {
+    noua: "Cerere noua",
+    in_discutie: "In clarificare",
+    aprobata: "Oferta pregatita",
+    comanda_generata: "Gata de plata",
+    respinsa: "Respinsa",
+  };
+  return labels[normalized] || "Cerere personalizata";
+}
+
 export default function ProfilClient() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
@@ -150,6 +172,11 @@ export default function ProfilClient() {
   const ordersQuery = useQuery({
     queryKey: queryKeys.clientOrders(userId),
     queryFn: () => fetchClientOrders(userId),
+    enabled: Boolean(userId),
+  });
+  const customOrdersQuery = useQuery({
+    queryKey: queryKeys.clientCustomOrders(),
+    queryFn: fetchClientCustomOrders,
     enabled: Boolean(userId),
   });
   const notificationsQuery = useQuery({
@@ -251,9 +278,17 @@ export default function ProfilClient() {
   });
 
   const orders = useMemo(() => [...(ordersQuery.data || [])], [ordersQuery.data]);
+  const customOrders = useMemo(
+    () => [...(customOrdersQuery.data || [])].slice(0, 4),
+    [customOrdersQuery.data]
+  );
   const notifications = useMemo(() => [...(notificationsQuery.data || [])], [notificationsQuery.data]);
   const photoNotifications = useMemo(() => [...(photoNotificationsQuery.data || [])], [photoNotificationsQuery.data]);
-  const pageError = ordersQuery.error || notificationsQuery.error || photoNotificationsQuery.error;
+  const pageError =
+    ordersQuery.error ||
+    customOrdersQuery.error ||
+    notificationsQuery.error ||
+    photoNotificationsQuery.error;
   const reviewPrestatorId = useMemo(() => {
     const fromOrders = orders.find((item) =>
       MONGO_ID_PATTERN.test(String(item?.prestatorId || ""))
@@ -542,6 +577,70 @@ export default function ProfilClient() {
           </div>
 
           <div className="space-y-6">
+            <Panel
+              title="Oferte personalizate"
+              description="Cereri trimise din constructor, cu acces rapid la oferta si plata."
+              action={
+                <Link className={buttons.outline} to="/personalizari">
+                  Vezi toate designurile
+                </Link>
+              }
+            >
+              {customOrdersQuery.isLoading ? (
+                <div className="rounded-2xl border border-dashed border-rose-200 px-4 py-5 text-sm text-gray-500">
+                  Se incarca ofertele personalizate...
+                </div>
+              ) : !customOrders.length ? (
+                <div className="rounded-2xl border border-dashed border-rose-200 px-4 py-5 text-sm text-gray-500">
+                  Nu ai cereri personalizate active inca.
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {customOrders.map((offer) => (
+                    <article
+                      key={offer._id}
+                      className="rounded-[24px] border border-rose-100 bg-white px-4 py-4 shadow-soft"
+                    >
+                      <div className="flex flex-wrap items-start justify-between gap-3">
+                        <div>
+                          <div className="text-xs font-semibold uppercase tracking-[0.16em] text-pink-500">
+                            Cerere personalizata
+                          </div>
+                          <div className="mt-2 text-lg font-semibold text-gray-900">
+                            {offer.numeClient || "Tort personalizat"} #{String(offer._id).slice(-6)}
+                          </div>
+                          <div className="mt-1 text-sm text-gray-600">
+                            {offer.pretEstimat > 0
+                              ? `Oferta actuala ${money(offer.pretEstimat)}`
+                              : "Oferta este inca in analiza atelierului"}
+                          </div>
+                        </div>
+                        <span className={customOrderBadgeClass(offer.status)}>
+                          {customOrderStatusLabel(offer.status)}
+                        </span>
+                      </div>
+                      <div className="mt-4 flex flex-wrap gap-3">
+                        <Link
+                          className={buttons.secondary}
+                          to={`/personalizari/oferta/${offer._id}`}
+                        >
+                          Deschide oferta
+                        </Link>
+                        {offer?.comandaId?._id ? (
+                          <Link
+                            className={buttons.outline}
+                            to={`/plata?comandaId=${encodeURIComponent(offer.comandaId._id)}`}
+                          >
+                            Mergi la plata
+                          </Link>
+                        ) : null}
+                      </div>
+                    </article>
+                  ))}
+                </div>
+              )}
+            </Panel>
+
             <Panel title="Istoric comenzi" description="Status, total si acces rapid la plata sau review.">
               {ordersQuery.isLoading ? (
                 <div className="rounded-2xl border border-dashed border-rose-200 px-4 py-5 text-sm text-gray-500">Se incarca istoricul comenzilor...</div>
