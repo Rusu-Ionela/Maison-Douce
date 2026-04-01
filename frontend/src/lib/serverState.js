@@ -80,6 +80,7 @@ export const queryKeys = {
     orderId,
     Number(totalFinal || 0),
   ],
+  customOrderDetail: (customOrderId) => ["custom-orders", "detail", customOrderId],
   wallet: (userId) => ["wallet", userId],
   clientOrders: (userId) => ["orders", "client", userId],
   myNotifications: () => ["notifications", "me"],
@@ -108,6 +109,11 @@ export async function fetchStripeStatus() {
 
 export async function fetchOrderDetails(orderId) {
   const { data } = await api.get(`/comenzi/${orderId}`);
+  return data;
+}
+
+export async function fetchCustomOrderDetail(customOrderId) {
+  const { data } = await api.get(`/comenzi-personalizate/${customOrderId}`);
   return data;
 }
 
