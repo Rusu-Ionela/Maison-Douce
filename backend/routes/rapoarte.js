@@ -3,6 +3,7 @@ const express = require("express");
 const router = express.Router();
 
 const Comanda = require("../models/Comanda");
+const ComandaPersonalizata = require("../models/ComandaPersonalizata");
 const Rezervare = require("../models/Rezervare");
 const { authRequired, roleCheck } = require("../middleware/auth");
 const {
@@ -39,6 +40,93 @@ function describeReservation(reservation) {
   }
   if (reservation.tortId) {
     return `Tort ${reservation.tortId}`;
+  }
+  return "";
+}
+
+function roundCurrency(value) {
+  return Number(readNumber(value, 0).toFixed(2));
+}
+
+function roundHours(value) {
+  return Number(readNumber(value, 0).toFixed(2));
+}
+
+function average(values = []) {
+  if (!Array.isArray(values) || values.length === 0) return 0;
+  const total = values.reduce((sum, value) => sum + readNumber(value, 0), 0);
+  return roundHours(total / values.length);
+}
+
+function normalizeReason(value) {
+  return String(value || "").replace(/\s+/g, " ").trim();
+}
+
+function addReason(reasonMap, reason) {
+  const normalized = normalizeReason(reason);
+  if (!normalized) return;
+  reasonMap.set(normalized, (reasonMap.get(normalized) || 0) + 1);
+}
+
+function toReasonList(reasonMap) {
+  return Array.from(reasonMap.entries())
+    .sort((left, right) => right[1] - left[1])
+    .slice(0, 5)
+    .map(([reason, count]) => ({ reason, count }));
+}
+
+function buildDateTime(value, time = "") {
+  const dateValue = String(value || "").trim();
+  if (!dateValue) return null;
+  const timeValue = String(time || "").trim() || "00:00";
+  const result = new Date(`${dateValue}T${timeValue}`);
+  if (Number.isNaN(result.getTime())) return null;
+  return result;
+}
+
+function hoursBetween(start, end) {
+  const startDate = start instanceof Date ? start : new Date(start);
+  const endDate = end instanceof Date ? end : new Date(end);
+  if (Number.isNaN(startDate.getTime()) || Number.isNaN(endDate.getTime())) return null;
+  const diff = (endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60);
+  if (!Number.isFinite(diff) || diff < 0) return null;
+  return diff;
+}
+
+function pickEarliestDate(...values) {
+  const dates = values
+    .map((value) => (value instanceof Date ? value : new Date(value)))
+    .filter((value) => !Number.isNaN(value.getTime()))
+    .sort((left, right) => left.getTime() - right.getTime());
+
+  return dates[0] || null;
+}
+
+function getFirstCustomResponseAt(customOrder) {
+  const history = Array.isArray(customOrder?.statusHistory) ? customOrder.statusHistory : [];
+  return (
+    history.find((entry) => normalizeReason(entry?.status) && normalizeReason(entry?.status) !== "noua")
+      ?.at || null
+  );
+}
+
+function getCustomRejectionReason(customOrder) {
+  const history = Array.isArray(customOrder?.statusHistory) ? customOrder.statusHistory : [];
+  const rejectionEntry = [...history]
+    .reverse()
+    .find((entry) => normalizeReason(entry?.status) === "respinsa");
+  return rejectionEntry?.note || "";
+}
+
+function getOrderRejectionReason(order) {
+  if (normalizeReason(order?.motivRefuz)) return order.motivRefuz;
+  const history = Array.isArray(order?.statusHistory) ? order.statusHistory : [];
+  const rejectionEntry = [...history]
+    .reverse()
+    .find((entry) => ["anulata", "refuzata"].includes(normalizeReason(entry?.status)));
+  if (normalizeReason(rejectionEntry?.note)) return rejectionEntry.note;
+  if (["anulata", "refuzata"].includes(normalizeReason(order?.status)) && normalizeReason(order?.note)) {
+    return order.note;
   }
   return "";
 }
@@ -251,36 +339,111 @@ router.get(
         (sum, cmd) => sum + getOrderDeliveryFee(cmd),
         0
       );
+      const customOrders = await ComandaPersonalizata.find(filter)
+        .populate("comandaId", "paymentStatus statusPlata total totalFinal")
+        .lean();
 
       const methodBreakdown = { pickup: 0, delivery: 0, courier: 0 };
+      const methodRevenueBreakdown = { pickup: 0, delivery: 0, courier: 0 };
       const paymentBreakdown = {};
       const statusBreakdown = {};
+      const rejectionReasons = new Map();
+      const scheduledLeadTimes = [];
+      let cancelledOrders = 0;
+      let unpaidOrders = 0;
 
       comenzi.forEach((comanda) => {
         const method = normalizeDeliveryMethod(
           comanda.metodaLivrare || comanda.handoffMethod
         );
         methodBreakdown[method] = (methodBreakdown[method] || 0) + 1;
+        methodRevenueBreakdown[method] =
+          (methodRevenueBreakdown[method] || 0) + getOrderTotal(comanda);
 
         const paymentStatus =
           comanda.paymentStatus || comanda.statusPlata || "unpaid";
         paymentBreakdown[paymentStatus] =
           (paymentBreakdown[paymentStatus] || 0) + 1;
+        if (paymentStatus !== "paid") unpaidOrders += 1;
 
         const status = comanda.status || comanda.statusComanda || "plasata";
         statusBreakdown[status] = (statusBreakdown[status] || 0) + 1;
+
+        if (["anulata", "refuzata"].includes(normalizeReason(status))) {
+          cancelledOrders += 1;
+          addReason(rejectionReasons, getOrderRejectionReason(comanda));
+        }
+
+        const scheduledAt = buildDateTime(
+          comanda.dataLivrare || comanda.dataRezervare || comanda.calendarSlot?.date,
+          comanda.oraLivrare || comanda.oraRezervare || comanda.calendarSlot?.time
+        );
+        const leadHours = hoursBetween(comanda.createdAt, scheduledAt);
+        if (leadHours != null) scheduledLeadTimes.push(leadHours);
       });
+
+      const customResponseTimes = [];
+      let customRejected = 0;
+      let customConverted = 0;
+      let customPaid = 0;
+
+      customOrders.forEach((customOrder) => {
+        if (customOrder?.comandaId || normalizeReason(customOrder?.status) === "comanda_generata") {
+          customConverted += 1;
+        }
+
+        const linkedPaymentStatus =
+          customOrder?.comandaId?.paymentStatus || customOrder?.comandaId?.statusPlata || "";
+        if (normalizeReason(linkedPaymentStatus) === "paid") {
+          customPaid += 1;
+        }
+
+        if (normalizeReason(customOrder?.status) === "respinsa") {
+          customRejected += 1;
+          addReason(rejectionReasons, getCustomRejectionReason(customOrder));
+        }
+
+        const responseAt = getFirstCustomResponseAt(customOrder);
+        const responseStart = pickEarliestDate(customOrder.createdAt, customOrder.data);
+        const responseHours = hoursBetween(responseStart, responseAt);
+        if (responseHours != null) customResponseTimes.push(responseHours);
+      });
+
+      const customTotal = customOrders.length;
+      const totalLost = cancelledOrders + customRejected;
 
       res.json({
         period: { startDate, endDate },
         totalOrders,
-        totalRevenue: Number(totalRevenue.toFixed(2)),
-        averageOrder: Number(avgOrder.toFixed(2)),
-        deliveryRevenue: Number(deliveryRevenue.toFixed(2)),
+        totalRevenue: roundCurrency(totalRevenue),
+        averageOrder: roundCurrency(avgOrder),
+        deliveryRevenue: roundCurrency(deliveryRevenue),
         deliveryMethodBreakdown: methodBreakdown,
+        methodRevenueBreakdown: Object.fromEntries(
+          Object.entries(methodRevenueBreakdown).map(([key, value]) => [key, roundCurrency(value)])
+        ),
         paymentBreakdown,
         statusBreakdown,
         topProducts: getTopProducts(comenzi),
+        unpaidOrders,
+        lostOrderCounts: {
+          standardCancelled: cancelledOrders,
+          customRejected,
+          totalLost,
+        },
+        topRejectionReasons: toReasonList(rejectionReasons),
+        customFunnel: {
+          totalRequests: customTotal,
+          convertedOrders: customConverted,
+          paidOrders: customPaid,
+          rejectedRequests: customRejected,
+          conversionRate: customTotal > 0 ? roundHours((customConverted / customTotal) * 100) : 0,
+          paidRate: customTotal > 0 ? roundHours((customPaid / customTotal) * 100) : 0,
+        },
+        operationalTimings: {
+          averageCustomResponseHours: average(customResponseTimes),
+          averageScheduledLeadHours: average(scheduledLeadTimes),
+        },
       });
     } catch (err) {
       console.error("Eroare /rapoarte/sales:", err.message);

@@ -2250,6 +2250,149 @@ test("backend integration flows", async (t) => {
       );
     });
 
+    await t.test("sales reports expose custom funnel, losses and operational timings", async () => {
+      await harness.resetDb();
+
+      const admin = await seedUser("admin");
+      const staff = await registerUser("patiser");
+      const client = await registerUser("client");
+      const providerId = staff.user?.id;
+      const today = new Date().toISOString().slice(0, 10);
+
+      assert.equal(admin.status, 200);
+      assert.equal(staff.status, 201);
+      assert.equal(client.status, 201);
+      assert.ok(providerId);
+
+      await Comanda.create({
+        clientId: client.user?.id,
+        prestatorId: providerId,
+        items: [{ name: "Tort raport livrare", qty: 1, price: 220, lineTotal: 220 }],
+        subtotal: 220,
+        taxaLivrare: 100,
+        deliveryFee: 100,
+        total: 320,
+        totalFinal: 320,
+        metodaLivrare: "livrare",
+        dataLivrare: futureDate(5),
+        oraLivrare: "15:00",
+        status: "livrata",
+        paymentStatus: "paid",
+        statusPlata: "paid",
+      });
+
+      await Comanda.create({
+        clientId: client.user?.id,
+        prestatorId: providerId,
+        items: [{ name: "Tort raport anulat", qty: 1, price: 180, lineTotal: 180 }],
+        subtotal: 180,
+        total: 180,
+        totalFinal: 180,
+        metodaLivrare: "ridicare",
+        dataLivrare: futureDate(4),
+        oraLivrare: "11:00",
+        status: "anulata",
+        paymentStatus: "unpaid",
+        statusPlata: "unpaid",
+        motivRefuz: "Clientul a anulat dupa oferta finala.",
+      });
+
+      const linkedCustomOrder = await Comanda.create({
+        clientId: client.user?.id,
+        prestatorId: providerId,
+        items: [{ name: "Tort custom premium", qty: 1, price: 900, lineTotal: 900 }],
+        subtotal: 900,
+        total: 900,
+        totalFinal: 900,
+        metodaLivrare: "ridicare",
+        dataLivrare: futureDate(8),
+        oraLivrare: "14:30",
+        status: "in_asteptare",
+        paymentStatus: "paid",
+        statusPlata: "paid",
+      });
+
+      const convertedCustom = await ComandaPersonalizata.create({
+        clientId: client.user?.id,
+        prestatorId: providerId,
+        numeClient: client.user?.nume || "Client raport",
+        preferinte: "Tort premium cu flori albe",
+        pretEstimat: 900,
+        status: "comanda_generata",
+        comandaId: linkedCustomOrder._id,
+        data: new Date(Date.now() - 6 * 60 * 60 * 1000),
+        statusHistory: [
+          {
+            status: "noua",
+            note: "Cerere noua trimisa.",
+            at: new Date(Date.now() - 5 * 60 * 60 * 1000),
+          },
+          {
+            status: "aprobata",
+            note: "Oferta confirmata.",
+            at: new Date(Date.now() - 3 * 60 * 60 * 1000),
+          },
+          {
+            status: "comanda_generata",
+            note: "Trimisa la plata.",
+            at: new Date(Date.now() - 2 * 60 * 60 * 1000),
+          },
+        ],
+      });
+      await ComandaPersonalizata.updateOne(
+        { _id: convertedCustom._id },
+        { $set: { createdAt: new Date(Date.now() - 6 * 60 * 60 * 1000) } }
+      );
+
+      const rejectedCustom = await ComandaPersonalizata.create({
+        clientId: client.user?.id,
+        prestatorId: providerId,
+        numeClient: client.user?.nume || "Client raport",
+        preferinte: "Tort corporate cu logo",
+        pretEstimat: 650,
+        status: "respinsa",
+        data: new Date(Date.now() - 5 * 60 * 60 * 1000),
+        statusHistory: [
+          {
+            status: "noua",
+            note: "Cerere noua trimisa.",
+            at: new Date(Date.now() - 4 * 60 * 60 * 1000),
+          },
+          {
+            status: "respinsa",
+            note: "Clientul nu a confirmat bugetul propus.",
+            at: new Date(Date.now() - 90 * 60 * 1000),
+          },
+        ],
+      });
+      await ComandaPersonalizata.updateOne(
+        { _id: rejectedCustom._id },
+        { $set: { createdAt: new Date(Date.now() - 5 * 60 * 60 * 1000) } }
+      );
+
+      const report = await harness.request(`/rapoarte/sales/${today}/${today}`, {
+        token: admin.token,
+      });
+      assert.equal(report.status, 200);
+      assert.equal(report.data?.totalOrders, 3);
+      assert.equal(report.data?.customFunnel?.totalRequests, 2);
+      assert.equal(report.data?.customFunnel?.convertedOrders, 1);
+      assert.equal(report.data?.customFunnel?.paidOrders, 1);
+      assert.equal(report.data?.customFunnel?.rejectedRequests, 1);
+      assert.equal(report.data?.lostOrderCounts?.standardCancelled, 1);
+      assert.equal(report.data?.lostOrderCounts?.customRejected, 1);
+      assert.equal(report.data?.lostOrderCounts?.totalLost, 2);
+      assert.ok(report.data?.methodRevenueBreakdown?.delivery >= 320);
+      assert.ok(report.data?.operationalTimings?.averageCustomResponseHours > 0);
+      assert.ok(report.data?.operationalTimings?.averageScheduledLeadHours > 0);
+      assert.ok(Array.isArray(report.data?.topRejectionReasons));
+      assert.ok(
+        report.data.topRejectionReasons.some((item) =>
+          String(item.reason || "").includes("buget")
+        )
+      );
+    });
+
     await t.test("monthly provider availability uses providerId and booking removes only the selected provider slot", async () => {
       await harness.resetDb();
 
