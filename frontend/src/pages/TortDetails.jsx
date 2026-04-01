@@ -91,6 +91,26 @@ function buildCustomTriggers(tort) {
   ];
 }
 
+function buildDecisionCta(tort) {
+  if (tort?.pricingMode === "fixed") {
+    return {
+      tone: "border-emerald-200 bg-emerald-50/70 text-emerald-900",
+      eyebrow: "Calea cea mai rapida",
+      title: "Produs standard cu pret fix",
+      text:
+        "Daca vrei exact varianta afisata pe pagina, adauga produsul in cos si continua prin checkout-ul standard. Data, ora si livrarea se aleg la finalizare.",
+    };
+  }
+
+  return {
+    tone: "border-amber-200 bg-amber-50/80 text-amber-900",
+    eyebrow: "Flux corect pentru acest model",
+    title: "Necesita confirmare manuala",
+    text:
+      "Pentru acest tort atelierul trebuie sa confirme pretul, disponibilitatea si executia finala. Foloseste constructorul sau cererea de oferta, nu checkout-ul standard.",
+  };
+}
+
 function StorefrontBadge({ tort }) {
   const rounded = Math.round(Number(tort?.ratingAvg || 0) * 10) / 10;
 
@@ -197,6 +217,7 @@ export default function TortDetails() {
     () => buildCustomTriggers(storefrontTort),
     [storefrontTort]
   );
+  const decisionCta = useMemo(() => buildDecisionCta(storefrontTort), [storefrontTort]);
 
   const gallery = useMemo(() => {
     const list = [];
@@ -542,6 +563,14 @@ export default function TortDetails() {
                   in campul de note. Pentru alta marime, etaje suplimentare sau decor custom,
                   continua din constructorul 2D.
                 </div>
+              </div>
+
+              <div className={`rounded-[24px] border px-4 py-4 ${decisionCta.tone}`}>
+                <div className="text-xs font-semibold uppercase tracking-[0.18em]">
+                  {decisionCta.eyebrow}
+                </div>
+                <div className="mt-2 text-lg font-semibold">{decisionCta.title}</div>
+                <div className="mt-2 text-sm leading-6">{decisionCta.text}</div>
               </div>
 
               <div className="flex flex-wrap gap-3">
