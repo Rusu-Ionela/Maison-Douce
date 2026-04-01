@@ -11,6 +11,13 @@ const { notifyUser, notifyProviderById } = require("../utils/notifications");
 const { recordAuditLog } = require("../utils/audit");
 
 const LIVRARE_FEE = 100;
+const CUSTOM_ORDER_STATUSES = new Set([
+  "noua",
+  "in_discutie",
+  "aprobata",
+  "comanda_generata",
+  "respinsa",
+]);
 
 function normalizeText(value) {
   return String(value || "").trim();
@@ -408,8 +415,30 @@ router.patch("/:id/status", authRequired, roleCheck("admin", "patiser"), async (
   try {
     const { status, pretEstimat, statusNote } = req.body || {};
     const update = {};
-    if (status) update.status = status;
-    if (pretEstimat != null) update.pretEstimat = Number(pretEstimat || 0);
+    const normalizedStatus = normalizeText(status);
+    const normalizedNote = normalizeText(statusNote);
+
+    if (normalizedStatus) {
+      if (!CUSTOM_ORDER_STATUSES.has(normalizedStatus)) {
+        return res.status(400).json({ mesaj: "Status invalid pentru cererea personalizata." });
+      }
+      if (normalizedStatus === "respinsa" && !normalizedNote) {
+        return res.status(400).json({ mesaj: "Motivul este obligatoriu pentru respingere." });
+      }
+      update.status = normalizedStatus;
+    }
+
+    if (pretEstimat != null) {
+      const numericPrice = Number(pretEstimat);
+      if (!Number.isFinite(numericPrice) || numericPrice < 0) {
+        return res.status(400).json({ mesaj: "Pretul estimat trebuie sa fie un numar valid." });
+      }
+      update.pretEstimat = numericPrice;
+    }
+
+    if (!Object.keys(update).length) {
+      return res.status(400).json({ mesaj: "Nu exista modificari valide pentru actualizare." });
+    }
 
     const doc = await ComandaPersonalizata.findById(req.params.id);
     if (!doc) return res.status(404).json({ mesaj: "Comanda inexistenta" });
@@ -417,11 +446,11 @@ router.patch("/:id/status", authRequired, roleCheck("admin", "patiser"), async (
       return res.status(403).json({ mesaj: "Acces interzis" });
     }
     Object.assign(doc, update);
-    if (status) {
+    if (normalizedStatus) {
       doc.statusHistory = Array.isArray(doc.statusHistory) ? doc.statusHistory : [];
       doc.statusHistory.push({
-        status,
-        note: String(statusNote || "").trim(),
+        status: normalizedStatus,
+        note: normalizedNote,
         at: new Date(),
       });
     }

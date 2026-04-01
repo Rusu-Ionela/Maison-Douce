@@ -28,6 +28,14 @@ function buildOrderDraft(comanda) {
   };
 }
 
+function buildReviewDraft(comanda) {
+  return {
+    pretEstimat: String(Number(comanda?.pretEstimat || 0)),
+    status: comanda?.status || "noua",
+    statusNote: "",
+  };
+}
+
 function DetailSection({ section }) {
   return (
     <div className="rounded-[22px] border border-rose-100 bg-white/85 px-4 py-4 shadow-soft">
@@ -54,7 +62,9 @@ export default function AdminComenziPersonalizate() {
   const [loading, setLoading] = useState(false);
   const [feedback, setFeedback] = useState({ type: "", message: "" });
   const [conversionDrafts, setConversionDrafts] = useState({});
+  const [reviewDrafts, setReviewDrafts] = useState({});
   const [convertingId, setConvertingId] = useState("");
+  const [savingActionId, setSavingActionId] = useState("");
 
   const load = async () => {
     setLoading(true);
@@ -63,6 +73,7 @@ export default function AdminComenziPersonalizate() {
         params: statusFilter ? { status: statusFilter } : {},
       });
       setComenzi(Array.isArray(res.data) ? res.data : []);
+      setReviewDrafts({});
     } catch (error) {
       console.error("Eroare la incarcare comenzi personalizate:", error);
       setComenzi([]);
@@ -80,16 +91,18 @@ export default function AdminComenziPersonalizate() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [statusFilter]);
 
-  const updateComanda = async (id, payload) => {
+  const updateComanda = async (id, payload, successMessage = "Cererea personalizata a fost actualizata.") => {
     try {
       await api.patch(`/comenzi-personalizate/${id}/status`, payload);
-      setFeedback({ type: "success", message: "Cererea personalizata a fost actualizata." });
+      setFeedback({ type: "success", message: successMessage });
       await load();
+      return true;
     } catch (error) {
       setFeedback({
         type: "error",
         message: error?.response?.data?.mesaj || "Nu am putut actualiza cererea personalizata.",
       });
+      return false;
     }
   };
 
@@ -107,6 +120,102 @@ export default function AdminComenziPersonalizate() {
         [field]: value,
       },
     }));
+  };
+
+  const getReviewDraft = (comanda) => ({
+    ...buildReviewDraft(comanda),
+    ...(reviewDrafts[comanda._id] || {}),
+  });
+
+  const setReviewDraftField = (comanda, field, value) => {
+    setReviewDrafts((current) => ({
+      ...current,
+      [comanda._id]: {
+        ...buildReviewDraft(comanda),
+        ...(current[comanda._id] || {}),
+        [field]: value,
+      },
+    }));
+  };
+
+  const resetReviewDraft = (comanda) => {
+    setReviewDrafts((current) => {
+      if (!current[comanda._id]) return current;
+      const next = { ...current };
+      delete next[comanda._id];
+      return next;
+    });
+  };
+
+  const saveEstimatedPrice = async (comanda) => {
+    const draft = getReviewDraft(comanda);
+    const parsedPrice = Number(draft.pretEstimat);
+    if (!Number.isFinite(parsedPrice) || parsedPrice < 0) {
+      setFeedback({
+        type: "warning",
+        message: "Introdu un pret estimat valid, mai mare sau egal cu 0.",
+      });
+      return;
+    }
+    if (parsedPrice === Number(comanda.pretEstimat || 0)) {
+      setFeedback({
+        type: "info",
+        message: "Pretul nu a fost modificat, deci nu exista nimic de salvat.",
+      });
+      return;
+    }
+
+    setSavingActionId(`price-${comanda._id}`);
+    try {
+      const ok = await updateComanda(
+        comanda._id,
+        { pretEstimat: parsedPrice },
+        "Pretul estimat a fost actualizat dupa confirmare."
+      );
+      if (ok) resetReviewDraft(comanda);
+    } finally {
+      setSavingActionId("");
+    }
+  };
+
+  const saveStatusChange = async (comanda) => {
+    const draft = getReviewDraft(comanda);
+    const nextStatus = String(draft.status || "").trim();
+    const statusNote = String(draft.statusNote || "").trim();
+
+    if (!STATUS_OPTIONS.includes(nextStatus)) {
+      setFeedback({
+        type: "warning",
+        message: "Selecteaza un status valid inainte de confirmare.",
+      });
+      return;
+    }
+    if (nextStatus === String(comanda.status || "")) {
+      setFeedback({
+        type: "info",
+        message: "Statusul selectat este deja activ. Alege alt status pentru a salva o schimbare.",
+      });
+      return;
+    }
+    if (nextStatus === "respinsa" && !statusNote) {
+      setFeedback({
+        type: "warning",
+        message: "Pentru respingere este obligatoriu un motiv intern clar.",
+      });
+      return;
+    }
+
+    setSavingActionId(`status-${comanda._id}`);
+    try {
+      const ok = await updateComanda(
+        comanda._id,
+        { status: nextStatus, statusNote },
+        "Statusul cererii personalizate a fost actualizat."
+      );
+      if (ok) resetReviewDraft(comanda);
+    } finally {
+      setSavingActionId("");
+    }
   };
 
   const convertToOrder = async (comanda) => {
@@ -238,6 +347,17 @@ export default function AdminComenziPersonalizate() {
           const previewImages = buildCustomOrderPreviewImages(comanda);
           const linkedOrder = resolveLinkedOrder(comanda);
           const orderDraft = getOrderDraft(comanda);
+          const reviewDraft = getReviewDraft(comanda);
+          const selectedStatusMeta = getCustomOrderStatusMeta(reviewDraft.status);
+          const priceChanged =
+            Number(reviewDraft.pretEstimat || 0) !== Number(comanda.pretEstimat || 0);
+          const statusChanged = reviewDraft.status !== comanda.status;
+          const statusNoteChanged = Boolean(String(reviewDraft.statusNote || "").trim());
+          const savingPrice = savingActionId === `price-${comanda._id}`;
+          const savingStatus = savingActionId === `status-${comanda._id}`;
+          const canSaveStatus =
+            statusChanged &&
+            !(reviewDraft.status === "respinsa" && !String(reviewDraft.statusNote || "").trim());
 
           return (
             <article
@@ -273,7 +393,7 @@ export default function AdminComenziPersonalizate() {
                     {Number(comanda.pretEstimat || 0)} MDL
                   </div>
                   <div className="mt-1 text-sm text-gray-500">
-                    Ajustabil direct din card.
+                    Actualizarea cere acum selectie si confirmare explicita.
                   </div>
                 </div>
                 <div className="rounded-[22px] border border-rose-100 bg-white/80 px-4 py-3 shadow-soft">
@@ -362,18 +482,43 @@ export default function AdminComenziPersonalizate() {
                     <div className="text-xs font-semibold uppercase tracking-[0.16em] text-pink-500">
                       Ajusteaza pretul
                     </div>
-                    <div className="mt-3 flex items-center gap-3">
+                    <div className="mt-2 text-sm leading-6 text-gray-600">
+                      Pretul nu se mai salveaza automat la iesirea din camp. Operatorul confirma
+                      explicit schimbarea.
+                    </div>
+                    <div className="mt-3 flex flex-wrap items-center gap-3">
                       <input
                         type="number"
+                        min="0"
+                        step="1"
                         className={`${inputs.default} max-w-[180px]`}
-                        defaultValue={comanda.pretEstimat || 0}
-                        onBlur={(event) =>
-                          updateComanda(comanda._id, {
-                            pretEstimat: Number(event.target.value || 0),
-                          })
+                        value={reviewDraft.pretEstimat}
+                        onChange={(event) =>
+                          setReviewDraftField(comanda, "pretEstimat", event.target.value)
                         }
                       />
                       <span className="text-sm text-gray-500">MDL</span>
+                    </div>
+                    <div className="mt-3 text-sm text-gray-500">
+                      Pret curent salvat: {Number(comanda.pretEstimat || 0)} MDL
+                    </div>
+                    <div className="mt-4 flex flex-wrap gap-3">
+                      <button
+                        type="button"
+                        className={buttons.primary}
+                        disabled={!priceChanged || savingPrice}
+                        onClick={() => saveEstimatedPrice(comanda)}
+                      >
+                        {savingPrice ? "Se salveaza..." : "Salveaza pretul"}
+                      </button>
+                      <button
+                        type="button"
+                        className={buttons.outline}
+                        disabled={!priceChanged || savingPrice}
+                        onClick={() => resetReviewDraft(comanda)}
+                      >
+                        Renunta
+                      </button>
                     </div>
                   </div>
 
@@ -516,10 +661,15 @@ export default function AdminComenziPersonalizate() {
                     <div className="text-xs font-semibold uppercase tracking-[0.16em] text-pink-500">
                       Status comanda
                     </div>
+                    <div className="mt-2 text-sm leading-6 text-gray-600">
+                      Status curent:{" "}
+                      <span className="font-semibold text-gray-900">{statusMeta.label}</span>.
+                      Selectia de mai jos ramane doar in draft pana la confirmare.
+                    </div>
                     <div className="mt-4 flex flex-wrap gap-2">
                       {STATUS_OPTIONS.map((status) => {
                         const itemMeta = getCustomOrderStatusMeta(status);
-                        const active = status === comanda.status;
+                        const active = status === reviewDraft.status;
                         return (
                           <button
                             key={`${comanda._id}-${status}`}
@@ -529,12 +679,54 @@ export default function AdminComenziPersonalizate() {
                                 ? `rounded-full border px-3 py-2 text-xs font-semibold uppercase tracking-[0.14em] ${itemMeta.className}`
                                 : buttons.outline
                             }
-                            onClick={() => updateComanda(comanda._id, { status })}
+                            onClick={() => setReviewDraftField(comanda, "status", status)}
                           >
                             {itemMeta.label}
                           </button>
                         );
                       })}
+                    </div>
+
+                    <div className="mt-4 rounded-[18px] border border-rose-100 bg-[rgba(255,249,242,0.78)] px-4 py-3 text-sm text-gray-600">
+                      Status selectat pentru salvare:{" "}
+                      <span className="font-semibold text-gray-900">{selectedStatusMeta.label}</span>
+                    </div>
+
+                    <label className="mt-4 block text-sm font-semibold text-[#4e453d]">
+                      Nota interna / motiv
+                      <textarea
+                        value={reviewDraft.statusNote}
+                        onChange={(event) =>
+                          setReviewDraftField(comanda, "statusNote", event.target.value)
+                        }
+                        className={`mt-2 min-h-[88px] ${inputs.default}`}
+                        placeholder="Ex: clientul a aprobat oferta, asteptam plata / respingere din lipsa confirmarii"
+                      />
+                    </label>
+
+                    {reviewDraft.status === "respinsa" ? (
+                      <div className="mt-3 rounded-[18px] border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+                        Pentru statusul "respinsa" este obligatoriu sa salvezi si un motiv intern.
+                      </div>
+                    ) : null}
+
+                    <div className="mt-4 flex flex-wrap gap-3">
+                      <button
+                        type="button"
+                        className={buttons.primary}
+                        disabled={!canSaveStatus || savingStatus}
+                        onClick={() => saveStatusChange(comanda)}
+                      >
+                        {savingStatus ? "Se salveaza..." : "Confirma statusul"}
+                      </button>
+                      <button
+                        type="button"
+                        className={buttons.outline}
+                        disabled={(!statusChanged && !statusNoteChanged) || savingStatus}
+                        onClick={() => resetReviewDraft(comanda)}
+                      >
+                        Reseteaza draftul
+                      </button>
                     </div>
                   </div>
                 </div>

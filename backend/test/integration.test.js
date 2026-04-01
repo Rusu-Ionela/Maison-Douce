@@ -2173,6 +2173,83 @@ test("backend integration flows", async (t) => {
       assert.equal(slot?.used, 1);
     });
 
+    await t.test("custom cake review actions validate price and rejection reasons", async () => {
+      await harness.resetDb();
+
+      const staff = await registerUser("patiser");
+      const client = await registerUser("client");
+      const providerId = staff.user?.id;
+
+      assert.equal(staff.status, 201);
+      assert.equal(client.status, 201);
+      assert.ok(providerId);
+
+      const customOrder = await harness.request("/comenzi-personalizate", {
+        method: "POST",
+        token: client.token,
+        body: {
+          prestatorId: providerId,
+          preferinte: "Tort aniversar minimalist cu fructe proaspete",
+          pretEstimat: 650,
+          timpPreparareOre: 24,
+        },
+      });
+
+      assert.equal(customOrder.status, 201);
+      const customOrderId = customOrder.data?.comanda?._id;
+      assert.ok(customOrderId);
+
+      const invalidPrice = await harness.request(`/comenzi-personalizate/${customOrderId}/status`, {
+        method: "PATCH",
+        token: staff.token,
+        body: {
+          pretEstimat: -10,
+        },
+      });
+      assert.equal(invalidPrice.status, 400);
+
+      const missingRejectReason = await harness.request(
+        `/comenzi-personalizate/${customOrderId}/status`,
+        {
+          method: "PATCH",
+          token: staff.token,
+          body: {
+            status: "respinsa",
+          },
+        }
+      );
+      assert.equal(missingRejectReason.status, 400);
+
+      const updatedPrice = await harness.request(`/comenzi-personalizate/${customOrderId}/status`, {
+        method: "PATCH",
+        token: staff.token,
+        body: {
+          pretEstimat: 720,
+        },
+      });
+      assert.equal(updatedPrice.status, 200);
+      assert.equal(updatedPrice.data?.pretEstimat, 720);
+
+      const rejected = await harness.request(`/comenzi-personalizate/${customOrderId}/status`, {
+        method: "PATCH",
+        token: staff.token,
+        body: {
+          status: "respinsa",
+          statusNote: "Clientul nu a confirmat bugetul final in termen.",
+        },
+      });
+      assert.equal(rejected.status, 200);
+      assert.equal(rejected.data?.status, "respinsa");
+
+      const savedCustomOrder = await ComandaPersonalizata.findById(customOrderId).lean();
+      assert.equal(savedCustomOrder?.pretEstimat, 720);
+      assert.equal(savedCustomOrder?.status, "respinsa");
+      assert.equal(
+        savedCustomOrder?.statusHistory?.[savedCustomOrder.statusHistory.length - 1]?.note,
+        "Clientul nu a confirmat bugetul final in termen."
+      );
+    });
+
     await t.test("monthly provider availability uses providerId and booking removes only the selected provider slot", async () => {
       await harness.resetDb();
 
