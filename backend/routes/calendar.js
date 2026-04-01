@@ -341,7 +341,8 @@ async function reserveHandler(req, res) {
       prestatorId: rawPrestatorId,
       date,
       time,
-      metoda = "ridicare",
+      metoda = "",
+      deliveryMethod = "",
       adresaLivrare = "",
       deliveryInstructions = "",
       deliveryWindow = "",
@@ -352,6 +353,7 @@ async function reserveHandler(req, res) {
       tortId,
       customDetails,
     } = req.body;
+    const selectedMethod = String(metoda || deliveryMethod || "ridicare").trim();
     if (
       rawProviderId &&
       rawPrestatorId &&
@@ -393,12 +395,12 @@ async function reserveHandler(req, res) {
     if (getScopedPrestatorId(req) && rejectOutsidePrestatorScope(req, res, prestatorId)) {
       return;
     }
-    if (!["ridicare", "livrare"].includes(String(metoda || "").trim())) {
+    if (!["ridicare", "livrare"].includes(selectedMethod)) {
       return res.status(400).json({
         message: "metoda trebuie sa fie ridicare sau livrare.",
       });
     }
-    if (metoda === "livrare" && !String(adresaLivrare || "").trim()) {
+    if (selectedMethod === "livrare" && !String(adresaLivrare || "").trim()) {
       return res.status(400).json({
         message: "Adresa de livrare este obligatorie pentru aceasta rezervare.",
       });
@@ -468,7 +470,7 @@ async function reserveHandler(req, res) {
           clientBudget: estimatedBudget || undefined,
           requiresManualPricing: true,
         };
-    const deliveryFee = metoda === "livrare" ? DELIVERY_FEE : 0;
+    const deliveryFee = selectedMethod === "livrare" ? DELIVERY_FEE : 0;
     const subtotalValue = estimatedBudget;
     const total = subtotalValue + deliveryFee;
 
@@ -526,13 +528,13 @@ async function reserveHandler(req, res) {
       statusPlata: "unpaid",
       status: "in_asteptare",
       statusComanda: "inregistrata",
-      metodaLivrare: metoda,
-      adresaLivrare: metoda === "livrare" ? adresaLivrare : "",
+      metodaLivrare: selectedMethod,
+      adresaLivrare: selectedMethod === "livrare" ? adresaLivrare : "",
       deliveryInstructions: deliveryInstructions || "",
       deliveryWindow: deliveryWindow || "",
       notesClient: notes || "",
       notesAdmin: pricingPendingNote,
-      handoffMethod: metoda === "livrare" ? "delivery" : "pickup",
+      handoffMethod: selectedMethod === "livrare" ? "delivery" : "pickup",
       handoffStatus: "scheduled",
       dataLivrare: date,
       oraLivrare: time,
@@ -564,9 +566,9 @@ async function reserveHandler(req, res) {
         customDetails: customRequestDetails,
         date,
         timeSlot,
-        handoffMethod: metoda === "livrare" ? "delivery" : "pickup",
+        handoffMethod: selectedMethod === "livrare" ? "delivery" : "pickup",
         deliveryFee,
-        deliveryAddress: metoda === "livrare" ? adresaLivrare : undefined,
+        deliveryAddress: selectedMethod === "livrare" ? adresaLivrare : undefined,
         deliveryInstructions: deliveryInstructions || "",
         deliveryWindow: deliveryWindow || "",
         subtotal: subtotalValue,
@@ -609,7 +611,7 @@ async function reserveHandler(req, res) {
       meta: {
         rezervareId: String(doc._id),
         comandaId: String(comanda._id),
-        handoffMethod: metoda === "livrare" ? "delivery" : "pickup",
+        handoffMethod: selectedMethod === "livrare" ? "delivery" : "pickup",
         deliveryFee,
       },
     });
@@ -624,7 +626,7 @@ async function reserveHandler(req, res) {
       meta: {
         rezervareId: String(doc._id),
         comandaId: String(comanda._id),
-        handoffMethod: metoda === "livrare" ? "delivery" : "pickup",
+        handoffMethod: selectedMethod === "livrare" ? "delivery" : "pickup",
         deliveryFee,
       },
     });
@@ -647,11 +649,19 @@ async function reserveHandler(req, res) {
       providerId: prestatorId,
       rezervareId: doc._id,
       comandaId: comanda._id,
+      deliveryMethod: selectedMethod,
       slot: slotInfo,
       fees: { delivery: deliveryFee },
       total,
       clientBudget: estimatedBudget,
       requiresPriceConfirmation: true,
+      reservationSummary: {
+        date,
+        time,
+        metoda: selectedMethod,
+        adresaLivrare: selectedMethod === "livrare" ? String(adresaLivrare || "").trim() : "",
+        deliveryWindow: selectedMethod === "livrare" ? String(deliveryWindow || "").trim() : "",
+      },
     });
   } catch (e) {
     sendCalendarError(res, e, "Rezervarea calendarului a esuat.");

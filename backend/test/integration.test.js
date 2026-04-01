@@ -7,6 +7,8 @@ const { spawn } = require("node:child_process");
 const mongoose = require("mongoose");
 const Stripe = require("stripe");
 const CalendarSlotEntry = require("../models/CalendarSlotEntry");
+const Comanda = require("../models/Comanda");
+const Rezervare = require("../models/Rezervare");
 const Tort = require("../models/Tort");
 const Utilizator = require("../models/Utilizator");
 
@@ -1889,6 +1891,81 @@ test("backend integration flows", async (t) => {
       assert.equal(reservedSlot?.free, 1);
     });
 
+    await t.test("calendar reserve stores delivery date, time, method and address", async () => {
+      await harness.resetDb();
+
+      const staff = await registerUser("patiser");
+      const client = await registerUser("client");
+      const providerId = staff.user?.id;
+      const deliveryAddress = "Strada Bucuresti 10, ap. 12, Chisinau";
+      const deliveryWindow = "16:30-17:30";
+      const deliveryInstructions = "Sunati cand ajungeti la intrare.";
+
+      assert.equal(staff.status, 201);
+      assert.equal(client.status, 201);
+      assert.ok(providerId);
+
+      const date = futureDate(6);
+      const addSlot = await harness.request(`/calendar/availability/${providerId}`, {
+        method: "POST",
+        token: staff.token,
+        body: {
+          slots: [{ date, time: "16:30", capacity: 1 }],
+        },
+      });
+      assert.equal(addSlot.status, 200);
+
+      const reserve = await harness.request("/calendar/reserve", {
+        method: "POST",
+        token: client.token,
+        body: {
+          prestatorId: providerId,
+          date,
+          time: "16:30",
+          metoda: "livrare",
+          deliveryMethod: "livrare",
+          adresaLivrare: deliveryAddress,
+          deliveryWindow,
+          deliveryInstructions,
+          subtotal: 350,
+          descriere: "Tort premium cu livrare",
+        },
+      });
+
+      assert.equal(reserve.status, 200);
+      assert.equal(reserve.data?.ok, true);
+      assert.equal(reserve.data?.deliveryMethod, "livrare");
+      assert.equal(reserve.data?.reservationSummary?.date, date);
+      assert.equal(reserve.data?.reservationSummary?.time, "16:30");
+      assert.equal(reserve.data?.reservationSummary?.metoda, "livrare");
+      assert.equal(reserve.data?.reservationSummary?.adresaLivrare, deliveryAddress);
+      assert.equal(reserve.data?.reservationSummary?.deliveryWindow, deliveryWindow);
+
+      const order = await Comanda.findById(reserve.data?.comandaId).lean();
+      assert.ok(order);
+      assert.equal(order?.dataLivrare, date);
+      assert.equal(order?.oraLivrare, "16:30");
+      assert.equal(order?.calendarSlot?.date, date);
+      assert.equal(order?.calendarSlot?.time, "16:30");
+      assert.equal(order?.metodaLivrare, "livrare");
+      assert.equal(order?.adresaLivrare, deliveryAddress);
+      assert.equal(order?.deliveryWindow, deliveryWindow);
+      assert.equal(order?.deliveryInstructions, deliveryInstructions);
+      assert.equal(order?.deliveryFee || order?.taxaLivrare || 0, 100);
+      assert.equal(order?.total, 450);
+
+      const reservation = await Rezervare.findById(reserve.data?.rezervareId).lean();
+      assert.ok(reservation);
+      assert.equal(reservation?.date, date);
+      assert.equal(reservation?.timeSlot, "16:30-17:30");
+      assert.equal(reservation?.handoffMethod, "delivery");
+      assert.equal(reservation?.deliveryAddress, deliveryAddress);
+      assert.equal(reservation?.deliveryWindow, deliveryWindow);
+      assert.equal(reservation?.deliveryInstructions, deliveryInstructions);
+      assert.equal(reservation?.deliveryFee, 100);
+      assert.equal(reservation?.total, 450);
+    });
+
     await t.test("monthly provider availability uses providerId and booking removes only the selected provider slot", async () => {
       await harness.resetDb();
 
@@ -1919,7 +1996,9 @@ test("backend integration flows", async (t) => {
       assert.ok(Array.isArray(availabilityA.data?.availableDates));
       assert.ok(availabilityA.data.availableDates.length > 0);
 
-      const selectedDate = availabilityA.data.availableDates[0];
+      const selectedDate =
+        availabilityA.data.availableDates.find((value) => value >= futureDate(2)) ||
+        availabilityA.data.availableDates[availabilityA.data.availableDates.length - 1];
       const selectedTime = availabilityA.data?.slotsByDate?.[selectedDate]?.[0];
       assert.ok(selectedDate);
       assert.ok(selectedTime);
