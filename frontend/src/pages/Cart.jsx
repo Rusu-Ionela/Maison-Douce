@@ -17,6 +17,15 @@ function buildStatus(type, message, title = "") {
   return { type, message, title };
 }
 
+function itemNeedsQuote(item) {
+  return (
+    item?.requiresQuote === true ||
+    item?.requiresManualQuote === true ||
+    item?.sourceType === "local-fallback" ||
+    String(item?.id || "").startsWith("curated-")
+  );
+}
+
 export default function Cart() {
   const { items, add, updateQty, remove, clear, subtotal } = useCart();
   const { user } = useAuth() || {};
@@ -98,6 +107,7 @@ export default function Cart() {
   }, [items]);
 
   const total = subtotal + (metodaLivrare === "livrare" ? LIVRARE_FEE : 0);
+  const hasQuoteOnlyItems = useMemo(() => items.some((item) => itemNeedsQuote(item)), [items]);
   const suggestedUpsells = useMemo(() => {
     const existingIds = new Set(items.map((item) => String(item.id || "")));
     return upsells
@@ -222,6 +232,15 @@ export default function Cart() {
         buildStatus(
           "warning",
           "Cosul contine produse care necesita confirmare manuala de pret. Elimina-le din cos si foloseste cererea de oferta."
+        )
+      );
+      return false;
+    }
+    if (items.some((item) => itemNeedsQuote(item))) {
+      setCheckoutStatus(
+        buildStatus(
+          "warning",
+          "Cosul contine modele de inspiratie sau produse fara publicare comerciala completa. Elimina-le din cos si continua prin cererea de oferta."
         )
       );
       return false;
@@ -372,6 +391,15 @@ export default function Cart() {
           message={checkoutStatus.message}
         />
         <StatusBanner
+          type="warning"
+          title="Produse doar pentru oferta"
+          message={
+            hasQuoteOnlyItems
+              ? "In cos exista modele de inspiratie sau produse fara pret comercial final. Acestea nu pot merge direct in plata."
+              : ""
+          }
+        />
+        <StatusBanner
           type="error"
           title="Prestator indisponibil"
           message={
@@ -407,6 +435,11 @@ export default function Cart() {
                   </div>
                   <div className="flex-1">
                     <div className="font-semibold text-gray-900">{it.name}</div>
+                    {itemNeedsQuote(it) ? (
+                      <div className="mt-1 inline-flex rounded-full border border-amber-200 bg-amber-50 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-amber-800">
+                        Cerere de oferta
+                      </div>
+                    ) : null}
                     {it.options && Object.keys(it.options).length > 0 && (
                       <div className="text-xs text-gray-500">
                         {Object.entries(it.options)

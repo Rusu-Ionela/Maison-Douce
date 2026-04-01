@@ -33,6 +33,12 @@ const TRUST_ITEMS = [
   },
 ];
 
+function formatProductPrice(tort) {
+  if (tort?.pricingMode === "preview") return "Cerere de oferta";
+  if (tort?.pricingMode === "quote") return "Pret la confirmare";
+  return tort?.pret ? `${tort.pret} MDL` : "La cerere";
+}
+
 function StorefrontBadge({ tort }) {
   const rounded = Math.round(Number(tort?.ratingAvg || 0) * 10) / 10;
 
@@ -135,9 +141,10 @@ export default function TortDetails() {
   }, [tort]);
 
   const isVirtualProduct = useMemo(
-    () => Boolean(storefrontTort && String(storefrontTort._id || "").startsWith("curated-")),
+    () => storefrontTort?.sourceType === "local-fallback",
     [storefrontTort]
   );
+  const requiresManualQuote = Boolean(storefrontTort?.requiresManualQuote);
 
   const gallery = useMemo(() => {
     const list = [];
@@ -170,6 +177,8 @@ export default function TortDetails() {
       options,
       variantKey,
       prepHours: storefrontTort.timpPreparareOre || 24,
+      sourceType: storefrontTort.sourceType,
+      requiresQuote: storefrontTort.requiresManualQuote === true,
     });
   };
 
@@ -325,12 +334,18 @@ export default function TortDetails() {
                 {storefrontTort.descriere || "Tort artizanal cu finisaj premium si compozitie echilibrata."}
               </p>
 
+              {requiresManualQuote ? (
+                <div className="rounded-[24px] border border-amber-200 bg-amber-50 px-4 py-3 text-sm leading-6 text-amber-900">
+                  {isVirtualProduct
+                    ? "Acest tort este prezentat momentan ca model de inspiratie din colectia Maison-Douce. Il poti folosi pentru comparatie, constructor si cerere de oferta, dar nu intra direct in checkout."
+                    : "Acest produs necesita confirmare manuala de pret si disponibilitate inainte de plata. Il poti trimite pe fluxul de cerere de oferta."}
+                </div>
+              ) : null}
+
               <div className="grid gap-4 md:grid-cols-3">
                 <div className="rounded-[24px] border border-rose-100 bg-[rgba(255,249,242,0.9)] p-4">
                   <div className="text-xs uppercase tracking-[0.2em] text-pink-600">Pret</div>
-                  <div className="mt-2 text-2xl font-semibold text-ink">
-                    {storefrontTort.pret ? `${storefrontTort.pret} MDL` : "La cerere"}
-                  </div>
+                  <div className="mt-2 text-2xl font-semibold text-ink">{formatProductPrice(storefrontTort)}</div>
                 </div>
                 <div className="rounded-[24px] border border-rose-100 bg-[rgba(255,249,242,0.9)] p-4">
                   <div className="text-xs uppercase tracking-[0.2em] text-pink-600">Preparare</div>
@@ -426,7 +441,7 @@ export default function TortDetails() {
               </div>
 
               <div className="flex flex-wrap gap-3">
-                {Number(storefrontTort.pret || 0) > 0 ? (
+                {!requiresManualQuote && Number(storefrontTort.pret || 0) > 0 ? (
                   <button type="button" className={buttons.primary} onClick={addToCart}>
                     Adauga in cos
                   </button>

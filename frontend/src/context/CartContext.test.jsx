@@ -9,6 +9,7 @@ function CartProbe() {
       <div data-testid="item-count">{String(items.length)}</div>
       <div data-testid="subtotal">{String(subtotal)}</div>
       <div data-testid="first-qty">{String(items[0]?.qty || 0)}</div>
+      <div data-testid="first-requires-quote">{String(items[0]?.requiresQuote || false)}</div>
       <button
         type="button"
         onClick={() =>
@@ -97,6 +98,31 @@ describe("CartContext", () => {
       expect(screen.getByTestId("item-count")).toHaveTextContent("0");
       expect(screen.getByTestId("subtotal")).toHaveTextContent("0");
       expect(JSON.parse(localStorage.getItem("cart-items"))).toEqual([]);
+    });
+  });
+
+  it("marks curated fallback items as requiring a quote", async () => {
+    localStorage.setItem(
+      "cart-items",
+      JSON.stringify([
+        {
+          id: "curated-red-velvet",
+          name: "Tort inspiratie",
+          price: 650,
+          qty: 1,
+          sourceType: "local-fallback",
+        },
+      ])
+    );
+
+    render(
+      <CartProvider>
+        <CartProbe />
+      </CartProvider>
+    );
+
+    await waitFor(() => {
+      expect(screen.getByTestId("first-requires-quote")).toHaveTextContent("true");
     });
   });
 });

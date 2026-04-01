@@ -28,6 +28,12 @@ function formatPrice(value = 0) {
   return `${priceFormatter.format(Number(value || 0))} MDL`;
 }
 
+function formatCatalogPrice(item) {
+  if (item?.pricingMode === "preview") return "Cerere de oferta";
+  if (item?.pricingMode === "quote") return "Pret la confirmare";
+  return formatPrice(item?.pret);
+}
+
 function matchesSelectedFillingCake(item, filling) {
   if (!item || !filling) return true;
 
@@ -96,12 +102,14 @@ function RatingBadge({ item }) {
 }
 
 function CatalogCard({ item, onAddToCart }) {
+  const quoteOnly = item?.requiresManualQuote === true;
+
   return (
     <article className="group overflow-hidden rounded-[32px] border border-rose-100 bg-[rgba(255,252,247,0.94)] p-3 shadow-soft transition duration-300 hover:-translate-y-1.5 hover:shadow-card">
       <ProductCard
         image={item.imagine}
         category={String(item.categoryLabel || "Maison-Douce").toUpperCase()}
-        price={formatPrice(item.pret)}
+        price={formatCatalogPrice(item)}
         name={item.nume}
         description={item.descriere}
         aromaticProfile={item.fillingSummary}
@@ -144,10 +152,22 @@ function CatalogCard({ item, onAddToCart }) {
           >
             Personalizeaza
           </Link>
-          <button type="button" className={buttons.primary} onClick={() => onAddToCart(item)}>
-            Adauga in cos
-          </button>
+          {quoteOnly ? (
+            <Link to="/calendar" className={buttons.primary}>
+              Cere oferta
+            </Link>
+          ) : (
+            <button type="button" className={buttons.primary} onClick={() => onAddToCart(item)}>
+              Adauga in cos
+            </button>
+          )}
         </div>
+        {quoteOnly ? (
+          <p className="text-sm leading-6 text-[#786f66]">
+            Acest model este afisat ca inspiratie sau necesita confirmare manuala. Nu intra direct
+            in checkout.
+          </p>
+        ) : null}
       </div>
     </article>
   );
@@ -213,6 +233,10 @@ export default function Catalog() {
     );
   }, [selectedFillingQuery]);
   const catalogItems = useMemo(() => getStorefrontCatalogItems(rawItems), [rawItems]);
+  const usesFallbackCatalog = useMemo(
+    () => catalogItems.length > 0 && catalogItems.every((item) => item.sourceType === "local-fallback"),
+    [catalogItems]
+  );
   const selectedCake = useMemo(() => {
     const normalized = normalizeStorefrontText(selectedCakeQuery);
     if (!normalized) return null;
@@ -394,6 +418,8 @@ export default function Catalog() {
       image: item.imagine,
       qty: 1,
       prepHours: item.timpPreparareOre || 24,
+      sourceType: item.sourceType,
+      requiresQuote: item.requiresManualQuote === true,
     });
   };
 
@@ -694,7 +720,15 @@ export default function Catalog() {
 
         {error ? (
           <div className="mt-4 rounded-[24px] border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
-            {error}
+            {error} Aceste carduri raman disponibile doar pentru inspiratie si cerere de oferta
+            pana revine catalogul live.
+          </div>
+        ) : null}
+
+        {!error && !loading && usesFallbackCatalog ? (
+          <div className="mt-4 rounded-[24px] border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+            Catalogul publicat nu are inca produse live. Afisam colectia Maison-Douce de inspiratie,
+            iar aceste torturi pot fi folosite pentru comparatie, personalizare si cerere de oferta.
           </div>
         ) : null}
 
@@ -748,7 +782,8 @@ export default function Catalog() {
               Torturi pentru aniversari, nunti si evenimente premium
             </h2>
             <p className="mt-2 max-w-2xl text-sm leading-7 text-[#665d54]">
-              Cardurile folosesc denumiri curate, umpluturi credibile si imagini locale sau mockuri elegante atunci cand datele brute nu sunt pregatite pentru publicare.
+              Cardurile cu produs live intra direct in cos. Modelele de inspiratie sau cele fara
+              pret valid raman pe flux de cerere de oferta si personalizare.
             </p>
           </div>
           <div className="rounded-full border border-rose-100 bg-white px-4 py-2 text-sm text-[#665d54] shadow-soft">

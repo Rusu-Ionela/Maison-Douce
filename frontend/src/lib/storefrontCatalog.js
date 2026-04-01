@@ -687,6 +687,7 @@ function buildSearchText(item, preset, occasions, tags, ingredients) {
 
 function buildVirtualCake(preset, index) {
   return {
+    __catalogFallback: true,
     _id: `curated-${preset.slug}`,
     nume: preset.name,
     descriere: preset.description,
@@ -712,6 +713,10 @@ function buildVirtualCake(preset, index) {
 export function getStorefrontCake(item, index = 0) {
   const matchedPreset = detectPresetByName(item?.nume);
   const preset = matchedPreset || pickStablePreset(item, index);
+  const isCatalogFallback =
+    item?.__catalogFallback === true || String(item?._id || "").startsWith("curated-");
+  const hasFixedPrice = isRealisticPrice(item?.pret);
+  const pricingMode = isCatalogFallback ? "preview" : hasFixedPrice ? "fixed" : "quote";
   const usePresetIdentity =
     isTechnicalName(item?.nume) || !hasUsefulText(item?.nume, 6) || Boolean(matchedPreset);
   const occasions = uniqueList(
@@ -736,6 +741,23 @@ export function getStorefrontCake(item, index = 0) {
   const prepHours =
     Number(item?.timpPreparareOre || 0) > 0 ? Number(item.timpPreparareOre) : preset.prepHours;
   const portii = Number(item?.portii || 0) > 0 ? Number(item.portii) : preset.portii;
+  const badge =
+    ratingAvg > 0 || ratingCount > 0
+      ? null
+      : isCatalogFallback
+        ? {
+            label: "Inspiratie",
+            tone: "amber",
+          }
+        : pricingMode === "quote"
+          ? {
+              label: "La cerere",
+              tone: "slate",
+            }
+          : {
+              label: preset.badge,
+              tone: preset.badgeTone,
+            };
 
   const storefrontCake = {
     ...item,
@@ -749,20 +771,19 @@ export function getStorefrontCake(item, index = 0) {
         : preset.description,
     imagine: image,
     galerie: gallery,
-    pret: isRealisticPrice(item?.pret) ? Math.round(Number(item.pret)) : preset.price,
+    pret:
+      pricingMode === "fixed"
+        ? Math.round(Number(item?.pret || 0))
+        : pricingMode === "preview"
+          ? preset.price
+          : 0,
     ratingAvg,
     ratingCount,
     ocazii: effectiveOccasions,
     displayTags: tags,
     fillingSummary: preset.filling,
     shortFlavor: preset.shortFlavor,
-    badge:
-      ratingAvg > 0 || ratingCount > 0
-        ? null
-        : {
-            label: preset.badge,
-            tone: preset.badgeTone,
-          },
+    badge,
     timpPreparareOre: prepHours,
     prepLabel: prepHours >= 48 ? `pregătit în ${prepHours}h` : `gata în ${prepHours}h`,
     servingLabel: portii > 0 ? `${portii} porții` : preset.servingLabel,
@@ -780,8 +801,11 @@ export function getStorefrontCake(item, index = 0) {
     categoryLabel: preset.categoryLabel,
     collectionNote: preset.collectionNote,
     featuredRank: preset.featuredRank,
-    sourceType: item?._id ? "backend-mapped" : "local-fallback",
-  };
+    sourceType: isCatalogFallback ? "local-fallback" : "backend-mapped",
+    pricingMode,
+    checkoutReady: pricingMode === "fixed",
+    requiresManualQuote: pricingMode !== "fixed",
+    };
 
   storefrontCake.searchText = buildSearchText(
     storefrontCake,

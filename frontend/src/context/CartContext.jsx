@@ -6,6 +6,13 @@ const STORAGE_KEY = "cart-items";
 function normalizeCartItem(item) {
   if (!item || typeof item !== "object" || !item.id) return null;
 
+  const sourceType = String(item.sourceType || "");
+  const requiresQuote =
+    item.requiresQuote === true ||
+    item.requiresManualQuote === true ||
+    sourceType === "local-fallback" ||
+    String(item.id || "").startsWith("curated-");
+
   return {
     id: String(item.id),
     name: String(item.name || "Produs"),
@@ -15,6 +22,8 @@ function normalizeCartItem(item) {
     options: item.options && typeof item.options === "object" ? item.options : {},
     variantKey: String(item.variantKey || ""),
     prepHours: Math.max(0, Number(item.prepHours || item.timpPreparareOre || 0)),
+    sourceType,
+    requiresQuote,
   };
 }
 
