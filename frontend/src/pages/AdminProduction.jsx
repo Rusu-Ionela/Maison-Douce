@@ -42,6 +42,60 @@ function formatScaledValue(value) {
   });
 }
 
+const STATUS_META = {
+  livrata: { label: "Livrata", className: "border-emerald-200 bg-emerald-50 text-emerald-700" },
+  ridicata: { label: "Ridicata", className: "border-emerald-200 bg-emerald-50 text-emerald-700" },
+  gata: { label: "Gata", className: "border-sky-200 bg-sky-50 text-sky-700" },
+  confirmata: { label: "Confirmata", className: "border-sky-200 bg-sky-50 text-sky-700" },
+  acceptata: { label: "Acceptata", className: "border-sky-200 bg-sky-50 text-sky-700" },
+  in_lucru: { label: "In lucru", className: "border-amber-200 bg-amber-50 text-amber-800" },
+  in_asteptare: { label: "In asteptare", className: "border-amber-200 bg-amber-50 text-amber-800" },
+  plasata: { label: "Plasata", className: "border-amber-200 bg-amber-50 text-amber-800" },
+  noua: { label: "Noua", className: "border-amber-200 bg-amber-50 text-amber-800" },
+  comanda_generata: { label: "Comanda generata", className: "border-sky-200 bg-sky-50 text-sky-700" },
+};
+
+const PAYMENT_META = {
+  paid: { label: "Platita", className: "border-emerald-200 bg-emerald-50 text-emerald-700" },
+  unpaid: { label: "Neplatita", className: "border-rose-200 bg-rose-50 text-rose-700" },
+  estimare: { label: "Estimare", className: "border-slate-200 bg-slate-100 text-slate-700" },
+};
+
+function getChipMeta(map, rawValue, fallbackLabel) {
+  const normalized = String(rawValue || "").trim().toLowerCase();
+  const meta = map[normalized];
+  if (meta) return meta;
+  return {
+    label: fallbackLabel || String(rawValue || "Nespecificat"),
+    className: "border-slate-200 bg-slate-100 text-slate-700",
+  };
+}
+
+function formatProductionMethodLabel(order) {
+  if (order?.source === "personalizata") return "Brief personalizat";
+  if (order?.method === "livrare") return "Livrare";
+  if (order?.method === "ridicare") return "Ridicare";
+  return order?.method || "Ridicare";
+}
+
+function summarizePersonalizari(personalizari = {}) {
+  if (!personalizari || typeof personalizari !== "object") return "";
+
+  const pairs = [
+    ["mesaj", personalizari.mesaj],
+    ["decor", personalizari.decor],
+    ["crema", personalizari.crema],
+    ["marime", personalizari.marime],
+    ["etaje", personalizari.tiers],
+    ["inaltime", personalizari.heightProfile],
+  ];
+
+  return pairs
+    .filter(([, value]) => String(value || "").trim())
+    .map(([label, value]) => `${label}: ${value}`)
+    .join(" | ");
+}
+
 function mapRowsForForm(rows = []) {
   return rows.length
     ? rows.map((row) => ({
@@ -383,6 +437,11 @@ export default function AdminProduction() {
       (sum, order) => sum + Number(order.total || order.totalFinal || 0),
       0
     );
+    const deliveries = board.filter((order) => order.method === "livrare").length;
+    const pickups = board.filter((order) => order.method !== "livrare").length;
+    const unpaidOrders = board.filter(
+      (order) => String(order.payment || "").trim().toLowerCase() !== "paid"
+    ).length;
 
     return [
       {
@@ -394,7 +453,7 @@ export default function AdminProduction() {
       {
         label: "Comenzi in board",
         value: board.length,
-        hint: `Planificare pentru ${date}.`,
+        hint: `${deliveries} livrari, ${pickups} ridicari pentru ${date}.`,
         tone: "sage",
       },
       {
@@ -406,7 +465,7 @@ export default function AdminProduction() {
       {
         label: "Notificari recente",
         value: notifications.length,
-        hint: "Ultimele semnale operationale disponibile.",
+        hint: `${unpaidOrders} comenzi in board fara plata confirmata.`,
         tone: "slate",
       },
     ];
@@ -653,7 +712,7 @@ export default function AdminProduction() {
 
         <AdminPanel
           title="Board productie"
-          description="Vezi comenzile planificate pentru ziua selectata, impreuna cu statusul, plata si compozitia estimata."
+          description="Ecran de lucru pentru laborator: deadline, metoda de predare, status, plata, note si referinte vizuale."
           className="space-y-4"
         >
           <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
@@ -676,69 +735,210 @@ export default function AdminProduction() {
           ) : board.length === 0 ? (
             <div className="text-gray-600">Nu exista comenzi pentru data selectata.</div>
           ) : (
-            <div className="space-y-3">
+            <div className="space-y-4">
               {board.map((order) => {
-                const methodLabel =
-                  order.source === "personalizata"
-                    ? "Comanda personalizata"
-                    : order.method === "livrare"
-                    ? "Livrare"
-                    : order.method || "Ridicare";
+                const methodLabel = formatProductionMethodLabel(order);
                 const totalValue = Number(order.total || order.totalFinal || 0);
+                const statusMeta = getChipMeta(
+                  STATUS_META,
+                  order.status,
+                  order.status || "Noua"
+                );
+                const paymentMeta = getChipMeta(
+                  PAYMENT_META,
+                  order.payment,
+                  order.payment || "Necunoscut"
+                );
+                const referenceImages = Array.isArray(order.referenceImages)
+                  ? order.referenceImages.filter(Boolean)
+                  : order.image
+                    ? [order.image]
+                    : [];
+                const detailTarget =
+                  order.source === "personalizata"
+                    ? "/admin/comenzi-personalizate"
+                    : "/admin/comenzi";
 
                 return (
-                  <div key={order.orderId} className="rounded-2xl border bg-rose-50 p-4">
-                    <div className="flex flex-wrap items-center justify-between gap-2">
-                      <div>
-                        <div className="text-sm text-gray-600">
-                          {order.data} @ {order.time || "ora nedefinita"}
+                  <article
+                    key={order.orderId}
+                    className="rounded-[28px] border border-rose-100 bg-[rgba(255,249,242,0.9)] p-5 shadow-soft"
+                  >
+                    <div className="flex flex-wrap items-start justify-between gap-3">
+                      <div className="space-y-2">
+                        <div className="text-xs font-semibold uppercase tracking-[0.18em] text-pink-500">
+                          {order.data} | {order.time || "ora nedefinita"}
                         </div>
-                        <div className="text-lg font-bold text-gray-900">
+                        <div className="text-xl font-semibold text-gray-900">
                           {order.numeroComanda || order.orderId}
                         </div>
+                        <div className="text-sm text-gray-600">
+                          {order.clientName || order.clientId || "Client necunoscut"}
+                        </div>
                       </div>
-                      <div className="flex items-center gap-2 text-sm text-gray-600">
-                        <span>{methodLabel}</span>
+
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="rounded-full border border-rose-200 bg-white px-3 py-1 text-xs font-semibold uppercase tracking-[0.16em] text-[#7d6655]">
+                          {methodLabel}
+                        </span>
+                        <span
+                          className={`rounded-full border px-3 py-1 text-xs font-semibold uppercase tracking-[0.14em] ${statusMeta.className}`}
+                        >
+                          {statusMeta.label}
+                        </span>
+                        <span
+                          className={`rounded-full border px-3 py-1 text-xs font-semibold uppercase tracking-[0.14em] ${paymentMeta.className}`}
+                        >
+                          {paymentMeta.label}
+                        </span>
                         {order.source ? (
-                          <span className="rounded-full border border-rose-200 px-2 py-0.5 text-[10px] uppercase tracking-wider">
+                          <span className="rounded-full border border-rose-200 bg-white px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-[#7d6655]">
                             {order.source}
                           </span>
                         ) : null}
+                        <Link to={detailTarget} className={buttons.outline}>
+                          Deschide comanda
+                        </Link>
                       </div>
                     </div>
 
-                    <div className="mt-3 flex gap-3">
-                      <div className="h-24 w-32 overflow-hidden rounded-xl border border-rose-100 bg-white">
-                        {order.image ? (
-                          <img
-                            src={order.image}
-                            alt="Produs"
-                            className="h-full w-full object-cover"
-                          />
-                        ) : (
-                          <div className="py-8 text-center text-xs text-gray-500">
-                            Fara imagine
+                    <div className="mt-5 grid gap-4 xl:grid-cols-[150px,1fr]">
+                      <div className="space-y-3">
+                        <div className="h-32 overflow-hidden rounded-[22px] border border-rose-100 bg-white">
+                          {referenceImages[0] ? (
+                            <img
+                              src={referenceImages[0]}
+                              alt="Referinta productie"
+                              className="h-full w-full object-cover"
+                            />
+                          ) : (
+                            <div className="flex h-full items-center justify-center px-4 text-center text-xs text-gray-500">
+                              Fara referinta vizuala
+                            </div>
+                          )}
+                        </div>
+
+                        {referenceImages.length > 1 ? (
+                          <div className="grid grid-cols-3 gap-2">
+                            {referenceImages.slice(1, 4).map((imageUrl, index) => (
+                              <a
+                                key={`${order.orderId}-thumb-${index}`}
+                                href={imageUrl}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="overflow-hidden rounded-[16px] border border-rose-100 bg-white"
+                              >
+                                <img
+                                  src={imageUrl}
+                                  alt="Referinta suplimentara"
+                                  className="h-16 w-full object-cover"
+                                />
+                              </a>
+                            ))}
                           </div>
-                        )}
+                        ) : null}
                       </div>
 
-                      <div className="flex-1 space-y-2 text-sm text-gray-700">
-                        <div>Client: {order.clientId || "necunoscut"}</div>
-                        <div>Status: {order.status}</div>
-                        <div>Plata: {order.payment}</div>
-                        <div>Greutate estimata: {order.weightKg} kg</div>
-                        <div>Total: {totalValue.toFixed(2)} MDL</div>
-                        {order.notes ? <div>Nota: {order.notes}</div> : null}
-                        <div className="space-y-1">
-                          {order.items.map((item) => (
-                            <div key={`${order.orderId}-${item.name}`} className="text-xs">
-                              - {item.name} x {item.qty} {item.personalizari?.marime || ""}
+                      <div className="grid gap-3 md:grid-cols-2">
+                        <div className="rounded-[22px] border border-rose-100 bg-white px-4 py-4">
+                          <div className="text-xs font-semibold uppercase tracking-[0.16em] text-pink-500">
+                            Client
+                          </div>
+                          <div className="mt-3 space-y-2 text-sm text-gray-700">
+                            <div className="font-semibold text-gray-900">
+                              {order.clientName || order.clientId || "Client necunoscut"}
                             </div>
-                          ))}
+                            {order.clientPhone ? <div>Telefon: {order.clientPhone}</div> : null}
+                            {order.clientEmail ? <div>Email: {order.clientEmail}</div> : null}
+                          </div>
+                        </div>
+
+                        <div className="rounded-[22px] border border-rose-100 bg-white px-4 py-4">
+                          <div className="text-xs font-semibold uppercase tracking-[0.16em] text-pink-500">
+                            Predare
+                          </div>
+                          <div className="mt-3 space-y-2 text-sm text-gray-700">
+                            <div className="font-semibold text-gray-900">{methodLabel}</div>
+                            {order.address ? <div>Adresa: {order.address}</div> : null}
+                            {order.deliveryWindow ? <div>Interval: {order.deliveryWindow}</div> : null}
+                            {order.deliveryInstructions ? (
+                              <div>Instructiuni: {order.deliveryInstructions}</div>
+                            ) : null}
+                          </div>
+                        </div>
+
+                        <div className="rounded-[22px] border border-rose-100 bg-white px-4 py-4">
+                          <div className="text-xs font-semibold uppercase tracking-[0.16em] text-pink-500">
+                            Comanda
+                          </div>
+                          <div className="mt-3 space-y-2 text-sm text-gray-700">
+                            <div>Greutate estimata: {Number(order.weightKg || 0).toFixed(1)} kg</div>
+                            <div>Total: {formatCurrency(totalValue)}</div>
+                            {order.customDescription ? <div>Brief: {order.customDescription}</div> : null}
+                            <div className="space-y-2 pt-1">
+                              {order.items.map((item, index) => {
+                                const personalizationSummary = summarizePersonalizari(
+                                  item.personalizari
+                                );
+
+                                return (
+                                  <div
+                                    key={`${order.orderId}-${item.name}-${index}`}
+                                    className="rounded-[18px] border border-rose-100 bg-[rgba(255,249,242,0.65)] px-3 py-3"
+                                  >
+                                    <div className="font-semibold text-gray-900">
+                                      {item.name} x {item.qty}
+                                    </div>
+                                    {personalizationSummary ? (
+                                      <div className="mt-1 text-xs leading-6 text-gray-600">
+                                        {personalizationSummary}
+                                      </div>
+                                    ) : null}
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="rounded-[22px] border border-rose-100 bg-white px-4 py-4">
+                          <div className="text-xs font-semibold uppercase tracking-[0.16em] text-pink-500">
+                            Note si alerte
+                          </div>
+                          <div className="mt-3 space-y-2 text-sm text-gray-700">
+                            {order.latestStatusNote ? (
+                              <div>Ultima nota status: {order.latestStatusNote}</div>
+                            ) : null}
+                            {order.notesClient ? <div>Client: {order.notesClient}</div> : null}
+                            {order.notesAdmin ? <div>Admin: {order.notesAdmin}</div> : null}
+                            {!order.latestStatusNote && !order.notesClient && !order.notesAdmin ? (
+                              <div className="text-gray-500">Nu exista note suplimentare.</div>
+                            ) : null}
+                            {Array.isArray(order.attachments) && order.attachments.length > 0 ? (
+                              <div className="pt-2">
+                                <div className="mb-2 text-xs font-semibold uppercase tracking-[0.16em] text-[#8d775c]">
+                                  Atasamente
+                                </div>
+                                <div className="flex flex-wrap gap-2">
+                                  {order.attachments.map((attachment, index) => (
+                                    <a
+                                      key={`${order.orderId}-attachment-${index}`}
+                                      href={attachment?.url || "#"}
+                                      target="_blank"
+                                      rel="noreferrer"
+                                      className="rounded-full border border-rose-200 bg-[rgba(255,249,242,0.88)] px-3 py-1 text-xs font-semibold text-[#7d6655]"
+                                    >
+                                      {attachment?.name || `Fisier ${index + 1}`}
+                                    </a>
+                                  ))}
+                                </div>
+                              </div>
+                            ) : null}
+                          </div>
                         </div>
                       </div>
                     </div>
-                  </div>
+                  </article>
                 );
               })}
             </div>

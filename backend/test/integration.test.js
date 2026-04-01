@@ -2353,6 +2353,73 @@ test("backend integration flows", async (t) => {
       assert.equal(rolledBackSlot?.used, 0);
     });
 
+    await t.test("production board exposes operational details for scheduled orders", async () => {
+      await harness.resetDb();
+
+      const staff = await registerUser("patiser");
+      const client = await registerUser("client");
+      const deliveryDate = futureDate(6);
+
+      assert.equal(staff.status, 201);
+      assert.equal(client.status, 201);
+
+      const createdOrder = await createOrder(client.token, {
+        prestatorId: staff.user?.id,
+        metodaLivrare: "livrare",
+        adresaLivrare: "Strada Florilor 10, Chisinau",
+        dataLivrare: deliveryDate,
+        oraLivrare: "15:30",
+        note: "Mesaj pe tort: La multi ani!",
+      });
+
+      assert.equal(createdOrder.status, 201);
+      const orderId = createdOrder.data?._id;
+      assert.ok(orderId);
+
+      await Comanda.findByIdAndUpdate(orderId, {
+        deliveryInstructions: "Sunati cu 10 minute inainte.",
+        deliveryWindow: "15:00-16:00",
+        notesClient: "Mesaj pe tort: La multi ani!",
+        notesAdmin: "Topper pregatit si verificat.",
+        attachments: [
+          {
+            url: "https://example.com/inspiration.jpg",
+            name: "inspiration.jpg",
+          },
+        ],
+        imagineGenerata: "https://example.com/cake-preview.jpg",
+        statusHistory: [
+          {
+            status: "confirmata",
+            note: "Confirmata telefonic cu clientul.",
+          },
+        ],
+      });
+
+      const boardResponse = await harness.request(
+        `/admin/production/board?date=${deliveryDate}`,
+        { token: staff.token }
+      );
+
+      assert.equal(boardResponse.status, 200);
+      assert.ok(Array.isArray(boardResponse.data?.board));
+
+      const boardItem = boardResponse.data.board.find(
+        (item) => String(item.orderId) === String(orderId)
+      );
+
+      assert.ok(boardItem);
+      assert.equal(boardItem.clientName, "User client");
+      assert.equal(boardItem.method, "livrare");
+      assert.equal(boardItem.address, "Strada Florilor 10, Chisinau");
+      assert.equal(boardItem.deliveryWindow, "15:00-16:00");
+      assert.equal(boardItem.deliveryInstructions, "Sunati cu 10 minute inainte.");
+      assert.equal(boardItem.latestStatusNote, "Confirmata telefonic cu clientul.");
+      assert.equal(boardItem.notesAdmin, "Topper pregatit si verificat.");
+      assert.equal(boardItem.referenceImages[0], "https://example.com/cake-preview.jpg");
+      assert.equal(boardItem.attachments[0]?.name, "inspiration.jpg");
+    });
+
     await t.test("fallback payment confirmation only works for the owner", async () => {
       await harness.resetDb();
 

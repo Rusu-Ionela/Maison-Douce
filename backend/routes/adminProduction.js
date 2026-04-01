@@ -1,8 +1,10 @@
 const express = require("express");
 const router = express.Router();
+const mongoose = require("mongoose");
 const Tort = require("../models/Tort");
 const Comanda = require("../models/Comanda");
 const ComandaPersonalizata = require("../models/ComandaPersonalizata");
+const Utilizator = require("../models/Utilizator");
 const { authRequired, roleCheck } = require("../middleware/auth");
 const { applyScopedPrestatorFilter, getScopedPrestatorId } = require("../utils/providerScope");
 
@@ -47,6 +49,65 @@ function buildLocalDayRange(dateValue) {
     start: new Date(year, month - 1, day, 0, 0, 0, 0),
     end: new Date(year, month - 1, day, 23, 59, 59, 999),
   };
+}
+
+function buildClientProfile(user = {}, fallbackName = "") {
+  const fullName = [user.nume, user.prenume].filter(Boolean).join(" ").trim();
+  return {
+    clientName: fullName || String(fallbackName || "").trim(),
+    clientEmail: String(user.email || "").trim(),
+    clientPhone: String(user.telefon || "").trim(),
+  };
+}
+
+function getLatestStatusNote(statusHistory = []) {
+  if (!Array.isArray(statusHistory) || !statusHistory.length) {
+    return "";
+  }
+
+  const latestEntry = [...statusHistory]
+    .filter((entry) => entry && typeof entry === "object")
+    .sort((left, right) => new Date(right.at || 0) - new Date(left.at || 0))[0];
+
+  return String(latestEntry?.note || "").trim();
+}
+
+function isLikelyImageUrl(value) {
+  const source = String(value || "").trim().toLowerCase();
+  if (!source) return false;
+  if (source.startsWith("data:image/")) return true;
+  return /\.(png|jpe?g|webp|gif|bmp|svg)(\?.*)?$/i.test(source);
+}
+
+function collectReferenceImages(values = []) {
+  return Array.from(
+    new Set(
+      values
+        .flatMap((value) => {
+          if (Array.isArray(value)) return value;
+          return [value];
+        })
+        .map((value) => String(value || "").trim())
+        .filter((value) => isLikelyImageUrl(value))
+    )
+  );
+}
+
+function collectCustomOrderImages(order) {
+  const options = order?.options && typeof order.options === "object" ? order.options : {};
+  const inspirationImages = Array.isArray(options.inspirationImages)
+    ? options.inspirationImages.map((item) => item?.url)
+    : [];
+  const aiVariants = Array.isArray(options.aiPreviewVariants)
+    ? options.aiPreviewVariants.map((item) => item?.imageUrl)
+    : [];
+
+  return collectReferenceImages([
+    order?.imagine,
+    options.aiPreviewUrl,
+    inspirationImages,
+    aiVariants,
+  ]);
 }
 
 router.get(
@@ -164,11 +225,37 @@ router.get(
       const dayRange = buildLocalDayRange(date);
       const startOfDay = dayRange?.start || new Date(`${date}T00:00:00`);
       const endOfDay = dayRange?.end || new Date(`${date}T23:59:59.999`);
-      const customOrders = getScopedPrestatorId(req)
-        ? []
-        : await ComandaPersonalizata.find({
-            data: { $gte: startOfDay, $lt: endOfDay },
-          }).lean();
+      const scopedPrestatorId = getScopedPrestatorId(req);
+      const customConditions = {
+        data: { $gte: startOfDay, $lt: endOfDay },
+        $or: [{ comandaId: null }, { comandaId: { $exists: false } }],
+      };
+      if (scopedPrestatorId) {
+        customConditions.prestatorId = scopedPrestatorId;
+      }
+      const customOrders = await ComandaPersonalizata.find(customConditions).lean();
+
+      const clientIds = new Set();
+      orders.forEach((order) => {
+        const value = String(order.clientId || "").trim();
+        if (mongoose.Types.ObjectId.isValid(value)) {
+          clientIds.add(value);
+        }
+      });
+      customOrders.forEach((order) => {
+        const value = String(order.clientId || "").trim();
+        if (mongoose.Types.ObjectId.isValid(value)) {
+          clientIds.add(value);
+        }
+      });
+
+      const users = clientIds.size
+        ? await Utilizator.find(
+            { _id: { $in: Array.from(clientIds) } },
+            { nume: 1, prenume: 1, email: 1, telefon: 1 }
+          ).lean()
+        : [];
+      const userMap = new Map(users.map((user) => [String(user._id), user]));
 
       const mappedOrders = orders.map((order) => {
         const time =
@@ -181,20 +268,33 @@ router.get(
           : Array.isArray(order.produse)
             ? order.produse
             : [];
+        const clientProfile = buildClientProfile(
+          userMap.get(String(order.clientId || "").trim()) || {},
+          order.clientId
+        );
         const weightVal = items.reduce((sum, item) => {
           const base =
             Number(item.cantitate || item.qty || 0) || 0;
           return sum + base;
         }, 0);
-        const image =
-          order.imagineGenerata ||
-          (items[0]?.personalizari?.imagini?.[0] || "") ||
-          "";
+        const referenceImages = collectReferenceImages([
+          order.imagineGenerata,
+          Array.isArray(order.attachments)
+            ? order.attachments
+                .map((attachment) => attachment?.url)
+                .filter(Boolean)
+            : [],
+          items.map((item) => item?.personalizari?.imagini?.[0] || ""),
+        ]);
+        const latestStatusNote = getLatestStatusNote(order.statusHistory);
 
         return {
           orderId: order._id,
           numeroComanda: order.numeroComanda,
           clientId: order.clientId,
+          clientName: clientProfile.clientName,
+          clientEmail: clientProfile.clientEmail,
+          clientPhone: clientProfile.clientPhone,
           data: order.dataLivrare || order.dataRezervare,
           time,
           method: order.metodaLivrare,
@@ -203,12 +303,22 @@ router.get(
           weightKg: weightVal,
           total: order.totalFinal || order.total || 0,
           notes: order.notesAdmin || order.notesClient || "",
+          notesClient: order.notesClient || "",
+          notesAdmin: order.notesAdmin || "",
+          latestStatusNote,
+          customDescription:
+            String(order.customDetails?.descriere || order.preferinte || "").trim(),
+          address: String(order.adresaLivrare || "").trim(),
+          deliveryWindow: String(order.deliveryWindow || "").trim(),
+          deliveryInstructions: String(order.deliveryInstructions || "").trim(),
+          attachments: Array.isArray(order.attachments) ? order.attachments : [],
           items: items.map((item) => ({
             name: item.name || item.nume || "Produs",
             qty: item.qty || item.cantitate || 0,
             personalizari: item.personalizari || {},
           })),
-          image,
+          image: referenceImages[0] || "",
+          referenceImages,
         };
       });
 
@@ -218,10 +328,18 @@ router.get(
         const formattedTime = formatLocalTimeInput(orderDate);
         const weightFromOptions =
           Number(order.options?.kg || order.options?.cantitate || order.options?.greutate || 0) || 0;
+        const clientProfile = buildClientProfile(
+          userMap.get(String(order.clientId || "").trim()) || {},
+          order.numeClient || order.clientId
+        );
+        const referenceImages = collectCustomOrderImages(order);
         return {
           orderId: order._id,
           numeroComanda: order._id,
           clientId: order.clientId || order.numeClient,
+          clientName: clientProfile.clientName,
+          clientEmail: clientProfile.clientEmail,
+          clientPhone: clientProfile.clientPhone,
           data: formattedDate,
           time: formattedTime,
           method: "personalizat",
@@ -230,6 +348,14 @@ router.get(
           weightKg: weightFromOptions,
           total: order.pretEstimat || 0,
           notes: order.preferinte || "",
+          notesClient: order.preferinte || "",
+          notesAdmin: "",
+          latestStatusNote: getLatestStatusNote(order.statusHistory),
+          customDescription: String(order.preferinte || "").trim(),
+          address: "",
+          deliveryWindow: "",
+          deliveryInstructions: "",
+          attachments: [],
           items: [
             {
               name: "Design personalizat",
@@ -237,7 +363,8 @@ router.get(
               personalizari: order.options || {},
             },
           ],
-          image: order.imagine || "",
+          image: referenceImages[0] || "",
+          referenceImages,
           source: "personalizata",
         };
       });
