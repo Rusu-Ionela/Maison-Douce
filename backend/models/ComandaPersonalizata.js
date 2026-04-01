@@ -11,6 +11,8 @@ const ComandaPersonalizataSchema = new mongoose.Schema({
     options: { type: Object, default: {} },
     pretEstimat: { type: Number, default: 0 },
     timpPreparareOre: { type: Number, default: 0 },
+    clientApprovedAt: { type: Date, default: null },
+    clientApprovalNote: { type: String, default: "" },
     status: { type: String, default: "noua" },
     statusHistory: [
         {

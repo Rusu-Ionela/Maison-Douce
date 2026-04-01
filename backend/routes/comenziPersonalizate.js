@@ -253,7 +253,9 @@ router.get("/:id", authRequired, async (req, res) => {
     return res.json({
       ...doc,
       clientCanApprove:
-        String(doc.status || "") === "aprobata" || String(doc.status || "") === "comanda_generata",
+        String(doc.status || "") === "aprobata" &&
+        !doc.clientApprovedAt &&
+        !doc.comandaId?._id,
       clientCanPay:
         Boolean(doc.comandaId?._id) &&
         String(doc.comandaId?.paymentStatus || doc.comandaId?.statusPlata || "").toLowerCase() !==
@@ -262,6 +264,79 @@ router.get("/:id", authRequired, async (req, res) => {
   } catch (err) {
     console.error("Eroare la obtinerea comenzii personalizate:", err);
     res.status(500).json({ mesaj: "Eroare la obtinerea comenzii personalizate" });
+  }
+});
+
+router.post("/:id/approve", authRequired, async (req, res) => {
+  try {
+    const doc = await ComandaPersonalizata.findById(req.params.id);
+    if (!doc) {
+      return res.status(404).json({ mesaj: "Comanda personalizata inexistenta" });
+    }
+
+    const isOwner = String(doc.clientId || "") === String(req.user?._id || "");
+    if (!isOwner) {
+      return res.status(403).json({ mesaj: "Acces interzis" });
+    }
+
+    if (String(doc.status || "") !== "aprobata") {
+      return res.status(409).json({
+        mesaj: "Oferta nu este pregatita pentru aprobare. Atelierul trebuie sa o marcheze mai intai ca oferta finala.",
+      });
+    }
+
+    if (doc.clientApprovedAt) {
+      return res.json({
+        mesaj: "Oferta a fost deja aprobata.",
+        alreadyApproved: true,
+        comanda: doc,
+      });
+    }
+
+    const approvalNote = normalizeText(req.body?.note);
+    doc.clientApprovedAt = new Date();
+    doc.clientApprovalNote = approvalNote;
+    doc.statusHistory = Array.isArray(doc.statusHistory) ? doc.statusHistory : [];
+    doc.statusHistory.push({
+      status: "aprobata",
+      note:
+        approvalNote ||
+        "Clientul a aprobat oferta finala si asteapta generarea comenzii pentru plata.",
+      at: new Date(),
+    });
+    await doc.save();
+
+    await notifyProviderById(doc.prestatorId, {
+      titlu: "Oferta personalizata aprobata de client",
+      mesaj: `Clientul a aprobat oferta pentru cererea #${String(doc._id).slice(-6)}.`,
+      tip: "success",
+      link: "/admin/comenzi-personalizate",
+      prestatorId: doc.prestatorId,
+      actorId: req.user?._id || req.user?.id,
+      actorRole: String(req.user?.rol || req.user?.role || ""),
+      meta: {
+        customOrderId: String(doc._id),
+      },
+    });
+
+    await recordAuditLog(req, {
+      action: "custom-order.offer-approved",
+      entityType: "comanda_personalizata",
+      entityId: doc._id,
+      summary: "Clientul a aprobat oferta personalizata",
+      metadata: {
+        prestatorId: normalizeText(doc.prestatorId),
+        note: approvalNote,
+      },
+    });
+
+    return res.json({
+      mesaj: "Oferta a fost aprobata si atelierul poate genera comanda pentru plata.",
+      comanda: doc,
+    });
+  } catch (err) {
+    console.error("Eroare la aprobarea ofertei personalizate:", err);
+    return res.status(500).json({ mesaj: "Eroare la aprobarea ofertei personalizate." });
   }
 });
 
@@ -305,6 +380,11 @@ router.post("/:id/convert", authRequired, roleCheck("admin", "patiser"), async (
     }
     if (!normalizeText(doc.clientId) || !normalizeText(doc.prestatorId)) {
       return res.status(400).json({ mesaj: "Cererea nu are client sau prestator configurat." });
+    }
+    if (!doc.clientApprovedAt) {
+      return res.status(409).json({
+        mesaj: "Clientul trebuie sa aprobe oferta finala inainte sa generezi comanda pentru plata.",
+      });
     }
     if (!normalizeText(dataLivrare) || !normalizeText(oraLivrare)) {
       return res.status(400).json({ mesaj: "Data si ora sunt obligatorii pentru conversie." });
