@@ -8,6 +8,14 @@ const { authRequired, roleCheck } = require("../middleware/auth");
 const { recordAuditLog } = require("../utils/audit");
 const { adminMutationLimiter } = require("../middleware/rateLimiters");
 
+const LOYALTY_LEVELS = [
+  { id: "bronze", label: "Bronze", minPoints: 0 },
+  { id: "silver", label: "Silver", minPoints: 200 },
+  { id: "gold", label: "Gold", minPoints: 500 },
+];
+const REDEEM_VALUE_PER_POINT = 0.5;
+const REDEEM_VOUCHER_VALIDITY_DAYS = 30;
+
 async function ensureConfig() {
   let config = await FidelizareConfig.findOne().lean();
   if (!config) {
@@ -28,6 +36,20 @@ function isFidelizareAdmin(req) {
 
 function canAccessWallet(req, utilizatorId) {
   return isFidelizareAdmin(req) || getAuthUserId(req) === String(utilizatorId);
+}
+
+function buildPublicFidelizareRules(config = {}) {
+  return {
+    pointsPer10: Number(config.pointsPer10 || 0),
+    pointsPerOrder: Number(config.pointsPerOrder || 0),
+    minTotal: Number(config.minTotal || 0),
+    redeem: {
+      valuePerPoint: REDEEM_VALUE_PER_POINT,
+      recommendedStep: 100,
+      voucherValidityDays: REDEEM_VOUCHER_VALIDITY_DAYS,
+    },
+    levels: LOYALTY_LEVELS,
+  };
 }
 
 /**
@@ -69,6 +91,16 @@ router.get("/client/:userId", authRequired, async (req, res) => {
   } catch (err) {
     console.error("Eroare GET /fidelizare/client:", err.message);
     res.status(500).json({ error: "Eroare server" });
+  }
+});
+
+router.get("/config", authRequired, async (_req, res) => {
+  try {
+    const config = await ensureConfig();
+    return res.json(buildPublicFidelizareRules(config));
+  } catch (err) {
+    console.error("Eroare GET /fidelizare/config:", err.message);
+    return res.status(500).json({ error: "Eroare server" });
   }
 });
 

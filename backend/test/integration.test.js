@@ -1546,6 +1546,15 @@ test("backend integration flows", async (t) => {
       assert.equal(wallet.status, 200);
       assert.equal(wallet.data?.puncteCurent, 20);
 
+      const loyaltyConfig = await harness.request("/fidelizare/config", {
+        token: client.token,
+      });
+      assert.equal(loyaltyConfig.status, 200);
+      assert.equal(loyaltyConfig.data?.pointsPer10, 1);
+      assert.equal(loyaltyConfig.data?.redeem?.recommendedStep, 100);
+      assert.ok(Array.isArray(loyaltyConfig.data?.levels));
+      assert.equal(loyaltyConfig.data.levels[1]?.id, "silver");
+
       const blockedCoupon = await harness.request("/coupon/apply", {
         method: "POST",
         token: client.token,
