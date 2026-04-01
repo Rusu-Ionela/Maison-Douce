@@ -1,7 +1,7 @@
 import { useMemo } from "react";
 import { NavLink, useLocation } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
-import { SITE_SECTIONS, canAccessLink } from "../lib/siteMap";
+import { ADMIN_NAV_GROUPS, SITE_SECTIONS, canAccessLink } from "../lib/siteMap";
 
 function getAdminLinks(user) {
   const section = SITE_SECTIONS.find((item) => item.id === "admin");
@@ -16,6 +16,27 @@ function getAdminLinks(user) {
       seen.add(item.to);
       return true;
     });
+}
+
+function groupAdminLinks(items = []) {
+  const grouped = new Map(
+    ADMIN_NAV_GROUPS.map((group) => [group.id, { ...group, items: [] }])
+  );
+
+  items.forEach((item) => {
+    const groupId = item.group || "operatiuni";
+    if (!grouped.has(groupId)) {
+      grouped.set(groupId, {
+        id: groupId,
+        label: groupId,
+        description: "",
+        items: [],
+      });
+    }
+    grouped.get(groupId).items.push(item);
+  });
+
+  return Array.from(grouped.values()).filter((group) => group.items.length > 0);
 }
 
 function tabClass({ isActive }) {
@@ -91,12 +112,11 @@ export default function AdminShell({
   description,
   eyebrow = "Panou operational",
   actions = null,
-  navLimit = 16,
   children,
 }) {
   const { user } = useAuth() || {};
   const { pathname } = useLocation();
-  const adminLinks = useMemo(() => getAdminLinks(user).slice(0, navLimit), [navLimit, user]);
+  const groupedLinks = useMemo(() => groupAdminLinks(getAdminLinks(user)), [user]);
 
   return (
     <div className="min-h-screen bg-[linear-gradient(180deg,_rgba(255,250,242,0.96),_rgba(247,230,234,0.78),_rgba(255,255,255,0.98))] px-4 py-8 sm:px-6 lg:px-8">
@@ -117,17 +137,32 @@ export default function AdminShell({
             {actions ? <div className="flex flex-wrap gap-2">{actions}</div> : null}
           </div>
 
-          {adminLinks.length ? (
-            <div className="mt-5 flex flex-wrap gap-2">
-              {adminLinks.map((item) => (
-                <NavLink
-                  key={item.to}
-                  to={item.to}
-                  className={tabClass}
-                  aria-current={pathname === item.to ? "page" : undefined}
+          {groupedLinks.length ? (
+            <div className="mt-6 grid gap-4 md:grid-cols-2 xl:grid-cols-5">
+              {groupedLinks.map((group) => (
+                <section
+                  key={group.id}
+                  className="rounded-[26px] border border-rose-100 bg-[rgba(255,249,242,0.86)] p-4 shadow-soft"
                 >
-                  {item.label}
-                </NavLink>
+                  <div className="text-xs font-semibold uppercase tracking-[0.18em] text-pink-500">
+                    {group.label}
+                  </div>
+                  {group.description ? (
+                    <p className="mt-2 text-sm leading-6 text-gray-600">{group.description}</p>
+                  ) : null}
+                  <div className="mt-4 flex flex-wrap gap-2">
+                    {group.items.map((item) => (
+                      <NavLink
+                        key={item.to}
+                        to={item.to}
+                        className={tabClass}
+                        aria-current={pathname === item.to ? "page" : undefined}
+                      >
+                        {item.label}
+                      </NavLink>
+                    ))}
+                  </div>
+                </section>
               ))}
             </div>
           ) : null}
