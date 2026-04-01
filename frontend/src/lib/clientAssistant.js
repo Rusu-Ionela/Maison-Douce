@@ -25,10 +25,12 @@ const INTENTS = [
         "Constructorul 2D este pentru cereri personalizate, in pagina /constructor. Acolo alegi compozitia, decorul si mesajul, apoi salvezi draftul sau trimiti cererea catre atelier pentru confirmarea pretului.",
       actions: [
         createRouteAction("Deschide constructorul", "/constructor"),
-        createRouteAction("Ghid de utilizare", "/personalizeaza"),
+        user
+          ? createRouteAction("Designurile mele", "/personalizari")
+          : createRouteAction("Contact atelier", "/contact"),
         user
           ? createRouteAction("Chat cu patiserul", "/chat")
-          : createRouteAction("Contact atelier", "/contact"),
+          : createRouteAction("Autentificare", "/login"),
       ],
     }),
   },
@@ -168,7 +170,7 @@ const INTENTS = [
       actions: [
         createRouteAction("Deschide catalogul", "/catalog"),
         createRouteAction("Constructor 2D", "/constructor"),
-        createRouteAction("Personalizeaza", "/personalizeaza"),
+        createRouteAction("Calendar", "/calendar"),
       ],
     }),
   },
@@ -209,13 +211,13 @@ const INTENTS = [
     ],
     buildResponse: ({ user }) => ({
       text:
-        "Designerul AI este in /designer-ai si necesita autentificare. Il poti folosi pentru inspiratie vizuala, iar pentru configuratia finala recomand sa treci apoi prin constructorul 2D.",
+        "Preview-ul AI pentru decor este acum integrat direct in constructorul 2D. Pentru configuratia finala si imaginile de inspiratie, foloseste /constructor.",
       actions: [
-        user
-          ? createRouteAction("Deschide Designer AI", "/designer-ai")
-          : createRouteAction("Login", "/login"),
         createRouteAction("Constructor 2D", "/constructor"),
-        createRouteAction("Contact", "/contact"),
+        user
+          ? createRouteAction("Designurile mele", "/personalizari")
+          : createRouteAction("Contact", "/contact"),
+        createRouteAction("Calendar", "/calendar"),
       ],
     }),
   },

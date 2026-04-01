@@ -226,7 +226,7 @@ export default function Home() {
                 Torturi artizanale, compuse cu rafinament si prezentate ca intr-un salon de patiserie.
               </h1>
               <p className="max-w-2xl text-base leading-8 text-[#625a52] md:text-lg">
-                Maison-Douce reuneste catalogul premium, constructorul 2D, designerul AI si calendarul de rezervari intr-o experienta coerenta pentru comenzi reale in Moldova.
+                Maison-Douce reuneste catalogul premium, constructorul 2D cu preview AI integrat si calendarul de rezervari intr-o experienta coerenta pentru comenzi reale in Moldova.
               </p>
             </div>
             <div className="mt-8 flex flex-wrap gap-3">
@@ -385,15 +385,15 @@ export default function Home() {
                 Catalogul este curatat pentru denumiri reale, constructorul 2D comunica interiorul si finisajul, iar calendarul arata disponibilitate per patiser.
               </p>
               <p>
-                Pentru proiectele speciale poti salva drafturi, exporta PNG, discuta in chat cu laboratorul sau cere ajutorul designerului AI.
+                Pentru proiectele speciale poti salva drafturi, exporta PNG, discuta in chat cu laboratorul si folosi preview-ul AI integrat direct in constructor.
               </p>
             </div>
             <div className="mt-8 flex flex-wrap gap-3">
               <Link to="/calendar" className={buttons.primary}>
                 Rezerva un slot
               </Link>
-              <Link to="/designer-ai" className={buttons.outline}>
-                Testeaza Designer AI
+              <Link to="/constructor" className={buttons.outline}>
+                Deschide constructorul
               </Link>
             </div>
           </section>

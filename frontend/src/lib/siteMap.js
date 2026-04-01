@@ -13,11 +13,7 @@ export const SITE_SECTIONS = [
       { label: "Catalog", to: "/catalog" },
       { label: "Cos", to: "/cart" },
       { label: "Constructor", to: "/constructor" },
-      { label: "Personalizeaza", to: "/personalizeaza" },
-      { label: "Desen tort", to: "/desen-tort" },
-      { label: "Designer AI", to: "/designer-ai", requiresAuth: true },
-      { label: "Tort Designer", to: "/tort-designer" },
-      { label: "Patiser Drawing", to: "/patiser-drawing" },
+      { label: "Ghid constructor", to: "/personalizeaza", hidden: true },
       { label: "Detalii tort", to: "/catalog", matchPrefix: "/tort/", hidden: true },
       { label: "Retete", to: "/retete" },
       { label: "Abonament", to: "/abonament" },
@@ -177,11 +173,11 @@ const CONTEXT_BRIDGES = [
   },
   {
     matchPrefix: "/catalog",
-    targets: ["/cart", "/constructor", "/personalizeaza", "/comanda"],
+    targets: ["/cart", "/constructor", "/comanda"],
   },
   {
     matchPrefix: "/constructor",
-    targets: ["/catalog", "/cart", "/personalizeaza", "/comanda"],
+    targets: ["/catalog", "/cart", "/comanda"],
   },
 ];
 

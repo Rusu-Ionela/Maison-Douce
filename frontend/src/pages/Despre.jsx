@@ -81,7 +81,7 @@ export default function Despre() {
             <div className="eyebrow">Proces</div>
             <div className="mt-4 space-y-4 text-sm leading-7 text-[#655c53]">
               <p>Clientul poate porni din catalog, din constructorul 2D sau direct din calendar.</p>
-              <p>Pentru comenzile complexe, designerul AI si chatul cu patiserul reduc timpul de clarificare.</p>
+              <p>Pentru comenzile complexe, preview-ul AI din constructor si chatul cu patiserul reduc timpul de clarificare.</p>
               <p>Profilul, fidelizarea si istoricul comenzilor pastreaza contextul pentru comenzile viitoare.</p>
             </div>
           </article>
