@@ -1,5 +1,5 @@
 // frontend/src/pages/AdminCalendar.jsx
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import StatusBanner from "../components/StatusBanner";
 import ProviderSelector from "../components/ProviderSelector";
 import api from "../lib/api.js";
@@ -17,6 +17,26 @@ function extractFilename(contentDisposition, fallback) {
   return fallback;
 }
 
+function formatCurrency(value) {
+  return `${Number(value || 0).toFixed(2)} MDL`;
+}
+
+function formatDayLabel(value) {
+  const date = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(date.getTime())) return "-";
+
+  return date.toLocaleDateString("ro-RO", {
+    weekday: "long",
+    year: "numeric",
+    month: "long",
+    day: "numeric",
+  });
+}
+
+function formatHandoffMethod(value) {
+  return value === "delivery" ? "Livrare" : "Ridicare";
+}
+
 export default function AdminCalendar() {
   const { user } = useAuth() || {};
   const [selectedDate, setSelectedDate] = useState(new Date());
@@ -28,10 +48,66 @@ export default function AdminCalendar() {
   const [newSlotCapacity, setNewSlotCapacity] = useState(1);
   const [dayCapacity, setDayCapacity] = useState("");
   const [savingCapacity, setSavingCapacity] = useState(false);
+  const [viewFilter, setViewFilter] = useState("all");
 
   const providerState = useProviderDirectory({ user });
   const prestatorId = providerState.activeProviderId;
   const dateStr = formatDateInput(selectedDate);
+
+  const sortedReservations = useMemo(
+    () =>
+      [...reservations].sort((left, right) =>
+        String(left?.startTime || left?.timeSlot || "").localeCompare(
+          String(right?.startTime || right?.timeSlot || "")
+        )
+      ),
+    [reservations]
+  );
+
+  const visibleReservations = useMemo(() => {
+    if (viewFilter === "delivery") {
+      return sortedReservations.filter((item) => item?.handoffMethod === "delivery");
+    }
+    if (viewFilter === "pickup") {
+      return sortedReservations.filter((item) => item?.handoffMethod !== "delivery");
+    }
+    if (viewFilter === "unpaid") {
+      return sortedReservations.filter((item) => item?.paymentStatus !== "paid");
+    }
+    return sortedReservations;
+  }, [sortedReservations, viewFilter]);
+
+  const reservationMetrics = useMemo(() => {
+    const totalEntries = reservations.length;
+    const deliveryCount = reservations.filter((item) => item?.handoffMethod === "delivery").length;
+    const pickupCount = totalEntries - deliveryCount;
+    const unpaidCount = reservations.filter((item) => item?.paymentStatus !== "paid").length;
+    const totalValue = reservations.reduce((sum, item) => sum + Number(item?.total || 0), 0);
+    const nextHandoff = sortedReservations[0]?.startTime || sortedReservations[0]?.timeSlot || "";
+
+    return {
+      totalEntries,
+      deliveryCount,
+      pickupCount,
+      unpaidCount,
+      totalValue,
+      nextHandoff,
+    };
+  }, [reservations, sortedReservations]);
+
+  const slotMetrics = useMemo(() => {
+    const totalSlots = slots.length;
+    const freeSlots = slots.filter((slot) => Number(slot?.free || 0) > 0).length;
+    const blockedSlots = slots.filter(
+      (slot) => Number(slot?.capacity || 0) <= 0 || Number(slot?.free || 0) <= 0
+    ).length;
+
+    return {
+      totalSlots,
+      freeSlots,
+      blockedSlots,
+    };
+  }, [slots]);
 
   useEffect(() => {
     const fetchData = async () => {
@@ -186,93 +262,64 @@ export default function AdminCalendar() {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-rose-50 to-pink-50 py-8 px-4 sm:px-6 lg:px-8">
-      <div className="max-w-6xl mx-auto">
-        <div className="mb-8">
-          <h1 className="text-4xl font-bold text-gray-900 mb-6">Calendar Admin</h1>
+    <div className="min-h-screen bg-gradient-to-br from-rose-50 to-pink-50 px-4 py-8 sm:px-6 lg:px-8">
+      <div className="mx-auto max-w-7xl space-y-6">
+        <header className={cards.tinted}>
+          <div className="flex flex-col gap-5 xl:flex-row xl:items-end xl:justify-between">
+            <div className="max-w-3xl space-y-3">
+              <p className="text-xs font-semibold uppercase tracking-[0.24em] text-pink-500">
+                Agenda zilnica
+              </p>
+              <h1 className="font-serif text-3xl font-semibold text-gray-900 md:text-4xl">
+                Vezi clar ce trebuie pregatit si cum se preda in ziua selectata
+              </h1>
+              <p className="max-w-2xl text-base leading-7 text-gray-600">
+                Agenda unifica rezervarile si comenzile pentru aceeasi zi, cu accent pe ora,
+                produse, metoda de predare, adresa si statusul platii.
+              </p>
+            </div>
 
-          <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-center">
-            <div className="min-w-[260px]">
-              <ProviderSelector
-                providers={providerState.providers}
-                value={prestatorId}
-                onChange={providerState.setSelectedProviderId}
-                loading={providerState.loading}
-                disabled={!providerState.canChooseProvider}
-                helpText={
-                  providerState.activeProvider
-                    ? `Afisezi calendarul pentru ${providerState.activeProvider.displayName}.`
-                    : "Selecteaza prestatorul pentru care administrezi calendarul."
-                }
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-semibold text-gray-700 mb-2">Selecteaza data</label>
-              <input
-                type="date"
-                value={dateStr}
-                onChange={(e) => {
-                  const nextDate = parseDateInput(e.target.value);
-                  if (nextDate) {
-                    setSelectedDate(nextDate);
-                  }
-                }}
-                className={inputs.default}
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-semibold text-gray-700 mb-2">Capacitate zi</label>
-              <div className="flex gap-2">
-                <input
-                  type="number"
-                  min={0}
-                  value={dayCapacity}
-                  onChange={(e) => setDayCapacity(e.target.value)}
-                  className={inputs.default}
-                  style={{ maxWidth: 140 }}
-                />
-                <button
-                  onClick={saveDayCapacity}
-                  className={buttons.secondary}
-                  disabled={savingCapacity}
-                >
-                  {savingCapacity ? "Se salveaza..." : "Salveaza"}
-                </button>
+            <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+              <div className="rounded-[24px] border border-rose-100 bg-white/75 px-4 py-3 shadow-soft">
+                <div className="text-xs font-semibold uppercase tracking-[0.16em] text-pink-500">
+                  Intrari
+                </div>
+                <div className="mt-2 text-2xl font-semibold text-gray-900">
+                  {reservationMetrics.totalEntries}
+                </div>
+                <div className="text-sm text-gray-600">rezervari si comenzi in zi</div>
+              </div>
+              <div className="rounded-[24px] border border-rose-100 bg-white/75 px-4 py-3 shadow-soft">
+                <div className="text-xs font-semibold uppercase tracking-[0.16em] text-pink-500">
+                  Livrari
+                </div>
+                <div className="mt-2 text-2xl font-semibold text-gray-900">
+                  {reservationMetrics.deliveryCount}
+                </div>
+                <div className="text-sm text-gray-600">pleaca la client sau curier</div>
+              </div>
+              <div className="rounded-[24px] border border-rose-100 bg-white/75 px-4 py-3 shadow-soft">
+                <div className="text-xs font-semibold uppercase tracking-[0.16em] text-pink-500">
+                  Ridicari
+                </div>
+                <div className="mt-2 text-2xl font-semibold text-gray-900">
+                  {reservationMetrics.pickupCount}
+                </div>
+                <div className="text-sm text-gray-600">vin direct in atelier</div>
+              </div>
+              <div className="rounded-[24px] border border-rose-100 bg-white/75 px-4 py-3 shadow-soft">
+                <div className="text-xs font-semibold uppercase tracking-[0.16em] text-pink-500">
+                  Urmatoarea predare
+                </div>
+                <div className="mt-2 text-2xl font-semibold text-gray-900">
+                  {reservationMetrics.nextHandoff || "--:--"}
+                </div>
+                <div className="text-sm text-gray-600">{formatDayLabel(selectedDate)}</div>
               </div>
             </div>
-            <div className="flex gap-3 flex-wrap items-center">
-              <div className="flex flex-wrap gap-2 items-center">
-                <input
-                  type="time"
-                  value={newSlotTime}
-                  onChange={(e) => setNewSlotTime(e.target.value)}
-                  className={inputs.default}
-                />
-                <input
-                  type="number"
-                  min={0}
-                  value={newSlotCapacity}
-                  onChange={(e) => setNewSlotCapacity(e.target.value)}
-                  className={inputs.default}
-                  style={{ maxWidth: 120 }}
-                />
-                <button onClick={addTimeSlot} className={`${buttons.secondary} flex items-center gap-2`}>
-                  + Adauga/actualizeaza interval
-                </button>
-              </div>
-              <button onClick={onExport} className={`${buttons.success} flex items-center gap-2`}>
-                Export CSV
-              </button>
-            </div>
           </div>
-        </div>
+        </header>
 
-        {error && (
-          <div className="mb-6 p-4 bg-red-50 border-l-4 border-red-500 rounded">
-            <p className="text-red-700 font-semibold">Eroare</p>
-            <p className="text-red-600 text-sm">{error}</p>
-          </div>
-        )}
         <StatusBanner
           type="error"
           title="Prestator indisponibil"
@@ -281,144 +328,382 @@ export default function AdminCalendar() {
               ? providerState.error || "Nu exista prestatori disponibili pentru administrare."
               : ""
           }
-          className="mb-6"
         />
+        <StatusBanner type="error" message={error} />
 
         {loading ? (
-          <div className="text-center py-12">
-            <p className="text-gray-500 text-lg">Se incarca...</p>
+          <div className={cards.elevated}>
+            <div className="py-12 text-center text-lg text-gray-500">Se incarca agenda zilei...</div>
           </div>
         ) : (
-          <div className="grid gap-8 lg:grid-cols-3">
-            {/* SLOTURI */}
-            <div className={`lg:col-span-1 ${cards.elevated}`}>
-              <h2 className="text-xl font-bold text-gray-900 mb-4">Intervale</h2>
-              {slots.length === 0 ? (
-                <p className="text-gray-500 text-center py-6">Nu exista sloturi pentru aceasta zi.</p>
-              ) : (
-                <div className="space-y-2">
-                  {slots.map((slot) => (
-                    <div
-                      key={`${slot.date}_${slot.time}`}
-                      className={`p-4 rounded-lg border-2 transition-all ${
-                        slot.free > 0 ? "border-green-300 bg-green-50" : "border-red-300 bg-red-50"
-                      }`}
-                    >
-                      <div className="font-semibold text-gray-900 text-lg">{slot.time}</div>
-                      <div className="flex justify-between mt-2 text-sm">
-                        <span className="text-gray-700">
-                          <span className="font-semibold">{slot.used}</span>/{slot.capacity} ocupate
-                        </span>
-                        <span className={`font-semibold ${slot.free > 0 ? "text-green-600" : "text-red-600"}`}>
-                          {slot.free} libere
-                        </span>
-                      </div>
-                      <button className="mt-2 text-xs text-red-600 underline" onClick={() => blockSlot(slot.time)}>
-                        Blocheaza slot
-                      </button>
-                    </div>
-                  ))}
+          <div className="grid gap-6 xl:grid-cols-[0.95fr_1.05fr]">
+            <section className={`${cards.elevated} space-y-5`}>
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div>
+                  <h2 className="text-xl font-semibold text-gray-900">Configurare zi</h2>
+                  <p className="text-sm text-gray-600">
+                    Selectezi prestatorul, data si capacitatea, apoi configurezi intervalele.
+                  </p>
                 </div>
-              )}
-            </div>
+                <span className={badges.info}>{dateStr}</span>
+              </div>
 
-            {/* REZERVARI + COMENZI */}
-            <div className="lg:col-span-2">
-              <div className={cards.elevated}>
-                <h2 className="text-xl font-bold text-gray-900 mb-4">
-                  Rezervari / Comenzi - {selectedDate.toLocaleDateString("ro-RO", { year: "numeric", month: "long", day: "numeric" })}
-                </h2>
+              <div className="grid gap-4 md:grid-cols-2">
+                <div className="md:col-span-2">
+                  <ProviderSelector
+                    providers={providerState.providers}
+                    value={prestatorId}
+                    onChange={providerState.setSelectedProviderId}
+                    loading={providerState.loading}
+                    disabled={!providerState.canChooseProvider}
+                    helpText={
+                      providerState.activeProvider
+                        ? `Administrezi agenda pentru ${providerState.activeProvider.displayName}.`
+                        : "Selecteaza prestatorul pentru care lucrezi."
+                    }
+                  />
+                </div>
 
-                {reservations.length === 0 ? (
-                  <div className="text-center py-8">
-                    <p className="text-gray-500 text-lg">Nu exista intrari pentru aceasta data</p>
+                <label className="block text-sm font-semibold text-gray-700">
+                  Data selectata
+                  <input
+                    type="date"
+                    value={dateStr}
+                    onChange={(e) => {
+                      const nextDate = parseDateInput(e.target.value);
+                      if (nextDate) {
+                        setSelectedDate(nextDate);
+                      }
+                    }}
+                    className={`mt-2 ${inputs.default}`}
+                  />
+                </label>
+
+                <label className="block text-sm font-semibold text-gray-700">
+                  Capacitate zi
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    <input
+                      type="number"
+                      min={0}
+                      value={dayCapacity}
+                      onChange={(e) => setDayCapacity(e.target.value)}
+                      className={inputs.default}
+                      style={{ maxWidth: 150 }}
+                    />
+                    <button
+                      onClick={saveDayCapacity}
+                      className={buttons.secondary}
+                      disabled={savingCapacity}
+                    >
+                      {savingCapacity ? "Se salveaza..." : "Salveaza"}
+                    </button>
+                  </div>
+                </label>
+              </div>
+
+              <div className="rounded-[26px] border border-rose-100 bg-white/85 p-4">
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div>
+                    <h3 className="text-base font-semibold text-gray-900">Adauga sau actualizeaza interval</h3>
+                    <p className="text-sm text-gray-600">
+                      Configurezi manual orele disponibile pentru ziua selectata.
+                    </p>
+                  </div>
+                  <button onClick={onExport} className={buttons.success}>
+                    Export CSV
+                  </button>
+                </div>
+
+                <div className="mt-4 flex flex-wrap gap-2">
+                  <input
+                    type="time"
+                    value={newSlotTime}
+                    onChange={(e) => setNewSlotTime(e.target.value)}
+                    className={inputs.default}
+                    style={{ maxWidth: 180 }}
+                  />
+                  <input
+                    type="number"
+                    min={0}
+                    value={newSlotCapacity}
+                    onChange={(e) => setNewSlotCapacity(e.target.value)}
+                    className={inputs.default}
+                    style={{ maxWidth: 140 }}
+                  />
+                  <button onClick={addTimeSlot} className={buttons.secondary}>
+                    + Adauga/actualizeaza interval
+                  </button>
+                </div>
+              </div>
+
+              <div className="grid gap-3 sm:grid-cols-3">
+                <div className="rounded-[22px] border border-rose-100 bg-white px-4 py-3">
+                  <div className="text-xs font-semibold uppercase tracking-[0.16em] text-pink-500">
+                    Sloturi totale
+                  </div>
+                  <div className="mt-2 text-2xl font-semibold text-gray-900">
+                    {slotMetrics.totalSlots}
+                  </div>
+                </div>
+                <div className="rounded-[22px] border border-rose-100 bg-white px-4 py-3">
+                  <div className="text-xs font-semibold uppercase tracking-[0.16em] text-pink-500">
+                    Cu locuri libere
+                  </div>
+                  <div className="mt-2 text-2xl font-semibold text-gray-900">
+                    {slotMetrics.freeSlots}
+                  </div>
+                </div>
+                <div className="rounded-[22px] border border-rose-100 bg-white px-4 py-3">
+                  <div className="text-xs font-semibold uppercase tracking-[0.16em] text-pink-500">
+                    Blocate / pline
+                  </div>
+                  <div className="mt-2 text-2xl font-semibold text-gray-900">
+                    {slotMetrics.blockedSlots}
+                  </div>
+                </div>
+              </div>
+
+              <div className="space-y-3">
+                <div className="flex items-center justify-between gap-3">
+                  <h3 className="text-base font-semibold text-gray-900">Intervalele zilei</h3>
+                  <span className={badges.premium}>{slots.length ? `${slots.length} sloturi` : "Fara sloturi"}</span>
+                </div>
+
+                {slots.length === 0 ? (
+                  <div className="rounded-[24px] border border-dashed border-rose-200 bg-white/70 px-4 py-6 text-sm text-gray-500">
+                    Nu exista sloturi pentru aceasta zi. Adauga cel putin un interval pentru a primi comenzi.
                   </div>
                 ) : (
                   <div className="space-y-3">
-                    {reservations.map((res) => (
-                      <div
-                        key={res._id}
-                        className="border-l-4 border-pink-500 bg-gray-50 p-4 rounded-lg hover:bg-gray-100 transition-colors"
-                      >
-                        <div className="flex flex-col sm:flex-row sm:justify-between sm:items-start gap-3">
-                          <div className="flex-1">
-                            <div className="flex items-center gap-2 mb-2">
-                              <span className="text-lg font-semibold text-gray-900">
-                                {res.timeSlot || res.startTime || "-"}
-                              </span>
-                              <span className="text-sm font-medium text-gray-600">-</span>
-                              <span className="text-gray-700 font-medium">{res.clientName || "Client"}</span>
-                              <span className={badges.info}>{res.type === "comanda" ? "Comanda" : "Rezervare"}</span>
-                            </div>
-
-                            {(res.clientPhone || res.clientEmail) && (
-                              <div className="text-xs text-gray-600 mb-2">
-                                {res.clientPhone ? `Tel: ${res.clientPhone}` : ""}
-                                {res.clientPhone && res.clientEmail ? " - " : ""}
-                                {res.clientEmail ? `Email: ${res.clientEmail}` : ""}
+                    {slots.map((slot) => {
+                      const slotAvailable = Number(slot?.free || 0) > 0;
+                      return (
+                        <div
+                          key={`${slot.date}_${slot.time}`}
+                          className={[
+                            "rounded-[22px] border px-4 py-4",
+                            slotAvailable
+                              ? "border-emerald-200 bg-emerald-50/70"
+                              : "border-rose-200 bg-rose-50/70",
+                          ].join(" ")}
+                        >
+                          <div className="flex flex-wrap items-start justify-between gap-3">
+                            <div>
+                              <div className="text-lg font-semibold text-gray-900">{slot.time}</div>
+                              <div className="mt-2 text-sm text-gray-600">
+                                {slot.used}/{slot.capacity} ocupate
                               </div>
-                            )}
-                            {res.itemsSummary && <p className="text-sm text-gray-700 mb-2">{res.itemsSummary}</p>}
-
-                            <div className="text-sm text-gray-600 mb-2">
-                              {res.handoffMethod === "delivery" ? (
-                                <div className="flex items-start gap-2">
-                                  <div>
-                                    <p className="font-medium">Livrare</p>
-                                    <p className="text-gray-500">{res.deliveryAddress || "-"}</p>
-                                  </div>
-                                </div>
-                              ) : (
-                                <div className="flex items-center gap-2">
-                                  <p>Ridicare din laborator</p>
-                                </div>
-                              )}
                             </div>
-                            {res.deliveryWindow && (
-                              <div className="text-xs text-gray-500 mb-1">Fereastra: {res.deliveryWindow}</div>
-                            )}
-                            {res.deliveryInstructions && (
-                              <div className="text-xs text-gray-500 mb-2">Instructiuni: {res.deliveryInstructions}</div>
-                            )}
+                            <div className="text-right">
+                              <div
+                                className={`text-sm font-semibold ${
+                                  slotAvailable ? "text-emerald-700" : "text-rose-700"
+                                }`}
+                              >
+                                {slot.free} libere
+                              </div>
+                              <button
+                                className="mt-2 text-xs font-semibold text-rose-700 underline"
+                                onClick={() => blockSlot(slot.time)}
+                              >
+                                Blocheaza slot
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            </section>
 
-                            <div className="flex gap-2 flex-wrap">
+            <section className={`${cards.elevated} space-y-5`}>
+              <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
+                <div>
+                  <h2 className="text-xl font-semibold text-gray-900">
+                    Agenda zilei - {formatDayLabel(selectedDate)}
+                  </h2>
+                  <p className="text-sm text-gray-600">
+                    Staff-ul vede intr-un singur loc ce trebuie pregatit, cand se preda si daca
+                    pleaca prin livrare sau ridicare personala.
+                  </p>
+                </div>
+                <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+                  <div className="rounded-[22px] border border-rose-100 bg-white px-4 py-3">
+                    <div className="text-xs font-semibold uppercase tracking-[0.16em] text-pink-500">
+                      Neplatite
+                    </div>
+                    <div className="mt-2 text-2xl font-semibold text-gray-900">
+                      {reservationMetrics.unpaidCount}
+                    </div>
+                  </div>
+                  <div className="rounded-[22px] border border-rose-100 bg-white px-4 py-3">
+                    <div className="text-xs font-semibold uppercase tracking-[0.16em] text-pink-500">
+                      Valoare zi
+                    </div>
+                    <div className="mt-2 text-2xl font-semibold text-gray-900">
+                      {formatCurrency(reservationMetrics.totalValue)}
+                    </div>
+                  </div>
+                  <div className="rounded-[22px] border border-rose-100 bg-white px-4 py-3">
+                    <div className="text-xs font-semibold uppercase tracking-[0.16em] text-pink-500">
+                      Vizibile acum
+                    </div>
+                    <div className="mt-2 text-2xl font-semibold text-gray-900">
+                      {visibleReservations.length}
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex flex-wrap gap-2">
+                {[
+                  ["all", "Toate"],
+                  ["delivery", "Doar livrari"],
+                  ["pickup", "Doar ridicari"],
+                  ["unpaid", "Doar neplatite"],
+                ].map(([value, label]) => (
+                  <button
+                    key={value}
+                    type="button"
+                    onClick={() => setViewFilter(value)}
+                    className={
+                      viewFilter === value
+                        ? buttons.primary
+                        : "inline-flex items-center rounded-full border border-rose-200 bg-white px-4 py-2 text-sm font-semibold text-[#5f564d] shadow-soft transition hover:border-rose-300 hover:bg-white"
+                    }
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+
+              {visibleReservations.length === 0 ? (
+                <div className="rounded-[24px] border border-dashed border-rose-200 bg-white/70 px-4 py-8 text-center text-gray-500">
+                  Nu exista intrari pentru filtrul selectat in aceasta zi.
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  {visibleReservations.map((res) => {
+                    const isDelivery = res.handoffMethod === "delivery";
+                    const handoffLabel = formatHandoffMethod(res.handoffMethod);
+                    const statusLabel = res.status || res.handoffStatus || "-";
+
+                    return (
+                      <article
+                        key={res._id}
+                        className={[
+                          "rounded-[28px] border p-5 shadow-soft",
+                          isDelivery
+                            ? "border-amber-200 bg-[rgba(255,249,240,0.92)]"
+                            : "border-emerald-200 bg-[rgba(247,255,250,0.92)]",
+                        ].join(" ")}
+                      >
+                        <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
+                          <div className="flex-1 space-y-4">
+                            <div className="flex flex-wrap items-center gap-2">
+                              <span className="inline-flex items-center rounded-full bg-charcoal px-3 py-1 text-sm font-semibold text-white">
+                                {res.timeSlot || res.startTime || "--:--"}
+                              </span>
+                              <span className={isDelivery ? badges.warning : badges.success}>
+                                {handoffLabel}
+                              </span>
+                              <span className={badges.info}>
+                                {res.type === "comanda" ? "Comanda" : "Rezervare"}
+                              </span>
                               {res.paymentStatus === "paid" ? (
                                 <span className={badges.success}>Platit</span>
                               ) : (
                                 <span className={badges.warning}>Neplatit</span>
                               )}
-                              <span className={badges.info}>{res.status || res.handoffStatus || "-"}</span>
                             </div>
 
-                            {res.type === "rezervare" && (
-                              <div className="flex gap-2 flex-wrap mt-2">
+                            <div>
+                              <div className="text-xs font-semibold uppercase tracking-[0.18em] text-pink-500">
+                                Ce se pregateste
+                              </div>
+                              <div className="mt-2 text-lg font-semibold text-gray-900">
+                                {res.itemsSummary || "Fara detalii produse inca"}
+                              </div>
+                            </div>
+
+                            <div className="grid gap-4 md:grid-cols-2">
+                              <div className="rounded-[22px] border border-white/70 bg-white/80 px-4 py-3">
+                                <div className="text-xs font-semibold uppercase tracking-[0.16em] text-pink-500">
+                                  Client
+                                </div>
+                                <div className="mt-2 space-y-1 text-sm text-gray-700">
+                                  <div className="font-semibold text-gray-900">
+                                    {res.clientName || "Client"}
+                                  </div>
+                                  {res.clientPhone ? <div>Tel: {res.clientPhone}</div> : null}
+                                  {res.clientEmail ? <div>Email: {res.clientEmail}</div> : null}
+                                </div>
+                              </div>
+
+                              <div className="rounded-[22px] border border-white/70 bg-white/80 px-4 py-3">
+                                <div className="text-xs font-semibold uppercase tracking-[0.16em] text-pink-500">
+                                  Predare
+                                </div>
+                                <div className="mt-2 space-y-1 text-sm text-gray-700">
+                                  <div className="font-semibold text-gray-900">{handoffLabel}</div>
+                                  <div>
+                                    {isDelivery
+                                      ? res.deliveryAddress || "Adresa lipsa"
+                                      : "Clientul ridica direct din atelier"}
+                                  </div>
+                                  {res.deliveryWindow ? <div>Fereastra: {res.deliveryWindow}</div> : null}
+                                  {res.deliveryInstructions ? (
+                                    <div>Instructiuni: {res.deliveryInstructions}</div>
+                                  ) : null}
+                                </div>
+                              </div>
+                            </div>
+
+                            <div className="flex flex-wrap gap-2">
+                              <span className={badges.info}>Status: {statusLabel}</span>
+                              {res.handoffStatus ? (
+                                <span className={badges.premium}>Predare: {res.handoffStatus}</span>
+                              ) : null}
+                            </div>
+
+                            {res.type === "rezervare" ? (
+                              <div className="flex flex-wrap gap-2">
                                 <button
-                                  className="border px-2 py-1 rounded text-xs"
+                                  className={buttons.secondary}
                                   onClick={() => updateReservationStatus(res._id, "confirmed")}
                                 >
-                                  Confirma
+                                  Confirma rezervarea
                                 </button>
                                 <button
-                                  className="border px-2 py-1 rounded text-xs"
+                                  className={buttons.outline}
                                   onClick={() => updateReservationStatus(res._id, "canceled")}
                                 >
                                   Respinge
                                 </button>
                               </div>
-                            )}
+                            ) : null}
                           </div>
 
-                          <div className="text-right">
-                            <div className="text-2xl font-bold text-pink-600">{res.total} MDL</div>
-                            <p className="text-xs text-gray-500 mt-1">{res.handoffStatus}</p>
+                          <div className="min-w-[180px] rounded-[22px] border border-white/70 bg-white/85 px-4 py-4 text-right">
+                            <div className="text-xs font-semibold uppercase tracking-[0.16em] text-pink-500">
+                              Total
+                            </div>
+                            <div className="mt-2 text-2xl font-semibold text-pink-700">
+                              {formatCurrency(res.total)}
+                            </div>
+                            <div className="mt-3 text-sm text-gray-600">
+                              {res.paymentStatus === "paid" ? "Plata confirmata" : "Necesita urmarire plata"}
+                            </div>
                           </div>
                         </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            </div>
+                      </article>
+                    );
+                  })}
+                </div>
+              )}
+            </section>
           </div>
         )}
       </div>
