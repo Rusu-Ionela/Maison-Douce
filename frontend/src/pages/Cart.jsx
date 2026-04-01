@@ -12,6 +12,7 @@ import ProviderSelector from "../components/ProviderSelector";
 import api from "/src/lib/api.js";
 import { buttons, cards, inputs, containers } from "/src/lib/tailwindComponents.js";
 import { formatDateInput, parseDateInput } from "../lib/date";
+import { buildCheckoutNotes } from "../lib/checkoutNotes";
 import { useProviderDirectory } from "../lib/providers";
 
 function buildStatus(type, message, title = "") {
@@ -40,7 +41,9 @@ export default function Cart() {
   const [time, setTime] = useState("");
   const [slots, setSlots] = useState(null);
   const [loadingSlots, setLoadingSlots] = useState(false);
-  const [notes, setNotes] = useState("");
+  const [cakeMessage, setCakeMessage] = useState("");
+  const [dietaryNotes, setDietaryNotes] = useState("");
+  const [orderNotes, setOrderNotes] = useState("");
   const [deliveryInstructions, setDeliveryInstructions] = useState("");
   const [windowStart, setWindowStart] = useState("");
   const [windowEnd, setWindowEnd] = useState("");
@@ -109,6 +112,15 @@ export default function Cart() {
 
   const total = subtotal + (metodaLivrare === "livrare" ? LIVRARE_FEE : 0);
   const hasQuoteOnlyItems = useMemo(() => items.some((item) => itemNeedsQuote(item)), [items]);
+  const clientNote = useMemo(
+    () =>
+      buildCheckoutNotes({
+        cakeMessage,
+        dietaryNotes,
+        orderNotes,
+      }),
+    [cakeMessage, dietaryNotes, orderNotes]
+  );
   const suggestedUpsells = useMemo(() => {
     const existingIds = new Set(items.map((item) => String(item.id || "")));
     return upsells
@@ -191,7 +203,9 @@ export default function Cart() {
 
   const resetDraftState = () => {
     setAttachments([]);
-    setNotes("");
+    setCakeMessage("");
+    setDietaryNotes("");
+    setOrderNotes("");
     setDeliveryInstructions("");
     setWindowStart("");
     setWindowEnd("");
@@ -353,7 +367,8 @@ export default function Cart() {
       dataLivrare: date,
       oraLivrare: time,
       prestatorId,
-      note: notes || undefined,
+      note: clientNote || undefined,
+      preferinte: dietaryNotes.trim() || undefined,
     };
 
     try {
@@ -372,6 +387,13 @@ export default function Cart() {
       setSubmitting(false);
     }
   }
+
+  const deliveryWindowLabel = buildDeliveryWindow() || "Fara interval suplimentar";
+  const deliveryMethodLabel =
+    metodaLivrare === "livrare" ? "Livrare la domiciliu" : "Ridicare din atelier";
+  const activeProviderLabel =
+    providerState.activeProvider?.displayName ||
+    (providerState.loading ? "Se incarca..." : "Selecteaza prestatorul");
 
   return (
     <div className="min-h-screen">
@@ -551,10 +573,26 @@ export default function Cart() {
               </div>
             </div>
 
-            <aside className={cards.elevated}>
-              <h3 className="mb-3 text-xl font-semibold text-gray-900">Rezumat</h3>
+            <aside className={`${cards.elevated} space-y-5 lg:sticky lg:top-24`}>
+              <div>
+                <h3 className="text-xl font-semibold text-gray-900">Checkout standard</h3>
+                <p className="mt-2 text-sm leading-6 text-gray-600">
+                  Platesti doar produsele standard cu pret fix. Daca mesajul, decorul sau formatul
+                  schimba semnificativ executia, fluxul corect ramane constructorul sau cererea de
+                  oferta.
+                </p>
+              </div>
 
-              <div className="mb-4">
+              <div className="rounded-[22px] border border-rose-100 bg-[rgba(255,249,242,0.88)] px-4 py-4 text-sm leading-7 text-gray-700">
+                Preturile din acest checkout raman cele standard. Campurile de mai jos clarifica
+                livrarea si executia, dar nu schimba automat dimensiunea, portiile sau designul
+                produselor din cos.
+              </div>
+
+              <section className="space-y-3 border-t border-rose-100 pt-4">
+                <div className="text-xs font-semibold uppercase tracking-[0.18em] text-pink-500">
+                  1. Programare
+                </div>
                 <ProviderSelector
                   providers={providerState.providers}
                   value={prestatorId}
@@ -571,198 +609,289 @@ export default function Cart() {
                       : "Selecteaza prestatorul pentru care vrei sa vezi sloturile."
                   }
                 />
-              </div>
 
-              <label className="mb-2 block text-sm font-semibold text-gray-700">
-                Data livrare
-              </label>
-              <input
-                type="date"
-                min={minDate}
-                value={date}
-                onChange={(e) => {
-                  setDate(e.target.value);
-                  setTime("");
-                  setCheckoutStatus(buildStatus("", "", ""));
-                }}
-                className={`${inputs.default} mb-3`}
-                disabled={submitting}
-              />
-
-              <label className="mb-2 block text-sm font-semibold text-gray-700">
-                Ora livrare
-              </label>
-              <div className="mb-3">
-                {loadingSlots && (
-                  <div className="text-sm text-gray-500">
-                    Se incarca intervalele...
-                  </div>
-                )}
-                {!loadingSlots && slots && (
-                  <SlotPicker
-                    slots={slots}
-                    date={date}
-                    value={time}
-                    onChange={(value) => {
-                      setTime(value);
+                <div>
+                  <label className="mb-2 block text-sm font-semibold text-gray-700">
+                    Data predarii
+                  </label>
+                  <input
+                    type="date"
+                    min={minDate}
+                    value={date}
+                    onChange={(e) => {
+                      setDate(e.target.value);
+                      setTime("");
                       setCheckoutStatus(buildStatus("", "", ""));
                     }}
+                    className={inputs.default}
+                    disabled={submitting}
                   />
-                )}
-                {!loadingSlots && date && !slots && (
-                  <div className="text-sm text-amber-700">
-                    Nu am putut incarca intervalele pentru ziua selectata.
+                </div>
+
+                <div>
+                  <label className="mb-2 block text-sm font-semibold text-gray-700">
+                    Ora predarii
+                  </label>
+                  {loadingSlots && (
+                    <div className="text-sm text-gray-500">Se incarca intervalele...</div>
+                  )}
+                  {!loadingSlots && slots && (
+                    <SlotPicker
+                      slots={slots}
+                      date={date}
+                      value={time}
+                      onChange={(value) => {
+                        setTime(value);
+                        setCheckoutStatus(buildStatus("", "", ""));
+                      }}
+                    />
+                  )}
+                  {!loadingSlots && date && !slots && (
+                    <div className="text-sm text-amber-700">
+                      Nu am putut incarca intervalele pentru ziua selectata.
+                    </div>
+                  )}
+                  <div className="mt-3 text-xs text-gray-500">
+                    Timp minim de pregatire pentru cosul curent: {leadHours}h.
                   </div>
-                )}
-              </div>
-              <div className="mb-3 text-xs text-gray-500">
-                Timp minim de pregatire: {leadHours}h.
-              </div>
+                </div>
+              </section>
 
-              <label className="mb-2 block text-sm font-semibold text-gray-700">
-                Metoda predarii
-              </label>
-              <select
-                value={metodaLivrare}
-                onChange={(e) => setMetodaLivrare(e.target.value)}
-                className={`${inputs.default} mb-3`}
-                disabled={submitting}
-              >
-                <option value="ridicare">Ridicare de la patiserie</option>
-                <option value="livrare">Livrare (+100 MDL)</option>
-              </select>
+              <section className="space-y-3 border-t border-rose-100 pt-4">
+                <div className="text-xs font-semibold uppercase tracking-[0.18em] text-pink-500">
+                  2. Predare
+                </div>
+                <div>
+                  <label className="mb-2 block text-sm font-semibold text-gray-700">
+                    Metoda predarii
+                  </label>
+                  <select
+                    value={metodaLivrare}
+                    onChange={(e) => setMetodaLivrare(e.target.value)}
+                    className={inputs.default}
+                    disabled={submitting}
+                  >
+                    <option value="ridicare">Ridicare de la patiserie</option>
+                    <option value="livrare">Livrare (+100 MDL)</option>
+                  </select>
+                </div>
 
-              {metodaLivrare === "livrare" && (
-                <div className="mb-4 space-y-3">
-                  <div>
-                    <label className="mb-2 block text-sm font-semibold text-gray-700">
-                      Adresa livrare
-                    </label>
-                    {addressOptions.length > 0 && (
-                      <div className="mb-2 flex flex-wrap gap-2">
-                        <select
-                          value={addressMode}
-                          onChange={(e) => setAddressMode(e.target.value)}
-                          className={`${inputs.default} flex-1`}
-                          disabled={submitting}
-                        >
-                          <option value="saved">Adrese salvate</option>
-                          <option value="custom">Adresa noua</option>
-                        </select>
-                        {addressMode === "saved" && (
+                {metodaLivrare === "livrare" && (
+                  <div className="space-y-3">
+                    <div>
+                      <label className="mb-2 block text-sm font-semibold text-gray-700">
+                        Adresa livrare
+                      </label>
+                      {addressOptions.length > 0 && (
+                        <div className="mb-2 flex flex-wrap gap-2">
                           <select
-                            value={selectedAddressIdx}
-                            onChange={(e) => setSelectedAddressIdx(e.target.value)}
+                            value={addressMode}
+                            onChange={(e) => setAddressMode(e.target.value)}
                             className={`${inputs.default} flex-1`}
                             disabled={submitting}
                           >
-                            {addressOptions.map((opt, idx) => (
-                              <option key={`${opt.label}_${idx}`} value={String(idx)}>
-                                {opt.label}
-                              </option>
-                            ))}
+                            <option value="saved">Adrese salvate</option>
+                            <option value="custom">Adresa noua</option>
                           </select>
-                        )}
-                      </div>
-                    )}
-                    {addressMode === "saved" && selectedAddressIdx !== "" ? (
-                      <div className="rounded-lg border border-rose-100 bg-[rgba(255,249,242,0.88)] p-2 text-sm text-gray-600">
-                        {adresa || "Selecteaza o adresa salvata."}
-                      </div>
-                    ) : (
-                      <input
-                        className={inputs.default}
-                        placeholder="Adresa livrare"
-                        value={adresa}
-                        onChange={(e) => setAdresa(e.target.value)}
-                        disabled={submitting}
-                      />
-                    )}
-                  </div>
+                          {addressMode === "saved" && (
+                            <select
+                              value={selectedAddressIdx}
+                              onChange={(e) => setSelectedAddressIdx(e.target.value)}
+                              className={`${inputs.default} flex-1`}
+                              disabled={submitting}
+                            >
+                              {addressOptions.map((opt, idx) => (
+                                <option key={`${opt.label}_${idx}`} value={String(idx)}>
+                                  {opt.label}
+                                </option>
+                              ))}
+                            </select>
+                          )}
+                        </div>
+                      )}
+                      {addressMode === "saved" && selectedAddressIdx !== "" ? (
+                        <div className="rounded-lg border border-rose-100 bg-[rgba(255,249,242,0.88)] p-3 text-sm text-gray-600">
+                          {adresa || "Selecteaza o adresa salvata."}
+                        </div>
+                      ) : (
+                        <input
+                          className={inputs.default}
+                          placeholder="Adresa livrare"
+                          value={adresa}
+                          onChange={(e) => setAdresa(e.target.value)}
+                          disabled={submitting}
+                        />
+                      )}
+                    </div>
 
-                  <div>
-                    <label className="mb-2 block text-sm font-semibold text-gray-700">
-                      Fereastra livrare (optional)
-                    </label>
-                    <div className="grid grid-cols-2 gap-2">
-                      <input
-                        type="time"
-                        value={windowStart}
-                        onChange={(e) => setWindowStart(e.target.value)}
-                        className={inputs.default}
-                        disabled={submitting}
-                      />
-                      <input
-                        type="time"
-                        value={windowEnd}
-                        onChange={(e) => setWindowEnd(e.target.value)}
-                        className={inputs.default}
+                    <div>
+                      <label className="mb-2 block text-sm font-semibold text-gray-700">
+                        Fereastra livrare (optional)
+                      </label>
+                      <div className="grid grid-cols-2 gap-2">
+                        <input
+                          type="time"
+                          value={windowStart}
+                          onChange={(e) => setWindowStart(e.target.value)}
+                          className={inputs.default}
+                          disabled={submitting}
+                        />
+                        <input
+                          type="time"
+                          value={windowEnd}
+                          onChange={(e) => setWindowEnd(e.target.value)}
+                          className={inputs.default}
+                          disabled={submitting}
+                        />
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className="mb-2 block text-sm font-semibold text-gray-700">
+                        Instructiuni curier
+                      </label>
+                      <textarea
+                        className={`${inputs.default} min-h-[80px]`}
+                        placeholder="Etaj, interfon, indicatii speciale..."
+                        value={deliveryInstructions}
+                        onChange={(e) => setDeliveryInstructions(e.target.value)}
                         disabled={submitting}
                       />
                     </div>
                   </div>
-
-                  <div>
-                    <label className="mb-2 block text-sm font-semibold text-gray-700">
-                      Instructiuni curier
-                    </label>
-                    <textarea
-                      className={`${inputs.default} min-h-[80px]`}
-                      placeholder="Etaj, interfon, indicatii speciale..."
-                      value={deliveryInstructions}
-                      onChange={(e) => setDeliveryInstructions(e.target.value)}
-                      disabled={submitting}
-                    />
-                  </div>
-                </div>
-              )}
-
-              <label className="mb-2 block text-sm font-semibold text-gray-700">
-                Note comanda
-              </label>
-              <textarea
-                className={`${inputs.default} mb-4 min-h-[90px]`}
-                placeholder="Preferinte, alergii, mesaj pe tort..."
-                value={notes}
-                onChange={(e) => setNotes(e.target.value)}
-                disabled={submitting}
-              />
-
-              <label className="mb-2 block text-sm font-semibold text-gray-700">
-                Atasamente (optional)
-              </label>
-              <input
-                type="file"
-                multiple
-                accept=".jpg,.jpeg,.png,.webp,.gif,.pdf,.txt,.csv"
-                onChange={(e) => setAttachments(Array.from(e.target.files || []))}
-                className={`${inputs.default} mb-2`}
-                disabled={submitting}
-              />
-              {attachments.length > 0 && (
-                <div className="mb-3 text-xs text-gray-600">
-                  Fisiere: {attachments.map((file) => file.name).join(", ")}
-                </div>
-              )}
-
-              <div className="space-y-1 text-gray-700">
-                <div className="flex justify-between">
-                  <span>Subtotal</span>
-                  <span className="font-semibold">{subtotal.toFixed(2)} MDL</span>
-                </div>
-                {metodaLivrare === "livrare" && (
-                  <div className="flex justify-between">
-                    <span>Taxa livrare</span>
-                    <span className="font-semibold">{LIVRARE_FEE} MDL</span>
-                  </div>
                 )}
-                <div className="flex justify-between pt-1 text-lg">
-                  <span>Total</span>
-                  <span className="font-bold text-gray-900">{total.toFixed(2)} MDL</span>
-                </div>
-              </div>
+              </section>
 
-              <div className="mt-4 flex gap-2">
+              <section className="space-y-3 border-t border-rose-100 pt-4">
+                <div className="text-xs font-semibold uppercase tracking-[0.18em] text-pink-500">
+                  3. Observatii
+                </div>
+
+                <div>
+                  <label className="mb-2 block text-sm font-semibold text-gray-700">
+                    Mesaj pe tort (optional)
+                  </label>
+                  <input
+                    className={inputs.default}
+                    placeholder="Ex: La multi ani, Mara!"
+                    value={cakeMessage}
+                    onChange={(e) => setCakeMessage(e.target.value)}
+                    disabled={submitting}
+                  />
+                </div>
+
+                <div>
+                  <label className="mb-2 block text-sm font-semibold text-gray-700">
+                    Alergii sau restrictii (optional)
+                  </label>
+                  <textarea
+                    className={`${inputs.default} min-h-[80px]`}
+                    placeholder="Ex: fara alune, fara alcool, fara coloranti puternici..."
+                    value={dietaryNotes}
+                    onChange={(e) => setDietaryNotes(e.target.value)}
+                    disabled={submitting}
+                  />
+                </div>
+
+                <div>
+                  <label className="mb-2 block text-sm font-semibold text-gray-700">
+                    Observatii comanda (optional)
+                  </label>
+                  <textarea
+                    className={`${inputs.default} min-h-[90px]`}
+                    placeholder="Preferinte de ambalare, sunati inainte de livrare, mentiuni logistice..."
+                    value={orderNotes}
+                    onChange={(e) => setOrderNotes(e.target.value)}
+                    disabled={submitting}
+                  />
+                </div>
+
+                <div>
+                  <label className="mb-2 block text-sm font-semibold text-gray-700">
+                    Atasamente (optional)
+                  </label>
+                  <input
+                    type="file"
+                    multiple
+                    accept=".jpg,.jpeg,.png,.webp,.gif,.pdf,.txt,.csv"
+                    onChange={(e) => setAttachments(Array.from(e.target.files || []))}
+                    className={inputs.default}
+                    disabled={submitting}
+                  />
+                  {attachments.length > 0 && (
+                    <div className="mt-2 text-xs text-gray-600">
+                      Fisiere: {attachments.map((file) => file.name).join(", ")}
+                    </div>
+                  )}
+                </div>
+              </section>
+
+              <section className="space-y-3 border-t border-rose-100 pt-4">
+                <div className="text-xs font-semibold uppercase tracking-[0.18em] text-pink-500">
+                  4. Rezumat final
+                </div>
+                <div className="rounded-[22px] border border-rose-100 bg-[rgba(255,249,242,0.88)] p-4 text-sm text-gray-700">
+                  <div className="grid gap-3">
+                    <div className="flex items-start justify-between gap-3">
+                      <span className="text-gray-500">Prestator</span>
+                      <span className="text-right font-semibold text-gray-900">{activeProviderLabel}</span>
+                    </div>
+                    <div className="flex items-start justify-between gap-3">
+                      <span className="text-gray-500">Programare</span>
+                      <span className="text-right font-semibold text-gray-900">
+                        {date && time ? `${date} | ${time}` : "Selecteaza data si ora"}
+                      </span>
+                    </div>
+                    <div className="flex items-start justify-between gap-3">
+                      <span className="text-gray-500">Predare</span>
+                      <span className="text-right font-semibold text-gray-900">{deliveryMethodLabel}</span>
+                    </div>
+                    {metodaLivrare === "livrare" ? (
+                      <>
+                        <div className="flex items-start justify-between gap-3">
+                          <span className="text-gray-500">Adresa</span>
+                          <span className="text-right font-semibold text-gray-900">
+                            {adresa.trim() || "Completeaza adresa de livrare"}
+                          </span>
+                        </div>
+                        <div className="flex items-start justify-between gap-3">
+                          <span className="text-gray-500">Fereastra</span>
+                          <span className="text-right font-semibold text-gray-900">{deliveryWindowLabel}</span>
+                        </div>
+                      </>
+                    ) : null}
+                    <div className="flex items-start justify-between gap-3">
+                      <span className="text-gray-500">Observatii client</span>
+                      <span className="text-right font-semibold text-gray-900">
+                        {clientNote ? "Adaugate" : "Nu exista"}
+                      </span>
+                    </div>
+                    <div className="flex items-start justify-between gap-3">
+                      <span className="text-gray-500">Produse</span>
+                      <span className="text-right font-semibold text-gray-900">{items.length}</span>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="space-y-1 text-gray-700">
+                  <div className="flex justify-between">
+                    <span>Subtotal</span>
+                    <span className="font-semibold">{subtotal.toFixed(2)} MDL</span>
+                  </div>
+                  {metodaLivrare === "livrare" && (
+                    <div className="flex justify-between">
+                      <span>Taxa livrare</span>
+                      <span className="font-semibold">{LIVRARE_FEE} MDL</span>
+                    </div>
+                  )}
+                  <div className="flex justify-between pt-1 text-lg">
+                    <span>Total</span>
+                    <span className="font-bold text-gray-900">{total.toFixed(2)} MDL</span>
+                  </div>
+                </div>
+              </section>
+
+              <div className="flex gap-2">
                 <button
                   className={buttons.outline}
                   onClick={() => {
@@ -778,7 +907,7 @@ export default function Cart() {
                   onClick={checkout}
                   disabled={submitting || !prestatorId}
                 >
-                  {submitting ? "Se proceseaza..." : "Continua la plata"}
+                  {submitting ? "Se creeaza comanda..." : "Creeaza comanda si mergi la plata"}
                 </button>
               </div>
             </aside>
