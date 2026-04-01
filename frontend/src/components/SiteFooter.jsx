@@ -22,8 +22,8 @@ const FOOTER_COLUMNS = [
     title: "Servicii",
     links: [
       { to: "/calendar", label: "Rezervari si livrare" },
-      { to: "/cart", label: "Cos si checkout" },
-      { to: "/chat", label: "Chat cu patiserul" },
+      { to: "/cart", label: "Cos si plata" },
+      { to: "/chat", label: "Chat cu atelierul" },
     ],
   },
 ];
@@ -39,7 +39,7 @@ export default function SiteFooter() {
         <div className="space-y-5">
           <div className="eyebrow">Maison-Douce</div>
           <div>
-            <div className="font-script text-4xl text-pink-500">Patisserie parisienne</div>
+            <div className="font-script text-4xl text-pink-500">Atelier Maison-Douce</div>
             <h2 className="mt-2 max-w-xl font-serif text-4xl font-semibold text-ink">
               Torturi, deserturi si experiente create cu ritm editorial si gust artizanal.
             </h2>

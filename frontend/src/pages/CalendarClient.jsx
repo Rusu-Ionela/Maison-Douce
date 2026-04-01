@@ -343,7 +343,7 @@ export default function CalendarClient() {
   );
   const isCalendarLoading = availabilityQuery.isLoading || availabilityQuery.isFetching;
   const availabilityInfoMessage = !prestatorId
-    ? "Selecteaza un patiser pentru a vedea disponibilitatea."
+    ? "Selecteaza atelierul pentru a vedea disponibilitatea."
     : String(monthlyAvailability.message || "").trim();
 
   useEffect(() => {
@@ -464,7 +464,7 @@ export default function CalendarClient() {
         type: "error",
         message:
           providerState.error ||
-          "Alege un patiser valid inainte de a continua.",
+          "Alege un atelier valid inainte de a continua.",
       });
       return;
     }
@@ -545,7 +545,7 @@ export default function CalendarClient() {
               </h1>
               <p className="max-w-2xl text-base leading-7 text-gray-600">
                 Calendarul este pentru blocarea slotului de productie sau predare. Daca produsul
-                tau este deja in cos si are pret fix, checkout-ul standard ramane in cos. Pentru un
+                tau este deja in cos si are pret fix, plata standard ramane in cos. Pentru un
                 tort complet personalizat, fluxul principal este constructorul 2D. Pentru livrare,
                 taxa fixa este de {DELIVERY_FEE} MDL.
               </p>
@@ -584,10 +584,10 @@ export default function CalendarClient() {
 
         <StatusBanner
           type="error"
-          title="Prestator indisponibil"
+          title="Atelier indisponibil"
           message={
             !providerState.loading && !prestatorId
-              ? providerState.error || "Selecteaza un patiser pentru a vedea disponibilitatea."
+              ? providerState.error || "Selecteaza atelierul pentru a vedea disponibilitatea."
               : ""
           }
         />
@@ -618,7 +618,7 @@ export default function CalendarClient() {
               <div>
                 <h2 className="text-xl font-semibold text-gray-900">Disponibilitate</h2>
                 <p className="text-sm text-gray-600">
-                  Alege mai intai patiserul si apoi o zi evidentiata din calendar.
+                  Alege mai intai atelierul si apoi o zi evidentiata din calendar.
                 </p>
               </div>
               <div className="rounded-full border border-rose-200 bg-white px-3 py-1 text-xs font-semibold text-pink-700 shadow-soft">
@@ -638,11 +638,11 @@ export default function CalendarClient() {
               }}
               loading={providerState.loading}
               disabled={!providerState.canChooseProvider}
-              label="Patiser"
+              label="Atelier"
               helpText={
                 providerState.activeProvider
                   ? `Vezi acum calendarul pentru ${providerState.activeProvider.displayName}.`
-                  : "Selecteaza patiserul pentru care vrei sa faci programarea."
+                  : "Selecteaza atelierul pentru care vrei sa faci programarea."
               }
             />
 
@@ -745,7 +745,7 @@ export default function CalendarClient() {
                     <div className="mt-2 leading-6">
                       {prestatorId
                         ? "Dupa alegerea datei poti trece direct la intervalul orar."
-                        : "Selecteaza mai intai patiserul din coloana din stanga."}
+                        : "Selecteaza mai intai atelierul din coloana din stanga."}
                     </div>
                   </div>
                 </div>
@@ -977,7 +977,7 @@ export default function CalendarClient() {
                       </div>
                       <div className="mt-4 space-y-3">
                         <SummaryRow
-                          label="Patiser"
+                          label="Atelier"
                           value={providerState.activeProvider?.displayName || "Neselectat"}
                         />
                         <SummaryRow label="Data" value={formatLongDate(calendarDate)} />

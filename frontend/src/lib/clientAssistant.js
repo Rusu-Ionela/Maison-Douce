@@ -29,7 +29,7 @@ const INTENTS = [
           ? createRouteAction("Designurile mele", "/personalizari")
           : createRouteAction("Contact atelier", "/contact"),
         user
-          ? createRouteAction("Chat cu patiserul", "/chat")
+          ? createRouteAction("Chat cu atelierul", "/chat")
           : createRouteAction("Autentificare", "/login"),
       ],
     }),
@@ -47,7 +47,7 @@ const INTENTS = [
     ],
     buildResponse: () => ({
       text:
-        "Livrarea este 100 MDL, iar in calendar poti alege si ridicare personala. Calendarul este pentru rezervarea slotului de predare, nu pentru checkout-ul standard din cos.",
+        "Livrarea este 100 MDL, iar in calendar poti alege si ridicare personala. Calendarul este pentru rezervarea slotului de predare, nu pentru plata standard din cos.",
       actions: [
         createRouteAction("Rezervare si livrare", "/calendar"),
         createRouteAction("Vezi FAQ", "/faq"),
@@ -93,7 +93,7 @@ const INTENTS = [
     ],
     buildResponse: ({ user }) => ({
       text:
-        "Pentru rezervare mergi in /calendar, alegi prestatorul, data, ora si modul de predare. Dupa confirmare, rezervarea apare in profil, iar cand pretul este gata poti continua la plata.",
+        "Pentru rezervare mergi in /calendar, alegi atelierul, data, ora si modul de predare. Dupa confirmare, rezervarea apare in profil, iar cand pretul este gata poti continua la plata.",
       actions: [
         createRouteAction("Deschide calendarul", "/calendar"),
         user
@@ -120,7 +120,7 @@ const INTENTS = [
       actions: [
         createRouteAction("Pagina contact", "/contact"),
         user
-          ? createRouteAction("Chat cu patiserul", "/chat")
+          ? createRouteAction("Chat cu atelierul", "/chat")
           : createRouteAction("Intra in cont", "/login"),
         createHrefAction("Suna acum", CONTACT_PHONE_URI),
       ],

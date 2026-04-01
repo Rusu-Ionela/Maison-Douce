@@ -149,7 +149,7 @@ export default function VizualizarePersonalizari() {
                 Creeaza un design nou
               </Link>
               <Link to="/chat" className={buttons.outline}>
-                Scrie patiserului
+                Scrie atelierului
               </Link>
             </div>
           </div>
@@ -325,7 +325,7 @@ export default function VizualizarePersonalizari() {
                     Continua editarea
                   </button>
                   <Link className={buttons.outline} to={buildDesignChatLink(design)}>
-                    Discuta cu patiserul
+                    Discuta cu atelierul
                   </Link>
                   {design.imageUrl ? (
                     <a

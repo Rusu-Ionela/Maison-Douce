@@ -79,7 +79,7 @@ function MessageBubble({ message, currentUserId }) {
     >
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="text-sm font-semibold text-gray-900">
-          {ownMessage ? "Tu" : message?.utilizator || "Patiser"}
+          {ownMessage ? "Tu" : message?.utilizator || "Atelier"}
         </div>
         <div className="text-xs text-gray-500">
           {formatDateTime(message?.data || message?.at || message?.createdAt)}
@@ -329,7 +329,7 @@ export default function Chat() {
               Conversatie client
             </div>
             <h1 className="mt-3 font-serif text-3xl font-semibold text-gray-900">
-              Chat cu patiserul
+              Chat cu atelierul
             </h1>
             <p className="mt-3 text-base leading-7 text-gray-600">
               Foloseste acest canal pentru clarificari rapide despre comanda, fisiere
@@ -348,7 +348,7 @@ export default function Chat() {
                 helpText={
                   providerState.activeProvider
                     ? `Mesajele sunt trimise catre ${providerState.activeProvider.displayName}.`
-                    : "Selecteaza prestatorul cu care vrei sa discuti."
+                    : "Selecteaza atelierul cu care vrei sa discuti."
                 }
               />
             </div>
@@ -414,7 +414,7 @@ export default function Chat() {
         {!providerState.loading && !providerState.activeProviderId ? (
           <div className="rounded-[20px] border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-700">
             {providerState.error ||
-              "Nu exista un prestator selectat pentru aceasta conversatie."}
+              "Nu exista un atelier selectat pentru aceasta conversatie."}
           </div>
         ) : null}
       </section>
@@ -444,7 +444,7 @@ export default function Chat() {
             </div>
           ) : !roomId ? (
             <div className="flex h-full flex-col items-center justify-center rounded-[20px] border border-dashed border-rose-200 bg-white/80 px-6 text-center text-sm text-gray-500">
-              <div className="font-semibold text-gray-900">Alege prestatorul.</div>
+              <div className="font-semibold text-gray-900">Alege atelierul.</div>
               <div className="mt-2">
                 Dupa selectare, istoricul conversatiei va fi incarcat automat.
               </div>

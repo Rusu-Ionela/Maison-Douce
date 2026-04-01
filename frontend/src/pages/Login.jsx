@@ -47,13 +47,13 @@ export default function Login() {
         <section className={`${cards.tinted} overflow-hidden p-8 md:p-10`}>
           <div className="eyebrow">Maison-Douce</div>
           <div className="mt-5">
-            <div className="font-script text-4xl text-pink-500">Bienvenue</div>
+            <div className="font-script text-4xl text-pink-500">Bine ai revenit</div>
             <h1 className="mt-2 font-serif text-4xl font-semibold text-ink md:text-5xl">
               Intra in contul tau Maison-Douce
             </h1>
           </div>
           <p className="mt-5 max-w-xl text-base leading-8 text-[#655c53]">
-            Accesezi rapid calendarul, comenzile, platile, chatul cu patiserul si istoricul
+            Accesezi rapid calendarul, comenzile, platile, chatul cu atelierul si istoricul
             complet al experientei tale in atelier.
           </p>
           <div className="mt-8 grid gap-4 md:grid-cols-2">

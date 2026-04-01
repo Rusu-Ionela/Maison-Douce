@@ -6,7 +6,7 @@ export default function ProviderSelector({
   onChange,
   loading = false,
   disabled = false,
-  label = "Prestator",
+  label = "Atelier",
   helpText = "",
 }) {
   return (
@@ -22,7 +22,7 @@ export default function ProviderSelector({
         className={`mt-2 ${inputs.default}`}
       >
         <option value="">
-          {loading ? "Se incarca patiserii..." : "Selecteaza patiserul"}
+          {loading ? "Se incarca atelierele..." : "Selecteaza atelierul"}
         </option>
         {providers.map((provider) => (
           <option key={provider.id} value={provider.id}>

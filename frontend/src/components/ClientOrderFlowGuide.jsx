@@ -5,7 +5,7 @@ const FLOW_ITEMS = [
     id: "checkout",
     label: "Comanda standard",
     route: "/cart",
-    cta: "Cos si checkout",
+    cta: "Cos si plata",
     summary: "Pentru produse cu pret fix din catalog.",
     detail:
       "Alegi produsele publicate live, stabilesti data si ora, apoi continui direct la plata.",

@@ -22,7 +22,7 @@ export default function Constructor() {
         <header className={`${cards.tinted} overflow-hidden`}>
           <div className="grid gap-6 xl:grid-cols-[1.15fr_0.85fr]">
             <div className="space-y-4">
-              <div className="eyebrow">Tailor-made studio</div>
+              <div className="eyebrow">Atelier de comenzi speciale</div>
               <div>
                 <div className="font-script text-4xl text-pink-500">Maison-Douce atelier</div>
                 <h1 className="mt-2 font-serif text-4xl font-semibold text-ink md:text-5xl">
@@ -39,7 +39,7 @@ export default function Constructor() {
                   Ghid de personalizare
                 </Link>
                 <Link to="/chat" className={buttons.secondary}>
-                  Discutie cu patiserul
+                  Discuta cu atelierul
                 </Link>
               </div>
             </div>
