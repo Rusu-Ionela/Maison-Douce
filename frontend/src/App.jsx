@@ -23,7 +23,6 @@ const Home = lazyPage("./pages/Home.jsx");
 const Catalog = lazyPage("./pages/Catalog.jsx");
 const TortDetails = lazyPage("./pages/TortDetails.jsx");
 const Cart = lazyPage("./pages/Cart.jsx");
-const Personalizeaza = lazyPage("./pages/Personalizeaza.jsx");
 const Constructor = lazyPage("./pages/Constructor.jsx");
 const Contact = lazyPage("./pages/Contact.jsx");
 const Despre = lazyPage("./pages/Despre.jsx");
@@ -164,8 +163,8 @@ export default function App() {
           <Route path="/catalog" element={<Catalog />} />
           <Route path="/tort/:id" element={<TortDetails />} />
           <Route path="/cart" element={<Cart />} />
-          <Route path="/personalizeaza" element={<Personalizeaza />} />
-          <Route path="/personalizare" element={<Navigate to="/personalizeaza" replace />} />
+          <Route path="/personalizeaza" element={<Navigate to="/constructor" replace />} />
+          <Route path="/personalizare" element={<Navigate to="/constructor" replace />} />
           <Route path="/constructor" element={<Constructor />} />
           <Route path="/desen-tort" element={<Navigate to="/constructor" replace />} />
           <Route path="/designer-ai" element={<Navigate to="/constructor" replace />} />

@@ -6,8 +6,8 @@ const FOOTER_COLUMNS = [
     title: "Colectii",
     links: [
       { to: "/catalog", label: "Torturi de semnatura" },
-      { to: "/constructor", label: "Constructor 2D" },
-      { to: "/personalizeaza", label: "Ghid personalizare" },
+      { to: "/constructor", label: "Tort personalizat" },
+      { to: "/calendar", label: "Rezervare si livrare" },
     ],
   },
   {

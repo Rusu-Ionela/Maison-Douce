@@ -147,7 +147,7 @@ const INTENTS = [
             createRouteAction("Resetare parola", "/reset-parola"),
           ]
         : [
-            createRouteAction("Login", "/login"),
+            createRouteAction("Autentificare", "/login"),
             createRouteAction("Creeaza cont", "/register"),
             createRouteAction("Resetare parola", "/reset-parola"),
           ],

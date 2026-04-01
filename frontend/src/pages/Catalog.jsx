@@ -220,7 +220,7 @@ function CatalogCard({ item, onAddToCart }) {
             to={`/constructor?from=${item._id}`}
             className="inline-flex items-center justify-center gap-2 rounded-full border border-sage-deep/35 bg-sage/30 px-4 py-2.5 text-sm font-semibold text-[#475145] hover:border-sage-deep/45 hover:bg-sage/45"
           >
-            Personalizeaza
+            Configureaza in constructor
           </Link>
           {quoteOnly ? (
             <Link to="/calendar" className={buttons.primary}>

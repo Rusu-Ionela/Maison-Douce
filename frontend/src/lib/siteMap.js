@@ -41,7 +41,7 @@ export const SITE_SECTIONS = [
       { label: "Catalog", to: "/catalog" },
       { label: "Cos", to: "/cart" },
       { label: "Constructor", to: "/constructor" },
-      { label: "Ghid constructor", to: "/personalizeaza", hidden: true },
+      { label: "Ghid constructor", to: "/constructor", hidden: true },
       { label: "Detalii tort", to: "/catalog", matchPrefix: "/tort/", hidden: true },
       { label: "Retete", to: "/retete" },
       { label: "Abonament", to: "/abonament" },

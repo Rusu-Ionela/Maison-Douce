@@ -584,7 +584,7 @@ export default function TortDetails() {
                   </Link>
                 )}
                 <Link to={`/constructor?from=${storefrontTort._id}`} className={buttons.outline}>
-                  Personalizeaza
+                  Configureaza in constructor
                 </Link>
                 <Link
                   to={`/catalog?selectedTort=${encodeURIComponent(

@@ -35,8 +35,8 @@ export default function Constructor() {
                 trimiti cererea catre atelier pentru confirmarea finala a pretului.
               </p>
               <div className="flex flex-wrap gap-3">
-                <Link to="/personalizeaza" className={buttons.outline}>
-                  Ghid de personalizare
+                <Link to="/calendar" className={buttons.outline}>
+                  Rezervare si livrare
                 </Link>
                 <Link to="/chat" className={buttons.secondary}>
                   Discuta cu atelierul
