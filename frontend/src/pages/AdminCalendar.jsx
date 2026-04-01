@@ -37,6 +37,23 @@ function formatHandoffMethod(value) {
   return value === "delivery" ? "Livrare" : "Ridicare";
 }
 
+function getReservationAttentionFlags(item) {
+  const unpaid = String(item?.paymentStatus || "").toLowerCase() !== "paid";
+  const missingAddress =
+    item?.handoffMethod === "delivery" && !String(item?.deliveryAddress || "").trim();
+  const missingItems = !String(item?.itemsSummary || "").trim();
+  const missingContact =
+    !String(item?.clientPhone || "").trim() && !String(item?.clientEmail || "").trim();
+
+  return {
+    unpaid,
+    missingAddress,
+    missingItems,
+    missingContact,
+    needsAttention: unpaid || missingAddress || missingItems || missingContact,
+  };
+}
+
 export default function AdminCalendar() {
   const { user } = useAuth() || {};
   const [selectedDate, setSelectedDate] = useState(new Date());
@@ -74,6 +91,9 @@ export default function AdminCalendar() {
     if (viewFilter === "unpaid") {
       return sortedReservations.filter((item) => item?.paymentStatus !== "paid");
     }
+    if (viewFilter === "attention") {
+      return sortedReservations.filter((item) => getReservationAttentionFlags(item).needsAttention);
+    }
     return sortedReservations;
   }, [sortedReservations, viewFilter]);
 
@@ -82,6 +102,9 @@ export default function AdminCalendar() {
     const deliveryCount = reservations.filter((item) => item?.handoffMethod === "delivery").length;
     const pickupCount = totalEntries - deliveryCount;
     const unpaidCount = reservations.filter((item) => item?.paymentStatus !== "paid").length;
+    const attentionCount = reservations.filter(
+      (item) => getReservationAttentionFlags(item).needsAttention
+    ).length;
     const totalValue = reservations.reduce((sum, item) => sum + Number(item?.total || 0), 0);
     const nextHandoff = sortedReservations[0]?.startTime || sortedReservations[0]?.timeSlot || "";
 
@@ -90,6 +113,7 @@ export default function AdminCalendar() {
       deliveryCount,
       pickupCount,
       unpaidCount,
+      attentionCount,
       totalValue,
       nextHandoff,
     };
@@ -529,7 +553,7 @@ export default function AdminCalendar() {
                     pleaca prin livrare sau ridicare personala.
                   </p>
                 </div>
-                <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+                <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
                   <div className="rounded-[22px] border border-rose-100 bg-white px-4 py-3">
                     <div className="text-xs font-semibold uppercase tracking-[0.16em] text-pink-500">
                       Neplatite
@@ -554,6 +578,14 @@ export default function AdminCalendar() {
                       {visibleReservations.length}
                     </div>
                   </div>
+                  <div className="rounded-[22px] border border-amber-200 bg-amber-50/80 px-4 py-3">
+                    <div className="text-xs font-semibold uppercase tracking-[0.16em] text-amber-800">
+                      Cer atentie
+                    </div>
+                    <div className="mt-2 text-2xl font-semibold text-gray-900">
+                      {reservationMetrics.attentionCount}
+                    </div>
+                  </div>
                 </div>
               </div>
 
@@ -563,6 +595,7 @@ export default function AdminCalendar() {
                   ["delivery", "Doar livrari"],
                   ["pickup", "Doar ridicari"],
                   ["unpaid", "Doar neplatite"],
+                  ["attention", "Cer atentie"],
                 ].map(([value, label]) => (
                   <button
                     key={value}
