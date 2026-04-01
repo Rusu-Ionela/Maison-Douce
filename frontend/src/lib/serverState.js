@@ -80,6 +80,7 @@ export const queryKeys = {
     orderId,
     Number(totalFinal || 0),
   ],
+  clientCustomOrders: () => ["custom-orders", "client"],
   customOrderDetail: (customOrderId) => ["custom-orders", "detail", customOrderId],
   wallet: (userId) => ["wallet", userId],
   clientOrders: (userId) => ["orders", "client", userId],
@@ -115,6 +116,11 @@ export async function fetchOrderDetails(orderId) {
 export async function fetchCustomOrderDetail(customOrderId) {
   const { data } = await api.get(`/comenzi-personalizate/${customOrderId}`);
   return data;
+}
+
+export async function fetchClientCustomOrders() {
+  const { data } = await api.get("/comenzi-personalizate");
+  return asArray(data);
 }
 
 export async function fetchMySubscription() {
