@@ -83,6 +83,7 @@ export const SITE_SECTIONS = [
     fullWidth: true,
     items: [
       { label: "Panou", to: "/admin", roles: STAFF_ROLES },
+      { label: "Inbox unificat", to: "/admin/inbox", roles: STAFF_ROLES },
       { label: "Produse", to: "/admin/produse", roles: STAFF_ROLES },
       { label: "Torturi", to: "/admin/torturi", roles: STAFF_ROLES },
       { label: "Comenzi", to: "/admin/comenzi", roles: STAFF_ROLES },
@@ -137,6 +138,7 @@ export const TOP_NAV_LINKS = [
   { label: "Calendar", to: "/calendar" },
   { label: "Fidelizare", to: "/fidelizare", requiresAuth: true },
   { label: "Admin", to: "/admin", roles: STAFF_ROLES },
+  { label: "Inbox staff", to: "/admin/inbox", roles: STAFF_ROLES },
   { label: "Productie", to: "/admin/production", roles: STAFF_ROLES },
   { label: "Retete", to: "/admin/retete", roles: STAFF_ROLES },
   { label: "Stoc studio", to: "/admin/contabilitate", roles: STAFF_ROLES },
@@ -158,6 +160,10 @@ const CONTEXT_BRIDGES = [
   {
     matchPrefix: "/admin/production",
     targets: ["/admin/comenzi", "/admin/contabilitate", "/admin/umpluturi", "/admin/retete", "/admin/notificari"],
+  },
+  {
+    matchPrefix: "/admin/inbox",
+    targets: ["/admin/contact", "/admin/asistent-ai/intrebari", "/admin/notificari", "/admin/comenzi"],
   },
   {
     matchPrefix: "/admin/retete",

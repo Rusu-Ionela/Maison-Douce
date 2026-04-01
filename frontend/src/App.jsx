@@ -81,6 +81,7 @@ const AdminMonitoring = lazyPage("./pages/AdminMonitoring.jsx");
 const AdminAlbume = lazyPage("./pages/AdminAlbume.jsx");
 const AdminProduction = lazyPage("./pages/AdminProduction.jsx");
 const AdminContactMesaje = lazyPage("./pages/AdminContactMesaje.jsx");
+const AdminInbox = lazyPage("./pages/AdminInbox.jsx");
 const AdminAdaugaProdus = lazyPage("./pages/AdminAdaugaProdus.jsx");
 const AdminAddTort = lazyPage("./pages/AdminAddTort.jsx");
 const AdminEditProdus = lazyPage("./pages/AdminEditProdus.jsx");
@@ -322,6 +323,14 @@ export default function App() {
             element={
               <RequireStaff>
                 <Navigate to="/admin/torturi" replace />
+              </RequireStaff>
+            }
+          />
+          <Route
+            path="/admin/inbox"
+            element={
+              <RequireStaff>
+                <AdminInbox />
               </RequireStaff>
             }
           />
