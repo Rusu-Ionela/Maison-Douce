@@ -601,6 +601,63 @@ router.patch("/:id/status", authRequired, roleCheck("admin", "patiser"), async (
       });
     }
     await doc.save();
+
+    if (normalizedStatus === "aprobata") {
+      await notifyUser(doc.clientId, {
+        titlu: "Oferta personalizata este pregatita",
+        mesaj:
+          Number(doc.pretEstimat || 0) > 0
+            ? `Atelierul a pregatit oferta finala pentru cererea ta. Pretul actual este ${Number(
+                doc.pretEstimat || 0
+              )} MDL.`
+            : "Atelierul a pregatit oferta finala pentru cererea ta si asteapta confirmarea ta.",
+        tip: "info",
+        link: `/personalizari/oferta/${doc._id}`,
+        prestatorId: doc.prestatorId,
+        actorId: req.user?._id || req.user?.id,
+        actorRole: String(req.user?.rol || req.user?.role || ""),
+        meta: {
+          customOrderId: String(doc._id),
+          status: normalizedStatus,
+        },
+      });
+    }
+
+    if (resetsClientApproval) {
+      await notifyUser(doc.clientId, {
+        titlu: "Oferta personalizata a fost actualizata",
+        mesaj:
+          "Atelierul a modificat oferta dupa aprobarea initiala. Revizuieste din nou pretul si detaliile inainte de confirmare.",
+        tip: "warning",
+        link: `/personalizari/oferta/${doc._id}`,
+        prestatorId: doc.prestatorId,
+        actorId: req.user?._id || req.user?.id,
+        actorRole: String(req.user?.rol || req.user?.role || ""),
+        meta: {
+          customOrderId: String(doc._id),
+          status: normalizedStatus || doc.status,
+        },
+      });
+    }
+
+    if (normalizedStatus === "respinsa") {
+      await notifyUser(doc.clientId, {
+        titlu: "Cererea personalizata a fost oprita",
+        mesaj:
+          normalizedNote ||
+          "Atelierul nu poate continua aceasta varianta. Deschide cererea pentru detaliile complete.",
+        tip: "warning",
+        link: `/personalizari/oferta/${doc._id}`,
+        prestatorId: doc.prestatorId,
+        actorId: req.user?._id || req.user?.id,
+        actorRole: String(req.user?.rol || req.user?.role || ""),
+        meta: {
+          customOrderId: String(doc._id),
+          status: normalizedStatus,
+        },
+      });
+    }
+
     res.json(doc);
   } catch (err) {
     console.error("Eroare la actualizarea comenzii:", err);

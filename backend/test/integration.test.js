@@ -2365,6 +2365,18 @@ test("backend integration flows", async (t) => {
       assert.equal(ownerDetail.data?.clientCanApprove, true);
       assert.equal(ownerDetail.data?.clientCanPay, false);
 
+      const clientNotifications = await harness.request("/notificari/me", {
+        token: client.token,
+      });
+      assert.equal(clientNotifications.status, 200);
+      assert.ok(
+        clientNotifications.data?.some(
+          (item) =>
+            item?.titlu === "Oferta personalizata a fost actualizata" &&
+            item?.link === `/personalizari/oferta/${customOrderId}`
+        )
+      );
+
       const blockedConversion = await harness.request(`/comenzi-personalizate/${customOrderId}/convert`, {
         method: "POST",
         token: staff.token,
