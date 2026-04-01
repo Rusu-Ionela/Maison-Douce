@@ -123,6 +123,11 @@ export async function fetchClientCustomOrders() {
   return asArray(data);
 }
 
+export async function approveCustomOrderOffer(customOrderId, payload = {}) {
+  const { data } = await api.post(`/comenzi-personalizate/${customOrderId}/approve`, payload);
+  return data;
+}
+
 export async function fetchMySubscription() {
   const { data } = await api.get("/cutie-lunara/me");
   return data?.abonament || null;
