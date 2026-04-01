@@ -37,6 +37,8 @@ describe("storefrontCatalog", () => {
         checkoutReady: true,
         requiresManualQuote: false,
         pret: 980,
+        commercialTypeLabel: "Produs cu pret fix",
+        leadTimeLabel: "Comanda cu minim 34h inainte.",
       })
     );
   });

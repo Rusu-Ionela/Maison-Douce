@@ -685,6 +685,52 @@ function buildSearchText(item, preset, occasions, tags, ingredients) {
   );
 }
 
+function formatLeadTimeLabel(hours = 0) {
+  const numericHours = Math.max(24, Number(hours || 0));
+  if (numericHours >= 72) {
+    return `Comanda cu minim ${Math.ceil(numericHours / 24)} zile inainte.`;
+  }
+  return `Comanda cu minim ${numericHours}h inainte.`;
+}
+
+function deriveStorageSummary({ ingredients = [], prepHours = 24, levels = 1 }) {
+  const profile = normalizeStorefrontText(ingredients.join(" "));
+  const softenWindow = prepHours >= 48 || levels > 1 ? "30-40" : "20-30";
+
+  if (
+    profile.includes("mascarpone") ||
+    profile.includes("frisca") ||
+    profile.includes("smantana") ||
+    profile.includes("mousse")
+  ) {
+    return `Pastreaza la 2-6C si scoate tortul cu ${softenWindow} minute inainte de servire pentru o textura mai buna.`;
+  }
+
+  if (profile.includes("ciocol") || profile.includes("ganache") || profile.includes("caramel")) {
+    return `Pastreaza la rece, ferit de caldura directa, si lasa tortul ${softenWindow} minute la temperatura camerei inainte de servire.`;
+  }
+
+  return `Pastreaza la rece si scoate tortul cu ${softenWindow} minute inainte de servire.`;
+}
+
+function getCommercialTypeLabel(pricingMode) {
+  if (pricingMode === "preview") return "Model de inspiratie";
+  if (pricingMode === "quote") return "Produs cu confirmare manuala";
+  return "Produs cu pret fix";
+}
+
+function getCustomizationSummary(pricingMode) {
+  if (pricingMode === "fixed") {
+    return "Pretul afisat acopera varianta standard a produsului. Pentru alta marime, mai multe portii, etaje suplimentare sau decor personalizat, foloseste constructorul 2D.";
+  }
+
+  if (pricingMode === "quote") {
+    return "Acest produs necesita confirmare manuala de pret si disponibilitate. Pentru modificari importante sau cerinte speciale, trimite cererea de oferta sau porneste din constructor.";
+  }
+
+  return "Modelul este afisat ca inspiratie vizuala. Il poti folosi pentru comparatie, pentru constructor sau pentru o cerere personalizata catre atelier.";
+}
+
 function buildVirtualCake(preset, index) {
   return {
     __catalogFallback: true,
@@ -741,6 +787,29 @@ export function getStorefrontCake(item, index = 0) {
   const prepHours =
     Number(item?.timpPreparareOre || 0) > 0 ? Number(item.timpPreparareOre) : preset.prepHours;
   const portii = Number(item?.portii || 0) > 0 ? Number(item.portii) : preset.portii;
+  const marime = hasUsefulText(item?.marime, 3) ? String(item.marime).trim() : preset.marime;
+  const arome = Array.isArray(item?.arome) && item.arome.length ? item.arome : preset.aromas;
+  const alergeni =
+    Array.isArray(item?.alergeniFolositi) && item.alergeniFolositi.length
+      ? item.alergeniFolositi
+      : preset.allergens;
+  const niveluri = Number(item?.niveluri || 0) > 0 ? Number(item.niveluri) : preset.levels;
+  const commercialTypeLabel = getCommercialTypeLabel(pricingMode);
+  const leadTimeLabel = formatLeadTimeLabel(prepHours);
+  const deliverySummary =
+    pricingMode === "fixed"
+      ? "Ridicare gratuita din atelier sau livrare la domiciliu pentru 100 MDL, cu programare din calendarul de checkout."
+      : "Data, ora si metoda de predare se confirma manual inainte de executie si plata finala.";
+  const storageSummary = deriveStorageSummary({
+    ingredients,
+    prepHours,
+    levels: niveluri,
+  });
+  const servingSummary =
+    portii > 0
+      ? `Formatul standard este gandit pentru aproximativ ${portii} portii.`
+      : "Formatul standard este stabilit in functie de compozitie.";
+  const customizationSummary = getCustomizationSummary(pricingMode);
   const badge =
     ratingAvg > 0 || ratingCount > 0
       ? null
@@ -788,16 +857,12 @@ export function getStorefrontCake(item, index = 0) {
     prepLabel: prepHours >= 48 ? `pregătit în ${prepHours}h` : `gata în ${prepHours}h`,
     servingLabel: portii > 0 ? `${portii} porții` : preset.servingLabel,
     portii,
-    marime: hasUsefulText(item?.marime, 3) ? String(item.marime).trim() : preset.marime,
-    arome:
-      Array.isArray(item?.arome) && item.arome.length ? item.arome : preset.aromas,
+    marime,
+    arome,
     ingrediente: ingredients,
-    alergeniFolositi:
-      Array.isArray(item?.alergeniFolositi) && item.alergeniFolositi.length
-        ? item.alergeniFolositi
-        : preset.allergens,
+    alergeniFolositi: alergeni,
     stil: hasUsefulText(item?.stil, 3) ? String(item.stil).trim() : preset.style,
-    niveluri: Number(item?.niveluri || 0) > 0 ? Number(item.niveluri) : preset.levels,
+    niveluri,
     categoryLabel: preset.categoryLabel,
     collectionNote: preset.collectionNote,
     featuredRank: preset.featuredRank,
@@ -805,7 +870,17 @@ export function getStorefrontCake(item, index = 0) {
     pricingMode,
     checkoutReady: pricingMode === "fixed",
     requiresManualQuote: pricingMode !== "fixed",
-    };
+    commercialTypeLabel,
+    leadTimeLabel,
+    deliverySummary,
+    storageSummary,
+    servingSummary,
+    customizationSummary,
+    checkoutSummary:
+      pricingMode === "fixed"
+        ? "Produsul intra direct in checkout doar in varianta standard afisata pe aceasta pagina."
+        : "Fluxul continua prin cerere de oferta sau confirmare manuala, nu direct prin plata standard.",
+  };
 
   storefrontCake.searchText = buildSearchText(
     storefrontCake,

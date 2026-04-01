@@ -80,9 +80,6 @@ export default function TortDetails() {
   const [tort, setTort] = useState(null);
   const [loading, setLoading] = useState(true);
   const [qty, setQty] = useState(1);
-  const [aroma, setAroma] = useState("");
-  const [marime, setMarime] = useState("");
-  const [portii, setPortii] = useState("");
   const [selectedImage, setSelectedImage] = useState("");
   const [reviews, setReviews] = useState([]);
   const [reviewForm, setReviewForm] = useState({ stele: 5, comentariu: "" });
@@ -98,17 +95,11 @@ export default function TortDetails() {
       .then((data) => {
         if (!alive) return;
         setTort(data);
-        setAroma((data?.arome && data.arome[0]) || "");
-        setMarime(data?.marime || "");
-        setPortii(data?.portii ? String(data.portii) : "");
       })
       .catch(() => {
         if (!alive) return;
         const fallbackCake = getStorefrontFallbackCakeById(id);
         setTort(fallbackCake);
-        setAroma((fallbackCake?.arome && fallbackCake.arome[0]) || "");
-        setMarime(fallbackCake?.marime || "");
-        setPortii(fallbackCake?.portii ? String(fallbackCake.portii) : "");
       })
       .finally(() => {
         if (alive) setLoading(false);
@@ -166,16 +157,12 @@ export default function TortDetails() {
 
   const addToCart = () => {
     if (!storefrontTort || Number(storefrontTort.pret || 0) <= 0) return;
-    const options = { aroma, marime, portii };
-    const variantKey = JSON.stringify(options || {});
     add({
       id: storefrontTort._id,
       name: storefrontTort.nume,
       price: storefrontTort.pret || 0,
       image: storefrontTort.imagine,
       qty,
-      options,
-      variantKey,
       prepHours: storefrontTort.timpPreparareOre || 24,
       sourceType: storefrontTort.sourceType,
       requiresQuote: storefrontTort.requiresManualQuote === true,
@@ -355,7 +342,9 @@ export default function TortDetails() {
                 </div>
                 <div className="rounded-[24px] border border-rose-100 bg-[rgba(255,249,242,0.9)] p-4">
                   <div className="text-xs uppercase tracking-[0.2em] text-pink-600">Portii</div>
-                  <div className="mt-2 text-2xl font-semibold text-ink">{portii || storefrontTort.portii || "-"}</div>
+                  <div className="mt-2 text-2xl font-semibold text-ink">
+                    {storefrontTort.servingLabel || storefrontTort.portii || "-"}
+                  </div>
                 </div>
               </div>
 
@@ -386,48 +375,50 @@ export default function TortDetails() {
                 </div>
               </div>
 
+              <div className="rounded-[26px] border border-rose-100 bg-white/90 p-5 shadow-soft">
+                <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-pink-600">
+                  Configuratie comerciala
+                </div>
+                <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                  <div className="rounded-[20px] border border-rose-100 bg-[rgba(255,249,242,0.82)] p-4">
+                    <div className="text-xs uppercase tracking-[0.18em] text-pink-600">
+                      Tip produs
+                    </div>
+                    <div className="mt-2 text-sm font-semibold text-ink">
+                      {storefrontTort.commercialTypeLabel}
+                    </div>
+                    <div className="mt-2 text-sm leading-6 text-[#655c53]">
+                      {storefrontTort.checkoutSummary}
+                    </div>
+                  </div>
+                  <div className="rounded-[20px] border border-rose-100 bg-[rgba(255,249,242,0.82)] p-4">
+                    <div className="text-xs uppercase tracking-[0.18em] text-pink-600">
+                      Format standard
+                    </div>
+                    <div className="mt-2 text-sm font-semibold text-ink">
+                      {storefrontTort.marime || storefrontTort.servingLabel || "Format stabilit de atelier"}
+                    </div>
+                    <div className="mt-2 text-sm leading-6 text-[#655c53]">
+                      {storefrontTort.servingSummary}
+                    </div>
+                  </div>
+                  <div className="rounded-[20px] border border-rose-100 bg-[rgba(255,249,242,0.82)] p-4 sm:col-span-2">
+                    <div className="text-xs uppercase tracking-[0.18em] text-pink-600">
+                      Arome disponibile
+                    </div>
+                    <div className="mt-2 text-sm font-semibold text-ink">
+                      {Array.isArray(storefrontTort.arome) && storefrontTort.arome.length > 0
+                        ? storefrontTort.arome.join(", ")
+                        : storefrontTort.shortFlavor}
+                    </div>
+                    <div className="mt-2 text-sm leading-6 text-[#655c53]">
+                      {storefrontTort.customizationSummary}
+                    </div>
+                  </div>
+                </div>
+              </div>
+
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                <label className="text-sm font-semibold text-[#4f463e]">
-                  Aroma
-                  <select
-                    value={aroma}
-                    onChange={(event) => setAroma(event.target.value)}
-                    className={`mt-2 ${inputs.default}`}
-                  >
-                    {Array.isArray(storefrontTort.arome) && storefrontTort.arome.length > 0 ? (
-                      storefrontTort.arome.map((item) => (
-                        <option key={item} value={item}>
-                          {item}
-                        </option>
-                      ))
-                    ) : (
-                      <option value="">Standard</option>
-                    )}
-                  </select>
-                </label>
-
-                <label className="text-sm font-semibold text-[#4f463e]">
-                  Marime
-                  <input
-                    value={marime}
-                    onChange={(event) => setMarime(event.target.value)}
-                    placeholder="ex: 18 cm / 1.8 kg"
-                    className={`mt-2 ${inputs.default}`}
-                  />
-                </label>
-
-                <label className="text-sm font-semibold text-[#4f463e]">
-                  Portii
-                  <input
-                    type="number"
-                    min="1"
-                    value={portii}
-                    onChange={(event) => setPortii(event.target.value)}
-                    placeholder="ex: 12"
-                    className={`mt-2 ${inputs.default}`}
-                  />
-                </label>
-
                 <label className="text-sm font-semibold text-[#4f463e]">
                   Cantitate
                   <input
@@ -438,6 +429,11 @@ export default function TortDetails() {
                     className={`mt-2 ${inputs.default}`}
                   />
                 </label>
+                <div className="rounded-[24px] border border-rose-100 bg-[rgba(255,249,242,0.88)] px-4 py-4 text-sm leading-7 text-[#655c53]">
+                  Mesajul de pe tort, alergiile sau observatiile speciale se adauga in checkout,
+                  in campul de note. Pentru alta marime, etaje suplimentare sau decor custom,
+                  continua din constructorul 2D.
+                </div>
               </div>
 
               <div className="flex flex-wrap gap-3">
@@ -494,11 +490,35 @@ export default function TortDetails() {
                 ? storefrontTort.ingrediente.join(", ")
                 : "Ingrediente disponibile la cerere, in functie de varianta selectata si personalizare."}
             </SectionPanel>
+            <SectionPanel title="Alergeni" defaultOpen={false}>
+              {Array.isArray(storefrontTort.alergeniFolositi) && storefrontTort.alergeniFolositi.length > 0 ? (
+                <div className="flex flex-wrap gap-2">
+                  {storefrontTort.alergeniFolositi.map((item) => (
+                    <span
+                      key={`${storefrontTort._id}-alergen-${item}`}
+                      className="rounded-full border border-rose-100 bg-rose-50 px-3 py-1 text-xs font-semibold uppercase tracking-[0.12em] text-pink-700"
+                    >
+                      {item}
+                    </span>
+                  ))}
+                </div>
+              ) : (
+                "Informatiile despre alergeni se confirma la plasarea comenzii."
+              )}
+            </SectionPanel>
+            <SectionPanel title="Format si comanda standard" defaultOpen={false}>
+              <div>Tip produs: {storefrontTort.commercialTypeLabel}</div>
+              <div className="mt-2">Format standard: {storefrontTort.marime || "stabilit de atelier"}</div>
+              <div className="mt-2">Portionare: {storefrontTort.servingSummary}</div>
+              <div className="mt-2">Timp minim: {storefrontTort.leadTimeLabel}</div>
+              <div className="mt-2">{storefrontTort.checkoutSummary}</div>
+            </SectionPanel>
             <SectionPanel title="Pastrare si servire" defaultOpen={false}>
-              Recomandam pastrarea la rece si scoaterea tortului cu 20-30 de minute inainte de servire, pentru o textura optima a cremei si a inserturilor.
+              {storefrontTort.storageSummary}
             </SectionPanel>
             <SectionPanel title="Livrare si ridicare" defaultOpen={false}>
-              Programarea se face din calendar, iar echipa confirma slotul final, metoda de predare si orice detalii suplimentare legate de transport.
+              <div>{storefrontTort.deliverySummary}</div>
+              <div className="mt-2">{storefrontTort.leadTimeLabel}</div>
             </SectionPanel>
           </div>
 
