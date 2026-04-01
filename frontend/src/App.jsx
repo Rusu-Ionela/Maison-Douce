@@ -36,6 +36,7 @@ const VizualizareAlbume = lazyPage("./pages/VizualizareAlbume.jsx");
 const PartajareFisiere = lazyPage("./pages/PartajareFisiere.jsx");
 const VizualizarePartajare = lazyPage("./pages/VizualizarePartajare.jsx");
 const VizualizarePersonalizari = lazyPage("./pages/VizualizarePersonalizari.jsx");
+const OfertaPersonalizata = lazyPage("./pages/OfertaPersonalizata.jsx");
 const ComandaClient = lazyPage("./pages/ComandaClient.jsx");
 const RecenziiPrestator = lazyPage("./pages/RecenziiPrestator.jsx");
 const RecenzieComanda = lazyPage("./pages/RecenzieComanda.jsx");
@@ -225,6 +226,14 @@ export default function App() {
             element={
               <RequireAuth>
                 <VizualizarePersonalizari />
+              </RequireAuth>
+            }
+          />
+          <Route
+            path="/personalizari/oferta/:id"
+            element={
+              <RequireAuth>
+                <OfertaPersonalizata />
               </RequireAuth>
             }
           />
