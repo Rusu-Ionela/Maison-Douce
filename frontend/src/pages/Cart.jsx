@@ -127,7 +127,13 @@ export default function Cart() {
       .filter((item) => !existingIds.has(String(item?._id || "")))
       .slice(0, 3);
   }, [items, upsells]);
-
+  const activeProviderLabel =
+    providerState.activeProvider?.displayName ||
+    (providerState.loading
+      ? "Se incarca..."
+      : providerState.hasMultipleProviders
+        ? "Selecteaza atelierul"
+        : "Atelier indisponibil");
   useEffect(() => {
     if (!date || !prestatorId) {
       setSlots(null);
@@ -182,7 +188,7 @@ export default function Cart() {
     return formatDateInput(now);
   }, [leadHours]);
 
-  const slotIsValid = () => {
+  const slotReady = useMemo(() => {
     if (!date || !time) return false;
     const [h, m] = time.split(":").map(Number);
     const dt = parseDateInput(date, {
@@ -193,7 +199,53 @@ export default function Cart() {
     const min = new Date();
     min.setHours(min.getHours() + leadHours);
     return dt >= min;
-  };
+  }, [date, leadHours, time]);
+  const readinessChecks = useMemo(
+    () => [
+      {
+        id: "provider",
+        label: "Atelier selectat",
+        ready: Boolean(prestatorId),
+        hint: prestatorId ? activeProviderLabel : "Alege atelierul pentru care vrei slotul.",
+      },
+      {
+        id: "slot",
+        label: "Data si ora selectate",
+        ready: Boolean(date && time && slotReady),
+        hint:
+          date && time
+            ? `${date} | ${time}`
+            : "Alege mai intai data si ora predarii.",
+      },
+      {
+        id: "flow",
+        label: "Cos doar cu produse standard",
+        ready: !hasQuoteOnlyItems,
+        hint: hasQuoteOnlyItems
+          ? "Exista produse care trebuie mutate pe cerere de oferta."
+          : "Toate produsele pot merge in checkout-ul standard.",
+      },
+      {
+        id: "delivery",
+        label: metodaLivrare === "livrare" ? "Adresa de livrare" : "Metoda de predare",
+        ready: metodaLivrare !== "livrare" || Boolean(adresa.trim()),
+        hint:
+          metodaLivrare === "livrare"
+            ? adresa.trim() || "Completeaza adresa de livrare."
+            : "Ridicare din atelier confirmata.",
+      },
+    ],
+    [
+      activeProviderLabel,
+      adresa,
+      date,
+      hasQuoteOnlyItems,
+      metodaLivrare,
+      prestatorId,
+      slotReady,
+      time,
+    ]
+  );
 
   const buildDeliveryWindow = () => {
     if (!windowStart && !windowEnd) return "";
@@ -286,7 +338,7 @@ export default function Cart() {
       );
       return false;
     }
-    if (!slotIsValid()) {
+    if (!slotReady) {
       setCheckoutStatus(
         buildStatus("warning", `Alege un slot cu minim ${leadHours}h inainte.`)
       );
@@ -391,14 +443,6 @@ export default function Cart() {
   const deliveryWindowLabel = buildDeliveryWindow() || "Fara interval suplimentar";
   const deliveryMethodLabel =
     metodaLivrare === "livrare" ? "Livrare la domiciliu" : "Ridicare din atelier";
-  const activeProviderLabel =
-    providerState.activeProvider?.displayName ||
-    (providerState.loading
-      ? "Se incarca..."
-      : providerState.hasMultipleProviders
-        ? "Selecteaza atelierul"
-        : "Atelier indisponibil");
-
   return (
     <div className="min-h-screen">
       <div className={`${containers.pageMax} space-y-6`}>
@@ -836,6 +880,29 @@ export default function Cart() {
               <section className="space-y-3 border-t border-rose-100 pt-4">
                 <div className="text-xs font-semibold uppercase tracking-[0.18em] text-pink-500">
                   4. Rezumat final
+                </div>
+                <div className="rounded-[22px] border border-rose-100 bg-white/90 p-4">
+                  <div className="text-sm font-semibold text-gray-900">Stare checkout</div>
+                  <div className="mt-3 space-y-2">
+                    {readinessChecks.map((item) => (
+                      <div
+                        key={item.id}
+                        className={`rounded-[18px] border px-3 py-3 text-sm ${
+                          item.ready
+                            ? "border-emerald-200 bg-emerald-50/70 text-emerald-900"
+                            : "border-amber-200 bg-amber-50/80 text-amber-900"
+                        }`}
+                      >
+                        <div className="flex items-start justify-between gap-3">
+                          <span className="font-semibold">{item.label}</span>
+                          <span className="text-xs font-semibold uppercase tracking-[0.14em]">
+                            {item.ready ? "gata" : "lipseste"}
+                          </span>
+                        </div>
+                        <div className="mt-2 leading-6">{item.hint}</div>
+                      </div>
+                    ))}
+                  </div>
                 </div>
                 <div className="rounded-[22px] border border-rose-100 bg-[rgba(255,249,242,0.88)] p-4 text-sm text-gray-700">
                   <div className="grid gap-3">
