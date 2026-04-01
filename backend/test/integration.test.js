@@ -352,6 +352,22 @@ test("backend integration flows", async (t) => {
     });
   }
 
+  async function markOrderDelivered(orderId, staffToken) {
+    await Comanda.findByIdAndUpdate(orderId, {
+      paymentStatus: "paid",
+      statusPlata: "paid",
+    });
+
+    return harness.request(`/comenzi/${orderId}/status`, {
+      method: "PATCH",
+      token: staffToken,
+      body: {
+        status: "livrata",
+        note: "Eligibila pentru recenzie in test.",
+      },
+    });
+  }
+
   async function seedUser(role = "admin") {
     const email = uniqueEmail(role);
     const password = "Secret123!";
@@ -885,6 +901,56 @@ test("backend integration flows", async (t) => {
       const tortId = tortResponse.data?._id;
       assert.ok(tortId);
 
+      const draftOrderResponse = await createOrder(client.token, {
+        items: [
+          {
+            productId: tortId,
+            name: "Tort integrare continut",
+            qty: 1,
+            price: 180,
+          },
+        ],
+        prestatorId: patiser.user?._id,
+        status: "in_asteptare",
+        statusPlata: "unpaid",
+        paymentStatus: "unpaid",
+        handoffStatus: "scheduled",
+      });
+      assert.equal(draftOrderResponse.status, 201);
+
+      const blockedProductReview = await harness.request("/recenzii/produs", {
+        method: "POST",
+        token: client.token,
+        body: {
+          tortId,
+          stele: 5,
+          comentariu: "Ar trebui blocata pana la finalizarea comenzii.",
+        },
+      });
+      assert.equal(blockedProductReview.status, 409);
+
+      const blockedOrderReview = await harness.request("/recenzii/comanda", {
+        method: "POST",
+        token: client.token,
+        body: {
+          comandaId: draftOrderResponse.data?._id,
+          nota: 5,
+          comentariu: "Ar trebui blocata pana la livrare.",
+        },
+      });
+      assert.equal(blockedOrderReview.status, 409);
+
+      const blockedProviderReview = await harness.request("/recenzii/prestator", {
+        method: "POST",
+        token: client.token,
+        body: {
+          prestatorId: patiser.user?._id,
+          stele: 5,
+          comentariu: "Ar trebui blocata pana la finalizarea experientei.",
+        },
+      });
+      assert.equal(blockedProviderReview.status, 409);
+
       const orderResponse = await createOrder(client.token, {
         items: [
           {
@@ -894,10 +960,14 @@ test("backend integration flows", async (t) => {
             price: 180,
           },
         ],
+        prestatorId: patiser.user?._id,
       });
       assert.equal(orderResponse.status, 201);
       const comandaId = orderResponse.data?._id;
       assert.ok(comandaId);
+
+      const deliveredOrder = await markOrderDelivered(comandaId, patiser.token);
+      assert.equal(deliveredOrder.status, 200);
 
       const contactCreate = await harness.request("/contact", {
         method: "POST",
@@ -1230,6 +1300,25 @@ test("backend integration flows", async (t) => {
       assert.equal(tortResponse.status, 201);
       const tortId = tortResponse.data?._id;
       assert.ok(tortId);
+
+      const completedOrder = await createOrder(client.token, {
+        items: [
+          {
+            productId: tortId,
+            name: "Tort moderare recenzii",
+            qty: 1,
+            price: 190,
+          },
+        ],
+        prestatorId: patiser.user?._id,
+      });
+      assert.equal(completedOrder.status, 201);
+
+      const deliveredCompletedOrder = await markOrderDelivered(
+        completedOrder.data?._id,
+        patiser.token
+      );
+      assert.equal(deliveredCompletedOrder.status, 200);
 
       const createdReview = await harness.request("/recenzii/produs", {
         method: "POST",

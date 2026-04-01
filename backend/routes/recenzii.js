@@ -14,6 +14,7 @@ const { recordAuditLog } = require("../utils/audit");
 const Recenzie = require("../models/Recenzie");
 const RecenzieComanda = require("../models/RecenzieComanda");
 const RecenziePrestator = require("../models/RecenziePrestator");
+const Comanda = require("../models/Comanda");
 const Tort = require("../models/Tort");
 
 const REVIEW_MODELS = {
@@ -76,6 +77,125 @@ function buildReviewModel(reviewType) {
 
 function buildReviewFields(reviewType) {
   return REVIEW_FIELDS[reviewType] || null;
+}
+
+function toObjectId(value) {
+  const normalized = normalizeId(value);
+  return mongoose.Types.ObjectId.isValid(normalized)
+    ? new mongoose.Types.ObjectId(normalized)
+    : null;
+}
+
+function buildOwnedOrdersQuery(authorId) {
+  const normalizedAuthorId = normalizeId(authorId);
+  const authorObjectId = toObjectId(normalizedAuthorId);
+  const query = [{ clientId: normalizedAuthorId }];
+
+  if (authorObjectId) {
+    query.push({ clientId: authorObjectId });
+    query.push({ utilizatorId: authorObjectId });
+  }
+
+  return { $or: query };
+}
+
+function isOwnedByUser(order, authorId) {
+  const normalizedAuthorId = normalizeId(authorId);
+  return (
+    normalizeId(order?.clientId) === normalizedAuthorId ||
+    normalizeId(order?.utilizatorId) === normalizedAuthorId
+  );
+}
+
+function isCompletedOrder(order) {
+  const status = String(order?.status || order?.statusComanda || "").trim().toLowerCase();
+  const handoffStatus = String(order?.handoffStatus || "").trim().toLowerCase();
+
+  return (
+    ["completed", "livrata", "ridicata", "delivered", "picked_up", "ridicat_client"].includes(
+      status
+    ) ||
+    ["delivered", "picked_up"].includes(handoffStatus)
+  );
+}
+
+function orderContainsProduct(order, tortId) {
+  const targetId = normalizeId(tortId);
+  if (!targetId) return false;
+
+  if (normalizeId(order?.tortId) === targetId) {
+    return true;
+  }
+
+  return Array.isArray(order?.items)
+    ? order.items.some(
+        (item) =>
+          normalizeId(item?.productId) === targetId || normalizeId(item?.tortId) === targetId
+      )
+    : false;
+}
+
+async function findEligibleCompletedOrder(reviewType, payload, authorId) {
+  if (reviewType === "comanda") {
+    const order = await Comanda.findById(payload.comandaId).lean();
+    if (!order || !isOwnedByUser(order, authorId)) {
+      return null;
+    }
+    return isCompletedOrder(order) ? order : null;
+  }
+
+  const query = buildOwnedOrdersQuery(authorId);
+  if (reviewType === "prestator") {
+    query.prestatorId = normalizeId(payload.prestatorId);
+  }
+
+  const orders = await Comanda.find(query).lean();
+  return (
+    orders.find((order) => {
+      if (!isCompletedOrder(order)) return false;
+      if (reviewType === "produs") {
+        return orderContainsProduct(order, payload.tortId);
+      }
+      return true;
+    }) || null
+  );
+}
+
+async function ensureReviewEligibility(reviewType, payload, req) {
+  const authorId = normalizeId(req.user?._id || req.user?.id);
+  const eligibleOrder = await findEligibleCompletedOrder(reviewType, payload, authorId);
+
+  if (eligibleOrder) {
+    return null;
+  }
+
+  if (reviewType === "produs") {
+    return {
+      status: 409,
+      body: {
+        message:
+          "Poti lasa o recenzie pentru produs doar dupa o comanda finalizata care include acest tort.",
+      },
+    };
+  }
+
+  if (reviewType === "prestator") {
+    return {
+      status: 409,
+      body: {
+        message:
+          "Poti lasa o recenzie pentru prestator doar dupa o comanda finalizata cu acest atelier.",
+      },
+    };
+  }
+
+  return {
+    status: 409,
+    body: {
+      message:
+        "Recenzia pentru comanda devine disponibila doar dupa ce comanda a fost livrata sau ridicata.",
+    },
+  };
 }
 
 async function refreshTortRating(tortId) {
@@ -184,6 +304,10 @@ async function createReview(reviewType, payload, req) {
 
   const authorId = normalizeId(req.user?._id || req.user?.id);
   const targetId = payload[fields.targetField];
+  const eligibilityResult = await ensureReviewEligibility(reviewType, payload, req);
+  if (eligibilityResult) {
+    return eligibilityResult;
+  }
   const existing = await findExistingReview(reviewType, targetId, authorId);
   if (existing) {
     return {
