@@ -209,6 +209,62 @@ router.get("/", authRequired, async (req, res) => {
   }
 });
 
+router.get("/:id", authRequired, async (req, res) => {
+  try {
+    const role = String(req.user?.rol || req.user?.role || "").trim();
+    const doc = await ComandaPersonalizata.findById(req.params.id)
+      .populate(
+        "comandaId",
+        [
+          "_id",
+          "numeroComanda",
+          "status",
+          "statusComanda",
+          "paymentStatus",
+          "statusPlata",
+          "subtotal",
+          "taxaLivrare",
+          "deliveryFee",
+          "total",
+          "totalFinal",
+          "dataLivrare",
+          "oraLivrare",
+          "metodaLivrare",
+          "adresaLivrare",
+          "deliveryWindow",
+          "deliveryInstructions",
+          "createdAt",
+        ].join(" ")
+      )
+      .lean();
+
+    if (!doc) {
+      return res.status(404).json({ mesaj: "Comanda personalizata inexistenta" });
+    }
+
+    const isStaff = role === "admin" || role === "patiser";
+    const isOwner = String(doc.clientId || "") === String(req.user?._id || "");
+    const isAssignedProvider = String(doc.prestatorId || "") === String(req.user?._id || "");
+
+    if (!isOwner && !(isStaff && (role === "admin" || isAssignedProvider))) {
+      return res.status(403).json({ mesaj: "Acces interzis" });
+    }
+
+    return res.json({
+      ...doc,
+      clientCanApprove:
+        String(doc.status || "") === "aprobata" || String(doc.status || "") === "comanda_generata",
+      clientCanPay:
+        Boolean(doc.comandaId?._id) &&
+        String(doc.comandaId?.paymentStatus || doc.comandaId?.statusPlata || "").toLowerCase() !==
+          "paid",
+    });
+  } catch (err) {
+    console.error("Eroare la obtinerea comenzii personalizate:", err);
+    res.status(500).json({ mesaj: "Eroare la obtinerea comenzii personalizate" });
+  }
+});
+
 router.post("/:id/convert", authRequired, roleCheck("admin", "patiser"), async (req, res) => {
   let reservedSlot = null;
   let createdOrderId = "";

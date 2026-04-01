@@ -2182,6 +2182,75 @@ test("backend integration flows", async (t) => {
       assert.equal(slot?.used, 1);
     });
 
+    await t.test("client can read the custom order offer after conversion", async () => {
+      await harness.resetDb();
+
+      const staff = await registerUser("patiser");
+      const client = await registerUser("client");
+      const outsider = await registerUser("client");
+      const providerId = staff.user?.id;
+      const date = futureDate(10);
+
+      assert.equal(staff.status, 201);
+      assert.equal(client.status, 201);
+      assert.equal(outsider.status, 201);
+      assert.ok(providerId);
+
+      const addSlot = await harness.request(`/calendar/availability/${providerId}`, {
+        method: "POST",
+        token: staff.token,
+        body: {
+          slots: [{ date, time: "14:30", capacity: 1 }],
+        },
+      });
+      assert.equal(addSlot.status, 200);
+
+      const customOrder = await harness.request("/comenzi-personalizate", {
+        method: "POST",
+        token: client.token,
+        body: {
+          prestatorId: providerId,
+          preferinte: "Tort cu bujori albi si finisaj satinat",
+          pretEstimat: 1100,
+          timpPreparareOre: 48,
+        },
+      });
+      assert.equal(customOrder.status, 201);
+
+      const customOrderId = customOrder.data?.comanda?._id;
+      assert.ok(customOrderId);
+
+      const conversion = await harness.request(`/comenzi-personalizate/${customOrderId}/convert`, {
+        method: "POST",
+        token: staff.token,
+        body: {
+          dataLivrare: date,
+          oraLivrare: "14:30",
+          metodaLivrare: "livrare",
+          adresaLivrare: "Bd. Dacia 12, Chisinau",
+          deliveryWindow: "14:30-15:30",
+          deliveryInstructions: "Sunati la poarta.",
+        },
+      });
+      assert.equal(conversion.status, 201);
+
+      const ownerDetail = await harness.request(`/comenzi-personalizate/${customOrderId}`, {
+        token: client.token,
+      });
+      assert.equal(ownerDetail.status, 200);
+      assert.equal(ownerDetail.data?.status, "comanda_generata");
+      assert.equal(ownerDetail.data?.clientCanApprove, true);
+      assert.equal(ownerDetail.data?.clientCanPay, true);
+      assert.equal(ownerDetail.data?.comandaId?.totalFinal, 1200);
+      assert.equal(ownerDetail.data?.comandaId?.metodaLivrare, "livrare");
+      assert.equal(ownerDetail.data?.comandaId?.adresaLivrare, "Bd. Dacia 12, Chisinau");
+
+      const outsiderDetail = await harness.request(`/comenzi-personalizate/${customOrderId}`, {
+        token: outsider.token,
+      });
+      assert.equal(outsiderDetail.status, 403);
+    });
+
     await t.test("custom cake review actions validate price and rejection reasons", async () => {
       await harness.resetDb();
 
