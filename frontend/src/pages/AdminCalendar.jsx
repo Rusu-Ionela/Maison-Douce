@@ -128,6 +128,17 @@ export default function AdminCalendar() {
       nextHandoff,
     };
   }, [reservations, sortedReservations]);
+  const nextAgendaSteps = useMemo(
+    () =>
+      sortedReservations.slice(0, 3).map((item) => ({
+        id: item._id,
+        time: item?.startTime || item?.timeSlot || "--:--",
+        handoff: formatHandoffMethod(item?.handoffMethod),
+        client: item?.clientName || "Client",
+        summary: item?.itemsSummary || "Detalii produs lipsa",
+      })),
+    [sortedReservations]
+  );
 
   const slotMetrics = useMemo(() => {
     const totalSlots = slots.length;
@@ -620,6 +631,45 @@ export default function AdminCalendar() {
                     {label}
                   </button>
                 ))}
+              </div>
+
+              <div className="rounded-[24px] border border-rose-100 bg-white/90 p-4">
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div>
+                    <div className="text-xs font-semibold uppercase tracking-[0.16em] text-pink-500">
+                      Brief operational
+                    </div>
+                    <div className="mt-2 text-base font-semibold text-gray-900">
+                      Urmatoarele predari din zi
+                    </div>
+                  </div>
+                  <span className={reservationMetrics.attentionCount > 0 ? badges.warning : badges.success}>
+                    {reservationMetrics.attentionCount > 0
+                      ? `${reservationMetrics.attentionCount} intrari cer atentie`
+                      : "Fara blocaje urgente"}
+                  </span>
+                </div>
+
+                {nextAgendaSteps.length > 0 ? (
+                  <div className="mt-4 grid gap-3 md:grid-cols-3">
+                    {nextAgendaSteps.map((step) => (
+                      <div
+                        key={step.id}
+                        className="rounded-[20px] border border-rose-100 bg-[rgba(255,249,242,0.84)] px-4 py-4"
+                      >
+                        <div className="text-sm font-semibold text-gray-900">
+                          {step.time} · {step.handoff}
+                        </div>
+                        <div className="mt-2 text-sm font-medium text-pink-700">{step.client}</div>
+                        <div className="mt-2 text-sm leading-6 text-gray-600">{step.summary}</div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="mt-4 rounded-[20px] border border-dashed border-rose-200 px-4 py-4 text-sm text-gray-500">
+                    Nu exista predari programate pentru ziua selectata.
+                  </div>
+                )}
               </div>
 
               {visibleReservations.length === 0 ? (
