@@ -10,23 +10,30 @@ function stepClass(state) {
   return "border-stone-200 bg-white text-stone-500";
 }
 
-export default function OrderFlowProgress({ currentStep = "estimate", className = "" }) {
+export default function OrderFlowProgress({
+  currentStep = "estimate",
+  className = "",
+  compact = false,
+}) {
   const activeIndex = getStepIndex(currentStep);
+  const layoutClass = compact
+    ? "grid-cols-1 sm:grid-cols-2 xl:grid-cols-3"
+    : "grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-5";
 
   return (
-    <div className={`grid gap-3 md:grid-cols-5 ${className}`.trim()}>
+    <div className={`grid gap-3 ${layoutClass} ${className}`.trim()}>
       {ORDER_FLOW_STEPS.map((step, index) => {
         const state = index < activeIndex ? "done" : index === activeIndex ? "current" : "todo";
 
         return (
           <div
             key={step.id}
-            className={`rounded-[22px] border px-4 py-3 shadow-soft ${stepClass(state)}`}
+            className={`min-w-0 rounded-[22px] border px-4 py-3 shadow-soft ${stepClass(state)}`}
           >
-            <div className="text-[11px] font-semibold uppercase tracking-[0.18em]">
+            <div className="text-[11px] font-semibold uppercase leading-tight tracking-[0.18em]">
               {step.label}
             </div>
-            <div className="mt-1 text-sm font-semibold">{step.title}</div>
+            <div className="mt-1 text-sm font-semibold leading-snug text-balance">{step.title}</div>
           </div>
         );
       })}

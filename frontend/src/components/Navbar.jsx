@@ -74,7 +74,7 @@ export default function Navbar() {
           </div>
         </Link>
 
-        <nav className="hidden min-w-0 flex-1 items-center justify-center gap-5 overflow-x-auto px-2 xl:flex">
+        <nav className="hidden min-w-0 flex-1 items-center justify-center gap-5 px-2 2xl:flex">
           {navLinks.map((link) => (
             <NavLink key={link.to} to={link.to} className={navLinkClass}>
               {({ isActive }) => (
@@ -102,12 +102,12 @@ export default function Navbar() {
             <>
               <Link
                 to="/profil"
-                className="hidden rounded-full border border-rose-200 bg-white/80 px-4 py-2 text-sm font-semibold text-pink-700 shadow-soft hover:-translate-y-0.5 hover:bg-white sm:inline-flex"
+                className="hidden rounded-full border border-rose-200 bg-white/80 px-4 py-2 text-sm font-semibold text-pink-700 shadow-soft hover:-translate-y-0.5 hover:bg-white 2xl:inline-flex"
               >
                 Profil
               </Link>
               <button
-                className="hidden rounded-full bg-charcoal px-4 py-2 text-sm font-semibold text-white shadow-soft hover:-translate-y-0.5 hover:bg-pink-700 sm:inline-flex"
+                className="hidden rounded-full bg-charcoal px-4 py-2 text-sm font-semibold text-white shadow-soft hover:-translate-y-0.5 hover:bg-pink-700 2xl:inline-flex"
                 onClick={logout}
               >
                 Iesire
@@ -117,13 +117,13 @@ export default function Navbar() {
             <>
               <Link
                 to="/login"
-                className="hidden rounded-full border border-rose-200 bg-white/80 px-4 py-2 text-sm font-semibold text-pink-700 shadow-soft hover:-translate-y-0.5 hover:bg-white sm:inline-flex"
+                className="hidden rounded-full border border-rose-200 bg-white/80 px-4 py-2 text-sm font-semibold text-pink-700 shadow-soft hover:-translate-y-0.5 hover:bg-white 2xl:inline-flex"
               >
                 Autentificare
               </Link>
               <Link
                 to="/register"
-                className="hidden rounded-full bg-charcoal px-4 py-2 text-sm font-semibold text-white shadow-soft hover:-translate-y-0.5 hover:bg-pink-700 sm:inline-flex"
+                className="hidden rounded-full bg-charcoal px-4 py-2 text-sm font-semibold text-white shadow-soft hover:-translate-y-0.5 hover:bg-pink-700 2xl:inline-flex"
               >
                 Inregistrare
               </Link>
@@ -132,7 +132,7 @@ export default function Navbar() {
 
           <button
             type="button"
-            className="inline-flex items-center rounded-full border border-rose-200 bg-white/88 px-3 py-2 text-sm font-semibold text-[#5f564d] shadow-soft hover:-translate-y-0.5 hover:bg-white xl:hidden"
+            className="inline-flex items-center rounded-full border border-rose-200 bg-white/88 px-3 py-2 text-sm font-semibold text-[#5f564d] shadow-soft hover:-translate-y-0.5 hover:bg-white 2xl:hidden"
             onClick={() => setIsOpen((prev) => !prev)}
             aria-expanded={isOpen}
             aria-label="Deschide meniul"
@@ -143,7 +143,7 @@ export default function Navbar() {
       </div>
 
       {isOpen ? (
-        <div className="border-t border-rose-100 bg-[linear-gradient(180deg,_rgba(255,252,247,0.98),_rgba(246,239,228,0.96))] xl:hidden">
+        <div className="border-t border-rose-100 bg-[linear-gradient(180deg,_rgba(255,252,247,0.98),_rgba(246,239,228,0.96))] 2xl:hidden">
           <nav className="mx-auto grid max-w-editorial gap-2 px-4 py-4 sm:grid-cols-2 md:px-6">
             {navLinks.map((link) => (
               <NavLink

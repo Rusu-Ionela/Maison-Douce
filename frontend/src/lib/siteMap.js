@@ -226,7 +226,6 @@ export const SITE_SECTIONS = [
 ];
 
 export const TOP_NAV_LINKS = [
-  { label: "Comanda online", to: "/comanda-online" },
   { label: "Catalog", to: "/catalog" },
   { label: "Constructor", to: "/constructor" },
   { label: "Cos", to: "/cart" },

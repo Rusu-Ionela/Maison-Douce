@@ -124,7 +124,10 @@ export default function ComandaOnline() {
               <div className="text-sm font-semibold uppercase tracking-[0.2em] text-pink-600">
                 Cum functioneaza
               </div>
-              <OrderFlowProgress currentStep={showChoices ? "choose" : "estimate"} />
+              <OrderFlowProgress
+                currentStep={showChoices ? "choose" : "estimate"}
+                compact
+              />
               <div className="rounded-[22px] border border-rose-100 bg-white/80 px-4 py-3 text-sm leading-6 text-[#655c53]">
                 Daca nu esti hotarat inca, fluxul te ajuta sa decizi. Daca esti deja autentificat,
                 poti continua apoi in <span className="font-semibold text-gray-900">Drafturile mele</span>.
