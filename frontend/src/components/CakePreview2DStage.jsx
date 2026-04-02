@@ -1,5 +1,13 @@
 import { useMemo } from "react";
 import { Circle, Ellipse, Group, Layer, Line, Rect, Stage, Text } from "react-konva";
+import CakeStageDecorationLayer from "./cake-designer/CakeStageDecorationLayer";
+import {
+  CakeInnerTopSurface,
+  CakeTopHighlight,
+  CakeTopSurface,
+  getCakeBodyCornerRadius,
+  getCakeShapeId,
+} from "./cake-designer/CakeStageShapePrimitives";
 
 function CakeLayer({ layer, opacity = 1 }) {
   return (
@@ -227,7 +235,7 @@ function WholeCakeIllustration({
         height={model.cake.bodyHeight}
         stroke={model.cake.shellStroke}
         strokeWidth={1.4}
-        cornerRadius={Math.max(22, model.cake.bodyWidth * 0.08)}
+        cornerRadius={getCakeBodyCornerRadius(model.cake)}
         shadowColor="rgba(102, 72, 81, 0.18)"
         shadowBlur={14}
         shadowOffsetY={8}
@@ -264,63 +272,9 @@ function WholeCakeIllustration({
         cornerRadius={999}
       />
 
-      <Ellipse
-        x={model.cake.topX}
-        y={model.cake.topY}
-        radiusX={model.cake.topRadiusX}
-        radiusY={model.cake.topRadiusY}
-        stroke={model.cake.shellStroke}
-        strokeWidth={1.4}
-        fillLinearGradientStartPoint={{
-          x: model.cake.topX,
-          y: model.cake.topY - model.cake.topRadiusY,
-        }}
-        fillLinearGradientEndPoint={{
-          x: model.cake.topX,
-          y: model.cake.topY + model.cake.topRadiusY,
-        }}
-        fillLinearGradientColorStops={[
-          0,
-          "rgba(255,255,255,0.88)",
-          0.22,
-          model.cake.shellTop,
-          1,
-          model.cake.shellColor,
-        ]}
-      />
-
-      <Ellipse
-        x={model.cake.topX}
-        y={model.cake.topY}
-        radiusX={model.cake.innerTopRadiusX}
-        radiusY={model.cake.innerTopRadiusY}
-        fill={model.cake.innerTopFill}
-        opacity={0.94}
-      />
-
-      <Line
-        points={[
-          model.cake.topX - model.cake.innerTopRadiusX * 0.78,
-          model.cake.topY - model.cake.innerTopRadiusY * 0.18,
-          model.cake.topX,
-          model.cake.topY - model.cake.innerTopRadiusY * 0.44,
-          model.cake.topX + model.cake.innerTopRadiusX * 0.74,
-          model.cake.topY - model.cake.innerTopRadiusY * 0.14,
-        ]}
-        stroke="rgba(255,255,255,0.58)"
-        strokeWidth={Math.max(2, model.cake.topRadiusY * 0.12)}
-        lineCap="round"
-        lineJoin="round"
-        tension={0.45}
-      />
-
-      <Ellipse
-        x={model.cake.topX}
-        y={model.cake.topY + model.cake.topRadiusY * 0.12}
-        radiusX={model.cake.innerTopRadiusX * 0.92}
-        radiusY={model.cake.innerTopRadiusY * 0.74}
-        fill="rgba(255,255,255,0.1)"
-      />
+      <CakeTopSurface cake={model.cake} />
+      <CakeInnerTopSurface cake={model.cake} />
+      <CakeTopHighlight cake={model.cake} />
 
       {model.sideBands.map((band, index) => (
         <Line
@@ -422,6 +376,43 @@ function WholeCakeIllustration({
         />
       ))}
 
+      {model.topping.macarons?.map((piece, index) => (
+        <Group key={`macaron-${index}`} opacity={toppingOpacity}>
+          <Ellipse
+            x={piece.x}
+            y={piece.y}
+            radiusX={piece.radiusX}
+            radiusY={piece.radiusY}
+            fill={piece.fill}
+            shadowColor="rgba(145, 97, 118, 0.18)"
+            shadowBlur={4}
+            shadowOffsetY={1}
+          />
+          <Rect
+            x={piece.x - piece.radiusX * 0.7}
+            y={piece.y - piece.radiusY * 0.14}
+            width={piece.radiusX * 1.4}
+            height={piece.radiusY * 0.3}
+            cornerRadius={999}
+            fill={piece.detail}
+          />
+        </Group>
+      ))}
+
+      {model.topping.goldLeaf?.map((piece, index) => (
+        <Line
+          key={`gold-leaf-${index}`}
+          points={piece.points}
+          closed
+          fill={piece.fill}
+          stroke={piece.stroke}
+          strokeWidth={1}
+          shadowColor="rgba(194, 162, 92, 0.26)"
+          shadowBlur={3}
+          opacity={toppingOpacity}
+        />
+      ))}
+
       {model.message.visible ? (
         <Group opacity={messageOpacity}>
           <Rect
@@ -464,6 +455,7 @@ function WholeCakeIllustration({
 
 function SectionSlice({ model, stageWidth, stageHeight }) {
   const sliceModel = model.primaryTier || model;
+  const sliceShape = getCakeShapeId(sliceModel.cake);
 
   const slice = useMemo(() => {
     const sliceWidth = sliceModel.cake.bodyWidth * 0.34;
@@ -532,7 +524,7 @@ function SectionSlice({ model, stageWidth, stageHeight }) {
         y={slice.y + slice.topRadiusY * 0.54}
         width={slice.width}
         height={slice.height - slice.topRadiusY * 0.54}
-        cornerRadius={Math.max(20, slice.width * 0.09)}
+        cornerRadius={sliceShape === "square" ? slice.width * 0.06 : Math.max(20, slice.width * 0.09)}
         stroke={sliceModel.cake.shellStroke}
         strokeWidth={1.3}
         fillLinearGradientStartPoint={{ x: slice.x, y: slice.y }}
@@ -550,30 +542,58 @@ function SectionSlice({ model, stageWidth, stageHeight }) {
         shadowOffsetY={6}
       />
 
-      <Ellipse
-        x={slice.topCenterX}
-        y={slice.topCenterY}
-        radiusX={slice.topRadiusX}
-        radiusY={slice.topRadiusY}
-        fillLinearGradientStartPoint={{
-          x: slice.topCenterX,
-          y: slice.topCenterY - slice.topRadiusY,
-        }}
-        fillLinearGradientEndPoint={{
-          x: slice.topCenterX,
-          y: slice.topCenterY + slice.topRadiusY,
-        }}
-        fillLinearGradientColorStops={[
-          0,
-          "rgba(255,255,255,0.92)",
-          0.26,
-          sliceModel.cake.shellTop,
-          1,
-          sliceModel.cake.shellColor,
-        ]}
-        stroke={sliceModel.cake.shellStroke}
-        strokeWidth={1.2}
-      />
+      {sliceShape === "square" ? (
+        <Rect
+          x={slice.topCenterX - slice.topRadiusX * 0.88}
+          y={slice.topCenterY - slice.topRadiusY}
+          width={slice.topRadiusX * 1.76}
+          height={slice.topRadiusY * 2}
+          cornerRadius={slice.topRadiusY * 0.38}
+          fillLinearGradientStartPoint={{
+            x: slice.topCenterX,
+            y: slice.topCenterY - slice.topRadiusY,
+          }}
+          fillLinearGradientEndPoint={{
+            x: slice.topCenterX,
+            y: slice.topCenterY + slice.topRadiusY,
+          }}
+          fillLinearGradientColorStops={[
+            0,
+            "rgba(255,255,255,0.92)",
+            0.26,
+            sliceModel.cake.shellTop,
+            1,
+            sliceModel.cake.shellColor,
+          ]}
+          stroke={sliceModel.cake.shellStroke}
+          strokeWidth={1.2}
+        />
+      ) : (
+        <Ellipse
+          x={slice.topCenterX}
+          y={slice.topCenterY}
+          radiusX={slice.topRadiusX}
+          radiusY={slice.topRadiusY}
+          fillLinearGradientStartPoint={{
+            x: slice.topCenterX,
+            y: slice.topCenterY - slice.topRadiusY,
+          }}
+          fillLinearGradientEndPoint={{
+            x: slice.topCenterX,
+            y: slice.topCenterY + slice.topRadiusY,
+          }}
+          fillLinearGradientColorStops={[
+            0,
+            "rgba(255,255,255,0.92)",
+            0.26,
+            sliceModel.cake.shellTop,
+            1,
+            sliceModel.cake.shellColor,
+          ]}
+          stroke={sliceModel.cake.shellStroke}
+          strokeWidth={1.2}
+        />
+      )}
 
       <Rect
         x={slice.layers[0]?.x - slice.width * 0.02}
@@ -695,6 +715,11 @@ export default function CakePreview2DStage({
   mode,
   model,
   footerText,
+  decorations = [],
+  selectedDecorationId = "",
+  editable = false,
+  onDecorationSelect,
+  onDecorationChange,
 }) {
   const isSection = mode === "section";
   const tiers = Array.isArray(model.tiers) && model.tiers.length > 0 ? model.tiers : [model];
@@ -705,6 +730,14 @@ export default function CakePreview2DStage({
       height={stageHeight}
       ref={stageRef}
       style={{ display: "block", margin: "0 auto" }}
+      onMouseDown={() => {
+        if (!editable) return;
+        onDecorationSelect?.("");
+      }}
+      onTap={() => {
+        if (!editable) return;
+        onDecorationSelect?.("");
+      }}
     >
       <Layer>
         <Rect x={0} y={0} width={stageWidth} height={stageHeight} fill={model.background.base} />
@@ -766,6 +799,17 @@ export default function CakePreview2DStage({
               ))}
           </>
         )}
+
+        {!isSection ? (
+          <CakeStageDecorationLayer
+            model={model}
+            decorations={decorations}
+            selectedDecorationId={selectedDecorationId}
+            editable={editable}
+            onDecorationSelect={onDecorationSelect}
+            onDecorationChange={onDecorationChange}
+          />
+        ) : null}
 
         <Text
           x={stageWidth * 0.1}

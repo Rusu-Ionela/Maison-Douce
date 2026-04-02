@@ -3,6 +3,9 @@ import { Link } from "react-router-dom";
 import { ProductsAPI } from "../api/products";
 import api from "/src/lib/api.js";
 import CakePreview2DStage from "../components/CakePreview2DStage";
+import CakeDecorationInspector from "./cake-designer/CakeDecorationInspector";
+import CakeDecorationLayers from "./cake-designer/CakeDecorationLayers";
+import CakeDecorationLibrary from "./cake-designer/CakeDecorationLibrary";
 import ProviderSelector from "../components/ProviderSelector";
 import StatusBanner from "../components/StatusBanner";
 import { useAuth } from "../context/AuthContext";
@@ -30,6 +33,15 @@ import {
   resolveConstructorPrefillFromCake,
   resolveConstructorPrefillFromFilling,
 } from "../lib/cakePreview2D";
+import {
+  createDecorationElement,
+  getDecorationLibraryItem,
+  duplicateDecorationElement,
+  estimateDecorationWorkload,
+  normalizeDecorationElements,
+  searchDecorationLibrary,
+  summarizeDecorationElements,
+} from "../lib/cakeDecorations";
 
 function OptionPill({
   option,
@@ -177,6 +189,8 @@ export default function CakeConstructor2D({
   const [previewMode, setPreviewMode] = useState("exterior");
   const [previewHint, setPreviewHint] = useState("");
 
+  const [shape, setShape] = useState(DEFAULT_CAKE_STRUCTURE.shape);
+  const [size, setSize] = useState(DEFAULT_CAKE_STRUCTURE.size);
   const [tiers, setTiers] = useState(DEFAULT_CAKE_STRUCTURE.tiers);
   const [heightProfile, setHeightProfile] = useState(DEFAULT_CAKE_STRUCTURE.heightProfile);
   const [blat, setBlat] = useState(DEFAULT_CAKE_OPTIONS.blat);
@@ -193,6 +207,10 @@ export default function CakeConstructor2D({
   const [aiPreviewVariants, setAiPreviewVariants] = useState([]);
   const [activeAiPreviewIndex, setActiveAiPreviewIndex] = useState(0);
   const [productPrefill, setProductPrefill] = useState(null);
+  const [decorationSearch, setDecorationSearch] = useState("");
+  const [decorationCategory, setDecorationCategory] = useState("all");
+  const [decorationElements, setDecorationElements] = useState([]);
+  const [selectedDecorationId, setSelectedDecorationId] = useState("");
   const catalogPrefill = useMemo(() => {
     if (propDesignId) return null;
     return resolveConstructorPrefillFromFilling(prefillFilling);
@@ -246,6 +264,8 @@ export default function CakeConstructor2D({
         if (cancelled || !data) return;
 
         if (data.options) {
+          setShape(data.options.shape || DEFAULT_CAKE_STRUCTURE.shape);
+          setSize(data.options.size || DEFAULT_CAKE_STRUCTURE.size);
           setTiers(Number(data.options.tiers || DEFAULT_CAKE_STRUCTURE.tiers));
           setHeightProfile(
             data.options.heightProfile || DEFAULT_CAKE_STRUCTURE.heightProfile
@@ -258,6 +278,13 @@ export default function CakeConstructor2D({
           setCuloare(data.options.culoare || DEFAULT_CAKE_OPTIONS.culoare);
           setFont(data.options.font || DEFAULT_CAKE_OPTIONS.font);
           setAiDecorRequest(data.options.aiDecorRequest || "");
+          setDecorationElements(
+            normalizeDecorationElements(
+              data.options.decorations || data.options.decorationElements || [],
+              Number(data.options.tiers || DEFAULT_CAKE_STRUCTURE.tiers)
+            )
+          );
+          setSelectedDecorationId("");
           const savedInspirationItems = Array.isArray(data.options.inspirationImages)
             ? data.options.inspirationImages
                 .map((item, index) => ({
@@ -330,6 +357,8 @@ export default function CakeConstructor2D({
     if (!catalogPrefill) return;
 
     const nextValues = { ...DEFAULT_CAKE_OPTIONS, ...catalogPrefill.values };
+    setShape(catalogPrefill.values?.shape || DEFAULT_CAKE_STRUCTURE.shape);
+    setSize(catalogPrefill.values?.size || DEFAULT_CAKE_STRUCTURE.size);
     setTiers(Number(catalogPrefill.values?.tiers || DEFAULT_CAKE_STRUCTURE.tiers));
     setHeightProfile(
       catalogPrefill.values?.heightProfile || DEFAULT_CAKE_STRUCTURE.heightProfile
@@ -341,6 +370,8 @@ export default function CakeConstructor2D({
     setTopping(nextValues.topping);
     setCuloare(nextValues.culoare);
     setFont(nextValues.font);
+    setDecorationElements([]);
+    setSelectedDecorationId("");
     setPreviewMode("section");
     setPreviewHint(`Am preselectat ${catalogPrefill.sourceLabel}.`);
     if (hintTimerRef.current) {
@@ -393,6 +424,8 @@ export default function CakeConstructor2D({
     if (catalogPrefill || !productPrefill) return;
 
     const nextValues = { ...DEFAULT_CAKE_OPTIONS, ...productPrefill.values };
+    setShape(productPrefill.values?.shape || DEFAULT_CAKE_STRUCTURE.shape);
+    setSize(productPrefill.values?.size || DEFAULT_CAKE_STRUCTURE.size);
     setTiers(Number(productPrefill.values?.tiers || DEFAULT_CAKE_STRUCTURE.tiers));
     setHeightProfile(
       productPrefill.values?.heightProfile || DEFAULT_CAKE_STRUCTURE.heightProfile
@@ -404,6 +437,8 @@ export default function CakeConstructor2D({
     setTopping(nextValues.topping);
     setCuloare(nextValues.culoare);
     setFont(nextValues.font);
+    setDecorationElements([]);
+    setSelectedDecorationId("");
     setPreviewMode("section");
     setPreviewHint(`Am pornit de la ${productPrefill.sourceLabel}.`);
     if (hintTimerRef.current) {
@@ -417,6 +452,19 @@ export default function CakeConstructor2D({
       text: `Configuratia initiala este inspirata de ${productPrefill.sourceLabel}. ${productPrefill.summary} Poti rafina apoi straturile, decorul si mesajul final direct din constructor.`,
     });
   }, [catalogPrefill, productPrefill]);
+
+  useEffect(() => {
+    setDecorationElements((current) => normalizeDecorationElements(current, tiers));
+  }, [tiers]);
+
+  useEffect(() => {
+    if (
+      selectedDecorationId &&
+      !decorationElements.some((item) => String(item.id) === String(selectedDecorationId))
+    ) {
+      setSelectedDecorationId("");
+    }
+  }, [decorationElements, selectedDecorationId]);
 
   const stageWidth = Math.max(320, previewWidth);
   const stageHeight = Math.round(stageWidth * 0.72);
@@ -436,10 +484,12 @@ export default function CakeConstructor2D({
 
   const selectedStructure = useMemo(
     () => ({
+      shape: findCakeStructureOption("shapes", shape),
+      size: findCakeStructureOption("sizes", size),
       tiers: findCakeStructureOption("tiers", tiers),
       heightProfile: findCakeStructureOption("heightProfiles", heightProfile),
     }),
-    [heightProfile, tiers]
+    [heightProfile, shape, size, tiers]
   );
 
   const previewModel = useMemo(
@@ -450,11 +500,13 @@ export default function CakeConstructor2D({
         selectedOptions,
         message: mesaj,
         structureOptions: {
+          shape,
+          size,
           tiers,
           heightProfile,
         },
       }),
-    [heightProfile, mesaj, selectedOptions, stageHeight, stageWidth, tiers]
+    [heightProfile, mesaj, selectedOptions, shape, size, stageHeight, stageWidth, tiers]
   );
 
   const aiPromptPreview = useMemo(
@@ -462,6 +514,8 @@ export default function CakeConstructor2D({
       buildCakeAiPrompt({
         selectedOptions,
         structureOptions: {
+          shape,
+          size,
           tiers,
           heightProfile,
         },
@@ -469,7 +523,7 @@ export default function CakeConstructor2D({
         customRequest: aiDecorRequest,
         inspirationItems,
       }),
-    [aiDecorRequest, heightProfile, inspirationItems, mesaj, selectedOptions, tiers]
+    [aiDecorRequest, heightProfile, inspirationItems, mesaj, selectedOptions, shape, size, tiers]
   );
 
   const aiVariantPrompts = useMemo(
@@ -477,6 +531,8 @@ export default function CakeConstructor2D({
       buildCakeAiVariantPrompts({
         selectedOptions,
         structureOptions: {
+          shape,
+          size,
           tiers,
           heightProfile,
         },
@@ -484,50 +540,108 @@ export default function CakeConstructor2D({
         customRequest: aiDecorRequest,
         inspirationItems,
       }),
-    [aiDecorRequest, heightProfile, inspirationItems, mesaj, selectedOptions, tiers]
+    [aiDecorRequest, heightProfile, inspirationItems, mesaj, selectedOptions, shape, size, tiers]
   );
 
   const estimateMetrics = useMemo(
     () =>
       estimateCakeOrderMetrics({
+        shape,
+        size,
         tiers,
         heightProfile,
       }),
-    [heightProfile, tiers]
+    [heightProfile, shape, size, tiers]
   );
+
+  const decorationWorkload = useMemo(
+    () => estimateDecorationWorkload(decorationElements),
+    [decorationElements]
+  );
+
+  const filteredDecorationItems = useMemo(
+    () =>
+      searchDecorationLibrary({
+        query: decorationSearch,
+        category: decorationCategory,
+      }),
+    [decorationCategory, decorationSearch]
+  );
+
+  const decorationSummary = useMemo(
+    () => summarizeDecorationElements(decorationElements),
+    [decorationElements]
+  );
+
+  const recommendedDecorationItems = useMemo(() => {
+    if (decorationSearch.trim()) return [];
+    return searchDecorationLibrary({
+      category: decorationCategory,
+      style: decor,
+    }).slice(0, 6);
+  }, [decorationCategory, decorationSearch, decor]);
+
+  const selectedDecoration = useMemo(
+    () =>
+      decorationElements.find((item) => String(item.id) === String(selectedDecorationId)) || null,
+    [decorationElements, selectedDecorationId]
+  );
+
+  const selectedStyleLabel = selectedOptions.decor?.label || "";
+
+  const decorationCountLabel = useMemo(() => {
+    if (!decorationElements.length) return "Fara decor liber";
+    return `${decorationElements.length} elemente adaugate`;
+  }, [decorationElements.length]);
 
   const total = useMemo(() => {
     return (
       BASE_PRICE +
+      (selectedStructure.shape?.price || 0) +
+      (selectedStructure.size?.price || 0) +
       (selectedStructure.tiers?.price || 0) +
       (selectedStructure.heightProfile?.price || 0) +
       (selectedOptions.blat?.price || 0) +
       (selectedOptions.crema?.price || 0) +
       (selectedOptions.umplutura?.price || 0) +
       (selectedOptions.decor?.price || 0) +
-      (selectedOptions.topping?.price || 0)
+      (selectedOptions.topping?.price || 0) +
+      decorationWorkload.price
     );
-  }, [selectedOptions, selectedStructure]);
+  }, [decorationWorkload.price, selectedOptions, selectedStructure]);
 
   const timpOre = useMemo(
     () =>
       BASE_PREP_HOURS +
+      (selectedStructure.shape?.prepHours || 0) +
+      (selectedStructure.size?.prepHours || 0) +
       (selectedStructure.tiers?.prepHours || 0) +
       (selectedStructure.heightProfile?.prepHours || 0) +
-      (mesaj.trim() ? 4 : 0),
-    [mesaj, selectedStructure]
+      (mesaj.trim() ? 4 : 0) +
+      decorationWorkload.prepHours,
+    [decorationWorkload.prepHours, mesaj, selectedStructure]
   );
   const designSummary = useMemo(
     () =>
       getCakeDesignSummary(selectedOptions, {
+        shape,
+        size,
         tiers,
         heightProfile,
       }),
-    [heightProfile, selectedOptions, tiers]
+    [heightProfile, selectedOptions, shape, size, tiers]
   );
+
+  const compositionSummary = useMemo(() => {
+    if (!decorationSummary) return designSummary;
+    return `${designSummary} Decor liber aplicat: ${decorationSummary}.`;
+  }, [decorationSummary, designSummary]);
+
   const layerSummary = useMemo(
     () =>
       [
+        selectedStructure.shape?.label,
+        selectedStructure.size?.label,
         selectedStructure.tiers?.label,
         selectedOptions.blat?.label,
         selectedOptions.crema?.label,
@@ -541,14 +655,17 @@ export default function CakeConstructor2D({
   const exteriorFooter = useMemo(
     () =>
       [
+        selectedStructure.shape?.label,
+        selectedStructure.size?.label,
         selectedStructure.heightProfile?.label,
         selectedOptions.decor?.label,
         selectedOptions.culoare?.label,
         selectedOptions.topping?.label,
+        decorationSummary ? `${decorationElements.length} elemente` : "",
       ]
         .filter(Boolean)
         .join(" • "),
-    [selectedOptions, selectedStructure]
+    [decorationElements.length, decorationSummary, selectedOptions, selectedStructure]
   );
 
   const estimationContext = useMemo(() => {
@@ -577,6 +694,8 @@ export default function CakeConstructor2D({
   const structureSummary = useMemo(
     () =>
       [
+        selectedStructure.shape?.label,
+        selectedStructure.size?.label,
         selectedStructure.tiers?.label,
         selectedStructure.heightProfile?.label,
         estimateMetrics.servingsLabel,
@@ -652,6 +771,8 @@ export default function CakeConstructor2D({
   };
 
   const applyPreset = (values) => {
+    setShape(values.shape || DEFAULT_CAKE_STRUCTURE.shape);
+    setSize(values.size || DEFAULT_CAKE_STRUCTURE.size);
     setTiers(Number(values.tiers || DEFAULT_CAKE_STRUCTURE.tiers));
     setHeightProfile(values.heightProfile || DEFAULT_CAKE_STRUCTURE.heightProfile);
     setBlat(values.blat);
@@ -661,6 +782,8 @@ export default function CakeConstructor2D({
     setTopping(values.topping);
     setCuloare(values.culoare);
     setFont(values.font);
+    setDecorationElements([]);
+    setSelectedDecorationId("");
     setPreviewMode("exterior");
     showPreviewHint("Preset-ul a fost aplicat. Exteriorul final a fost actualizat.");
     setStatus({
@@ -668,6 +791,108 @@ export default function CakeConstructor2D({
       text: "Preset-ul a fost aplicat. Poți trece în Secțiune pentru a verifica imediat straturile.",
     });
   };
+
+  const addDecoration = (definitionId) => {
+    const definition = getDecorationLibraryItem(definitionId);
+    const nextElement = createDecorationElement(definitionId, {
+      tierCount: tiers,
+      order: decorationElements.length,
+    });
+    if (!nextElement) return;
+
+    setDecorationElements((current) => normalizeDecorationElements([...current, nextElement], tiers));
+    setSelectedDecorationId(nextElement.id);
+    setPreviewMode("exterior");
+    showPreviewHint(
+      `${definition?.label || "Elementul"} a fost adaugat. Il poti muta direct in preview.`
+    );
+  };
+
+  const updateDecoration = (elementId, patch) => {
+    setDecorationElements((current) =>
+      normalizeDecorationElements(
+        current.map((item) =>
+          String(item.id) === String(elementId) ? { ...item, ...patch } : item
+        ),
+        tiers
+      )
+    );
+  };
+
+  const duplicateDecoration = (elementId) => {
+    const source = decorationElements.find((item) => String(item.id) === String(elementId));
+    if (!source) return;
+    const nextElement = duplicateDecorationElement(source, decorationElements.length);
+    if (!nextElement) return;
+
+    setDecorationElements((current) => normalizeDecorationElements([...current, nextElement], tiers));
+    setSelectedDecorationId(nextElement.id);
+  };
+
+  const deleteDecoration = (elementId) => {
+    setDecorationElements((current) =>
+      normalizeDecorationElements(
+        current.filter((item) => String(item.id) !== String(elementId)),
+        tiers
+      )
+    );
+    if (String(selectedDecorationId) === String(elementId)) {
+      setSelectedDecorationId("");
+    }
+  };
+
+  const moveDecoration = (elementId, direction) => {
+    setDecorationElements((current) => {
+      const ordered = [...current].sort(
+        (left, right) => Number(left.zIndex || 0) - Number(right.zIndex || 0)
+      );
+      const index = ordered.findIndex((item) => String(item.id) === String(elementId));
+      if (index === -1) return current;
+
+      const targetIndex = direction === "up" ? index + 1 : index - 1;
+      if (targetIndex < 0 || targetIndex >= ordered.length) return current;
+
+      const next = [...ordered];
+      const [moved] = next.splice(index, 1);
+      next.splice(targetIndex, 0, moved);
+      return normalizeDecorationElements(
+        next.map((item, order) => ({ ...item, zIndex: order })),
+        tiers
+      );
+    });
+  };
+
+  useEffect(() => {
+    const handleKeyDown = (event) => {
+      if (!selectedDecorationId) return;
+
+      const target = event.target;
+      const tagName = String(target?.tagName || "").toLowerCase();
+      if (target?.isContentEditable || ["input", "textarea", "select"].includes(tagName)) {
+        return;
+      }
+
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "d") {
+        event.preventDefault();
+        duplicateDecoration(selectedDecorationId);
+        return;
+      }
+
+      if (event.key === "Delete" || event.key === "Backspace") {
+        event.preventDefault();
+        deleteDecoration(selectedDecorationId);
+        return;
+      }
+
+      if (event.key === "Escape") {
+        event.preventDefault();
+        setSelectedDecorationId("");
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [selectedDecorationId, deleteDecoration, duplicateDecoration]);
 
   const handleAiRequestChange = (event) => {
     setAiDecorRequest(event.target.value);
@@ -824,13 +1049,22 @@ export default function CakeConstructor2D({
     }
   };
 
-  const exportImage = () => {
+  const exportImage = async () => {
     const activeStage =
       previewMode === "section" ? sectionStageRef.current : exteriorStageRef.current;
     if (!activeStage) {
       throw new Error("Preview-ul nu este pregătit pentru export.");
     }
-    return activeStage.toDataURL({ pixelRatio: 2 });
+    const previousSelection = selectedDecorationId;
+    if (previousSelection) {
+      setSelectedDecorationId("");
+      await new Promise((resolve) => window.setTimeout(resolve, 0));
+    }
+    const imageData = activeStage.toDataURL({ pixelRatio: 2 });
+    if (previousSelection) {
+      setSelectedDecorationId(previousSelection);
+    }
+    return imageData;
   };
 
   const runAction = async (action, handler) => {
@@ -852,15 +1086,17 @@ export default function CakeConstructor2D({
     }
 
     const uploadedInspirationImages = await uploadInspirationImages();
-    const imageData = exportImage();
+    const imageData = await exportImage();
     const payload = {
       clientId: user?._id || undefined,
       prestatorId: activeProviderId || undefined,
-      forma: "rotund",
+      forma: selectedStructure.shape?.label || "Rotund",
       culori: [culoare],
       mesaj,
       imageData,
       options: {
+        shape,
+        size,
         tiers,
         heightProfile,
         blat,
@@ -870,6 +1106,11 @@ export default function CakeConstructor2D({
         topping,
         culoare,
         font,
+        decorationSummary,
+        decorations: decorationElements.map((item, index) => ({
+          ...item,
+          zIndex: Number(item?.zIndex ?? index),
+        })),
         aiDecorRequest,
         aiPrompt: aiPromptPreview,
         aiPreviewUrl: aiPreview?.imageUrl || "",
@@ -948,7 +1189,7 @@ export default function CakeConstructor2D({
   const downloadExportImage = async () => {
     try {
       await runAction("export", async () => {
-        const uri = exportImage();
+        const uri = await exportImage();
         const link = document.createElement("a");
         link.href = uri;
         link.download = `design-tort-${previewMode}-${Date.now()}.png`;
@@ -978,9 +1219,11 @@ export default function CakeConstructor2D({
           prestatorId: activeProviderId || undefined,
           numeClient: user?.nume || user?.name || "Client",
           preferinte: mesaj || "Comandă personalizată",
-          imagine: exportImage(),
+          imagine: await exportImage(),
           designId: result.id,
           options: {
+            shape,
+            size,
             tiers,
             heightProfile,
             blat,
@@ -990,6 +1233,11 @@ export default function CakeConstructor2D({
             topping,
             culoare,
             font,
+            decorationSummary,
+            decorations: decorationElements.map((item, index) => ({
+              ...item,
+              zIndex: Number(item?.zIndex ?? index),
+            })),
             aiDecorRequest,
             aiPrompt: aiPromptPreview,
             aiPreviewUrl: aiPreview?.imageUrl || "",
@@ -1039,8 +1287,8 @@ export default function CakeConstructor2D({
               </div>
               <h2 className="text-xl font-semibold text-gray-900">Structura si pornire rapida</h2>
               <p className="text-sm text-gray-600">
-                Clientul alege mai intai cate etaje vrea si ce profil de inaltime prefera,
-                apoi poate porni de la un preset apropiat de atmosfera dorita.
+                Incepi cu forma, dimensiunea, etajele si profilul de inaltime, apoi poti
+                porni de la un preset sau construi liber fiecare detaliu al tortului.
               </p>
             </div>
             {designId ? (
@@ -1048,6 +1296,31 @@ export default function CakeConstructor2D({
                 Draft #{String(designId).slice(-6)}
               </span>
             ) : null}
+          </div>
+
+          <div className="grid gap-3 md:grid-cols-3">
+            {CAKE_STRUCTURE_OPTIONS.shapes.map((option) => (
+              <OptionPill
+                key={`shape-${option.id}`}
+                option={option}
+                active={shape === option.id}
+                onClick={() => handleOptionChange("shape", setShape, option.id)}
+                showPrice
+              />
+            ))}
+          </div>
+
+          <div className="grid gap-3 md:grid-cols-3">
+            {CAKE_STRUCTURE_OPTIONS.sizes.map((option) => (
+              <OptionPill
+                key={`size-${option.id}`}
+                option={option}
+                active={size === option.id}
+                onClick={() => handleOptionChange("size", setSize, option.id)}
+                showPrice
+                metaText={option.detail}
+              />
+            ))}
           </div>
 
           <div className="grid gap-3 md:grid-cols-3">
@@ -1168,6 +1441,11 @@ export default function CakeConstructor2D({
                   mode="exterior"
                   model={previewModel}
                   footerText={exteriorFooter}
+                  decorations={decorationElements}
+                  selectedDecorationId={selectedDecorationId}
+                  editable
+                  onDecorationSelect={setSelectedDecorationId}
+                  onDecorationChange={updateDecoration}
                 />
               </div>
 
@@ -1185,6 +1463,7 @@ export default function CakeConstructor2D({
                   mode="section"
                   model={previewModel}
                   footerText={layerSummary}
+                  decorations={decorationElements}
                 />
               </div>
             </div>
@@ -1217,7 +1496,7 @@ export default function CakeConstructor2D({
               <div className="text-sm text-gray-600">
                 {previewMode === "section"
                   ? "blat, cremă și umplutură"
-                  : "stil, culoare și topping"}
+                  : "stil, culoare, topping si decor liber"}
               </div>
             </div>
 
@@ -1232,11 +1511,97 @@ export default function CakeConstructor2D({
             </div>
           </div>
         </div>
-        <div className={`${cards.elevated} space-y-4`}>
+
+        <div className={`${cards.elevated} space-y-5`}>
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div>
               <div className="text-xs font-semibold uppercase tracking-[0.18em] text-pink-500">
                 Pasul 4
+              </div>
+              <h2 className="text-xl font-semibold text-gray-900">Decor liber si layer management</h2>
+              <p className="text-sm text-gray-600">
+                Cauti rapid decoratiunea, o adaugi pe tort, apoi o muti, rotesti,
+                scalezi sau duplici direct din preview.
+              </p>
+            </div>
+            <div className="rounded-full border border-rose-200 bg-white px-3 py-2 text-xs font-semibold uppercase tracking-[0.14em] text-[#7a6856] shadow-soft">
+              {previewMode === "section"
+                ? "Editeaza in Exterior"
+                : decorationSummary || selectedStyleLabel || "Fara limite presetate"}
+            </div>
+          </div>
+
+          {previewMode === "section" ? (
+            <div className="rounded-[22px] border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+              Pentru mutarea elementelor, comuta preview-ul pe Exterior. In Sectiune pastram
+              accentul pe straturile interne.
+            </div>
+          ) : null}
+
+          <div className="rounded-[22px] border border-rose-100 bg-white/85 px-4 py-3 text-sm text-[#5f564d] shadow-soft">
+            <div className="font-semibold text-gray-900">{decorationCountLabel}</div>
+            <div className="mt-1">
+              {decorationSummary ||
+                "Adauga decoratiuni din biblioteca si aseaza-le liber pe etaje sau pe laterale."}
+            </div>
+            <div className="mt-2 text-xs uppercase tracking-[0.12em] text-pink-600">
+              Delete sterge, Ctrl/Cmd + D duplica, Esc deselecteaza.
+            </div>
+          </div>
+
+          <div className="grid gap-5 xl:grid-cols-[1.1fr_0.9fr]">
+            <CakeDecorationLibrary
+              query={decorationSearch}
+              category={decorationCategory}
+              items={filteredDecorationItems}
+              recommendedItems={recommendedDecorationItems}
+              activeStyleLabel={selectedStyleLabel}
+              onQueryChange={setDecorationSearch}
+              onCategoryChange={setDecorationCategory}
+              onAdd={addDecoration}
+            />
+
+            <div className="space-y-5">
+              <div>
+                <div className="mb-3 text-sm font-semibold text-gray-800">Straturi decorative</div>
+                <CakeDecorationLayers
+                  elements={decorationElements}
+                  selectedId={selectedDecorationId}
+                  onSelect={setSelectedDecorationId}
+                  onDuplicate={duplicateDecoration}
+                  onDelete={deleteDecoration}
+                  onMove={moveDecoration}
+                />
+              </div>
+
+              <div>
+                <div className="mb-3 text-sm font-semibold text-gray-800">Controale element</div>
+                <CakeDecorationInspector
+                  element={selectedDecoration}
+                  tierCount={tiers}
+                  onUpdate={(patch) => {
+                    if (!selectedDecoration) return;
+                    updateDecoration(selectedDecoration.id, patch);
+                  }}
+                  onDuplicate={() => {
+                    if (!selectedDecoration) return;
+                    duplicateDecoration(selectedDecoration.id);
+                  }}
+                  onDelete={() => {
+                    if (!selectedDecoration) return;
+                    deleteDecoration(selectedDecoration.id);
+                  }}
+                />
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div className={`${cards.elevated} space-y-4`}>
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <div className="text-xs font-semibold uppercase tracking-[0.18em] text-pink-500">
+                Pasul 5
               </div>
               <h2 className="text-xl font-semibold text-gray-900">Preview realist cu AI</h2>
               <p className="text-sm text-gray-600">
@@ -1524,6 +1889,15 @@ export default function CakeConstructor2D({
                   />
                 ))}
               </div>
+              <label className="mt-3 flex items-center gap-3 rounded-[22px] border border-rose-100 bg-white/90 px-4 py-3 text-sm font-semibold text-gray-700 shadow-soft">
+                Culoare personalizata
+                <input
+                  type="color"
+                  value={/^#([0-9a-f]{6})$/i.test(culoare) ? culoare : "#f6d7c3"}
+                  onChange={(event) => handleOptionChange("culoare", setCuloare, event.target.value)}
+                  className="h-10 w-16 rounded-xl border border-rose-200 bg-white"
+                />
+              </label>
             </div>
 
             <div>
@@ -1573,6 +1947,14 @@ export default function CakeConstructor2D({
           <div className="rounded-[26px] border border-rose-100 bg-[linear-gradient(180deg,_rgba(255,255,255,0.98),_rgba(246,239,228,0.92))] p-5 shadow-soft">
             <div className="space-y-3">
               <SummaryRow
+                label={`Forma ${selectedStructure.shape?.label || "rotund"}`}
+                value={`+${selectedStructure.shape?.price || 0} MDL`}
+              />
+              <SummaryRow
+                label={`Dimensiune ${selectedStructure.size?.label || "mediu"}`}
+                value={`+${selectedStructure.size?.price || 0} MDL`}
+              />
+              <SummaryRow
                 label={selectedStructure.tiers?.label || "Structura"}
                 value={`+${selectedStructure.tiers?.price || 0} MDL`}
               />
@@ -1592,6 +1974,10 @@ export default function CakeConstructor2D({
                 label="Topping"
                 value={`+${selectedOptions.topping?.price || 0} MDL`}
               />
+              <SummaryRow
+                label="Decor liber"
+                value={`+${decorationWorkload.price || 0} MDL`}
+              />
               <div className="border-t border-rose-100 pt-3">
                 <SummaryRow label="Total estimat" value={`${total} MDL`} emphasize />
               </div>
@@ -1607,7 +1993,25 @@ export default function CakeConstructor2D({
 
           <div className="rounded-[24px] border border-rose-100 bg-[rgba(255,249,242,0.9)] px-4 py-4 text-sm text-gray-700">
             <div className="font-semibold text-gray-900">Compoziția curentă</div>
-            <div className="mt-2 leading-6">{designSummary}</div>
+            <div className="mt-2 leading-6">{compositionSummary}</div>
+            <div className="mt-3 grid gap-3 border-t border-rose-100 pt-3 sm:grid-cols-2">
+              <div>
+                <div className="text-xs font-semibold uppercase tracking-[0.12em] text-pink-600">
+                  Decor liber
+                </div>
+                <div className="mt-1 text-sm text-gray-700">
+                  {decorationSummary || "Nu ai adaugat elemente inca."}
+                </div>
+              </div>
+              <div>
+                <div className="text-xs font-semibold uppercase tracking-[0.12em] text-pink-600">
+                  Stil recomandat
+                </div>
+                <div className="mt-1 text-sm text-gray-700">
+                  {selectedStyleLabel || "Fara stil presetat"}
+                </div>
+              </div>
+            </div>
           </div>
 
           <div className="grid gap-3 sm:grid-cols-2">

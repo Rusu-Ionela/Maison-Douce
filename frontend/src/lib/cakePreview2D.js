@@ -1782,6 +1782,8 @@ function buildTierModel({
     fruits: [],
     chocolates: [],
     drizzles: [],
+    macarons: [],
+    goldLeaf: [],
   };
 
   if (includeTopDetails && selectedToppingId === "perle") {
@@ -1836,6 +1838,71 @@ function buildTierModel({
     });
     toppingModel.chocolates = [...leftChocolate.shards, ...rightChocolate.shards];
     toppingModel.drizzles = [...leftChocolate.drizzles, ...rightChocolate.drizzles];
+  }
+
+  if (includeTopDetails && selectedToppingId === "macarons") {
+    toppingModel.macarons = [
+      {
+        x: centerX - cakeWidth * 0.14,
+        y: topY - topHeight * 0.14,
+        radiusX: cakeWidth * 0.05,
+        radiusY: cakeWidth * 0.026,
+        fill: topping.accent,
+        detail: topping.second,
+        shadow: topping.shadow,
+      },
+      {
+        x: centerX - cakeWidth * 0.04,
+        y: topY - topHeight * 0.07,
+        radiusX: cakeWidth * 0.046,
+        radiusY: cakeWidth * 0.024,
+        fill: topping.second,
+        detail: topping.third,
+        shadow: topping.shadow,
+      },
+      {
+        x: centerX + cakeWidth * 0.1,
+        y: topY - topHeight * 0.12,
+        radiusX: cakeWidth * 0.048,
+        radiusY: cakeWidth * 0.025,
+        fill: topping.third,
+        detail: topping.accent,
+        shadow: topping.shadow,
+      },
+    ];
+  }
+
+  if (includeTopDetails && selectedToppingId === "goldleaf") {
+    toppingModel.goldLeaf = [
+      {
+        points: [
+          centerX - cakeWidth * 0.1,
+          topY - topHeight * 0.1,
+          centerX - cakeWidth * 0.03,
+          topY - topHeight * 0.22,
+          centerX + cakeWidth * 0.02,
+          topY - topHeight * 0.05,
+          centerX - cakeWidth * 0.04,
+          topY + topHeight * 0.02,
+        ],
+        fill: topping.accent,
+        stroke: topping.glaze,
+      },
+      {
+        points: [
+          centerX + cakeWidth * 0.08,
+          topY - topHeight * 0.02,
+          centerX + cakeWidth * 0.18,
+          topY - topHeight * 0.16,
+          centerX + cakeWidth * 0.24,
+          topY + topHeight * 0.04,
+          centerX + cakeWidth * 0.12,
+          topY + topHeight * 0.08,
+        ],
+        fill: topping.dark,
+        stroke: topping.glaze,
+      },
+    ];
   }
 
   const previewText = includeTopDetails ? getCakePreviewMessage(message) : "";
