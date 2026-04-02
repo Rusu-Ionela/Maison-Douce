@@ -268,6 +268,11 @@ export default function CakeConstructor2D({
         return;
       }
 
+      if (window.innerWidth >= 1280) {
+        setShowFloatingPreview(false);
+        return;
+      }
+
       const rect = element.getBoundingClientRect();
       const viewportHeight = window.innerHeight || 0;
       const visibleHeight =
@@ -1452,9 +1457,9 @@ export default function CakeConstructor2D({
   };
 
   return (
-    <div className="grid grid-cols-1 gap-6 2xl:grid-cols-[minmax(0,1.08fr)_minmax(0,0.92fr)]">
-      <section className="space-y-6 2xl:min-w-0">
-        <div className={`${cards.elevated} space-y-4`}>
+    <div className="grid grid-cols-1 gap-6 xl:grid-cols-[minmax(360px,0.82fr)_minmax(0,1.18fr)]">
+      <section className="space-y-6 xl:contents">
+        <div className={`${cards.elevated} space-y-4 xl:col-start-2 xl:order-10`}>
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div>
               <div className="text-xs font-semibold uppercase tracking-[0.18em] text-pink-500">
@@ -1553,7 +1558,7 @@ export default function CakeConstructor2D({
         <div
           ref={previewRef}
           data-testid="constructor-preview-panel"
-          className={`${cards.elevated} scroll-mt-28 space-y-4`}
+          className={`${cards.elevated} scroll-mt-28 space-y-4 xl:col-start-1 xl:order-15 xl:sticky xl:top-24 xl:self-start`}
         >
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div className="space-y-2">
@@ -1721,7 +1726,10 @@ export default function CakeConstructor2D({
           </div>
         </div>
 
-        <div ref={decorationStepRef} className={`${cards.elevated} scroll-mt-28 space-y-5`}>
+        <div
+          ref={decorationStepRef}
+          className={`${cards.elevated} scroll-mt-28 space-y-5 xl:col-start-2 xl:order-40`}
+        >
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div>
               <div className="text-xs font-semibold uppercase tracking-[0.18em] text-pink-500">
@@ -1806,7 +1814,10 @@ export default function CakeConstructor2D({
           </div>
         </div>
 
-        <div ref={aiStepRef} className={`${cards.elevated} scroll-mt-28 space-y-4`}>
+        <div
+          ref={aiStepRef}
+          className={`${cards.elevated} scroll-mt-28 space-y-4 xl:col-start-2 xl:order-50`}
+        >
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div>
               <div className="text-xs font-semibold uppercase tracking-[0.18em] text-pink-500">
@@ -1991,8 +2002,8 @@ export default function CakeConstructor2D({
         </div>
       </section>
 
-      <aside className="space-y-6 2xl:min-w-0">
-        <div className={`${cards.elevated} space-y-5`}>
+      <aside className="space-y-6 xl:contents">
+        <div className={`${cards.elevated} space-y-5 xl:col-start-2 xl:order-20`}>
           <div>
             <h2 className="text-xl font-semibold text-gray-900">Compoziție</h2>
             <p className="text-sm text-gray-600">
@@ -2135,7 +2146,7 @@ export default function CakeConstructor2D({
           </div>
         </div>
 
-        <div className={`${cards.elevated} space-y-4`}>
+        <div className={`${cards.elevated} space-y-4 xl:col-start-2 xl:order-30`}>
           <div>
             <h2 className="text-xl font-semibold text-gray-900">Estimare și acțiuni</h2>
             <p className="text-sm text-gray-600">
