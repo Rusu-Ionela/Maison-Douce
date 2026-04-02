@@ -189,6 +189,7 @@ export default function CakeConstructor2D({
   const [busyAction, setBusyAction] = useState("");
   const [aiBusy, setAiBusy] = useState(false);
   const [previewWidth, setPreviewWidth] = useState(560);
+  const [viewportWidth, setViewportWidth] = useState(0);
   const [status, setStatus] = useState({ type: "", text: "" });
   const [aiStatus, setAiStatus] = useState({ type: "", text: "" });
   const [previewMode, setPreviewMode] = useState("exterior");
@@ -236,6 +237,23 @@ export default function CakeConstructor2D({
 
     observer.observe(element);
     return () => observer.disconnect();
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return undefined;
+    }
+
+    const updateViewportWidth = () => {
+      setViewportWidth(window.innerWidth || 0);
+    };
+
+    updateViewportWidth();
+    window.addEventListener("resize", updateViewportWidth);
+
+    return () => {
+      window.removeEventListener("resize", updateViewportWidth);
+    };
   }, []);
 
   useEffect(() => {
@@ -561,8 +579,9 @@ export default function CakeConstructor2D({
 
   const stageWidth = Math.max(320, Math.min(previewWidth, 680));
   const stageHeight = Math.max(260, Math.min(430, Math.round(stageWidth * 0.64)));
-  const floatingPreviewWidth = 200;
+  const floatingPreviewWidth = viewportWidth >= 1024 ? 280 : 200;
   const floatingPreviewHeight = Math.round(floatingPreviewWidth * 0.64);
+  const fixedPreviewLabel = viewportWidth >= 1024 ? "Tort fixat" : "Preview live";
 
   const selectedOptions = useMemo(
     () => ({
@@ -2264,12 +2283,12 @@ export default function CakeConstructor2D({
       </aside>
 
       {showFloatingPreview ? (
-        <div className="fixed bottom-4 right-4 z-40 2xl:hidden">
-          <div className="w-[220px] rounded-[26px] border border-rose-200 bg-[rgba(255,251,245,0.96)] p-3 shadow-card backdrop-blur-md">
+        <div className="fixed bottom-4 right-4 z-40 2xl:hidden lg:bottom-auto lg:right-6 lg:top-28">
+          <div className="w-[220px] rounded-[26px] border border-rose-200 bg-[rgba(255,251,245,0.96)] p-3 shadow-card backdrop-blur-md lg:w-[320px]">
             <div className="mb-2 flex items-center justify-between gap-2">
               <div>
                 <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-pink-500">
-                  Preview live
+                  {fixedPreviewLabel}
                 </div>
                 <div className="text-xs font-semibold text-[#2f2126]">
                   {activeModeMeta.shortLabel}

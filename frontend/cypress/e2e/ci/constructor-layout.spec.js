@@ -26,6 +26,9 @@ describe("constructor layout", () => {
     });
 
     cy.contains("Decor liber si layer management").scrollIntoView().should("be.visible");
+    cy.contains("Preview realist cu AI").scrollIntoView();
+    cy.contains("Tort fixat").should("be.visible");
+    cy.contains("button", "Vezi mare").should("be.visible");
     cy.contains("Preview realist cu AI").scrollIntoView().should("be.visible");
   });
 
