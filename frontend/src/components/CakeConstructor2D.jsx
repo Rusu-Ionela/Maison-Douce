@@ -207,6 +207,7 @@ export default function CakeConstructor2D({
   const [aiPreviewVariants, setAiPreviewVariants] = useState([]);
   const [activeAiPreviewIndex, setActiveAiPreviewIndex] = useState(0);
   const [productPrefill, setProductPrefill] = useState(null);
+  const [showFloatingPreview, setShowFloatingPreview] = useState(false);
   const [decorationSearch, setDecorationSearch] = useState("");
   const [decorationCategory, setDecorationCategory] = useState("all");
   const [decorationElements, setDecorationElements] = useState([]);
@@ -230,6 +231,43 @@ export default function CakeConstructor2D({
 
     observer.observe(element);
     return () => observer.disconnect();
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return undefined;
+    }
+
+    const updateFloatingPreview = () => {
+      const element = previewRef.current;
+      if (!element) {
+        setShowFloatingPreview(false);
+        return;
+      }
+
+      if (window.innerWidth >= 1280) {
+        setShowFloatingPreview(false);
+        return;
+      }
+
+      const rect = element.getBoundingClientRect();
+      const viewportHeight = window.innerHeight || 0;
+      const visibleHeight =
+        Math.min(rect.bottom, viewportHeight) - Math.max(rect.top, 0);
+      const previewMostlyHidden = visibleHeight < Math.min(rect.height * 0.42, 220);
+      const scrolledPastPreview = window.scrollY > element.offsetTop + 120;
+
+      setShowFloatingPreview(scrolledPastPreview && previewMostlyHidden);
+    };
+
+    updateFloatingPreview();
+    window.addEventListener("scroll", updateFloatingPreview, { passive: true });
+    window.addEventListener("resize", updateFloatingPreview);
+
+    return () => {
+      window.removeEventListener("scroll", updateFloatingPreview);
+      window.removeEventListener("resize", updateFloatingPreview);
+    };
   }, []);
 
   useEffect(() => {
@@ -468,6 +506,8 @@ export default function CakeConstructor2D({
 
   const stageWidth = Math.max(320, previewWidth);
   const stageHeight = Math.round(stageWidth * 0.72);
+  const floatingPreviewWidth = 220;
+  const floatingPreviewHeight = Math.round(floatingPreviewWidth * 0.72);
 
   const selectedOptions = useMemo(
     () => ({
@@ -507,6 +547,32 @@ export default function CakeConstructor2D({
         },
       }),
     [heightProfile, mesaj, selectedOptions, shape, size, stageHeight, stageWidth, tiers]
+  );
+
+  const floatingPreviewModel = useMemo(
+    () =>
+      buildCakePreviewModel({
+        stageWidth: floatingPreviewWidth,
+        stageHeight: floatingPreviewHeight,
+        selectedOptions,
+        message: mesaj,
+        structureOptions: {
+          shape,
+          size,
+          tiers,
+          heightProfile,
+        },
+      }),
+    [
+      floatingPreviewHeight,
+      floatingPreviewWidth,
+      heightProfile,
+      mesaj,
+      selectedOptions,
+      shape,
+      size,
+      tiers,
+    ]
   );
 
   const decorationSummary = useMemo(
@@ -733,6 +799,12 @@ export default function CakeConstructor2D({
   );
 
   const activeModeMeta = PREVIEW_MODES.find((mode) => mode.id === previewMode) || PREVIEW_MODES[0];
+
+  const scrollToPreview = (behavior = "smooth") => {
+    const element = previewRef.current;
+    if (!element) return;
+    element.scrollIntoView({ behavior, block: "start" });
+  };
 
   const showPreviewHint = (text) => {
     setPreviewHint(text);
@@ -1397,7 +1469,10 @@ export default function CakeConstructor2D({
           </div>
         </div>
 
-        <div ref={previewRef} className={`${cards.elevated} space-y-4`}>
+        <div
+          ref={previewRef}
+          className={`${cards.elevated} space-y-4 xl:sticky xl:top-24 xl:z-20 xl:max-h-[calc(100vh-7rem)] xl:overflow-y-auto`}
+        >
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div className="space-y-2">
               <h2 className="text-xl font-semibold text-gray-900">Preview premium 2D</h2>
@@ -2089,6 +2164,42 @@ export default function CakeConstructor2D({
           ) : null}
         </div>
       </aside>
+
+      {showFloatingPreview ? (
+        <div className="fixed bottom-4 right-4 z-40 xl:hidden">
+          <div className="w-[220px] rounded-[26px] border border-rose-200 bg-[rgba(255,251,245,0.96)] p-3 shadow-card backdrop-blur-md">
+            <div className="mb-2 flex items-center justify-between gap-2">
+              <div>
+                <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-pink-500">
+                  Preview live
+                </div>
+                <div className="text-xs font-semibold text-[#2f2126]">
+                  {activeModeMeta.shortLabel}
+                </div>
+              </div>
+              <button
+                type="button"
+                className={buttons.outline}
+                onClick={() => scrollToPreview("smooth")}
+              >
+                Vezi mare
+              </button>
+            </div>
+
+            <div className="overflow-hidden rounded-[20px] border border-rose-100 bg-[radial-gradient(circle_at_top,_rgba(255,255,255,0.98),_rgba(249,244,236,0.96),_rgba(231,237,228,0.86))]">
+              <CakePreview2DStage
+                stageWidth={floatingPreviewWidth}
+                stageHeight={floatingPreviewHeight}
+                mode={previewMode}
+                model={floatingPreviewModel}
+                footerText=""
+                decorations={decorationElements}
+                selectedDecorationId={selectedDecorationId}
+              />
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }
