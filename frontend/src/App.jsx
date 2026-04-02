@@ -23,7 +23,9 @@ const Home = lazyPage("./pages/Home.jsx");
 const Catalog = lazyPage("./pages/Catalog.jsx");
 const TortDetails = lazyPage("./pages/TortDetails.jsx");
 const Cart = lazyPage("./pages/Cart.jsx");
+const ComandaOnline = lazyPage("./pages/ComandaOnline.jsx");
 const Constructor = lazyPage("./pages/Constructor.jsx");
+const DesignerAI = lazyPage("./pages/DesignerAI.jsx");
 const Contact = lazyPage("./pages/Contact.jsx");
 const Despre = lazyPage("./pages/Despre.jsx");
 const FAQ = lazyPage("./pages/FAQ.jsx");
@@ -160,6 +162,7 @@ export default function App() {
         <Routes>
           {/* Public */}
           <Route path="/" element={<Home />} />
+          <Route path="/comanda-online" element={<ComandaOnline />} />
           <Route path="/catalog" element={<Catalog />} />
           <Route path="/tort/:id" element={<TortDetails />} />
           <Route path="/cart" element={<Cart />} />
@@ -167,7 +170,7 @@ export default function App() {
           <Route path="/personalizare" element={<Navigate to="/constructor" replace />} />
           <Route path="/constructor" element={<Constructor />} />
           <Route path="/desen-tort" element={<Navigate to="/constructor" replace />} />
-          <Route path="/designer-ai" element={<Navigate to="/constructor" replace />} />
+          <Route path="/designer-ai" element={<DesignerAI />} />
           <Route path="/tort-designer" element={<Navigate to="/constructor" replace />} />
           <Route path="/patiser-drawing" element={<Navigate to="/constructor" replace />} />
           <Route path="/retete" element={<Retete />} />

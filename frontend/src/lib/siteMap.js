@@ -38,6 +38,7 @@ export const SITE_SECTIONS = [
     fullWidth: true,
     items: [
       { label: "Acasa", to: "/" },
+      { label: "Comanda online", to: "/comanda-online" },
       { label: "Catalog", to: "/catalog" },
       { label: "Cos", to: "/cart" },
       { label: "Constructor", to: "/constructor" },
@@ -225,6 +226,7 @@ export const SITE_SECTIONS = [
 ];
 
 export const TOP_NAV_LINKS = [
+  { label: "Comanda online", to: "/comanda-online" },
   { label: "Catalog", to: "/catalog" },
   { label: "Constructor", to: "/constructor" },
   { label: "Cos", to: "/cart" },
@@ -243,6 +245,10 @@ export const TOP_NAV_LINKS = [
 ];
 
 const CONTEXT_BRIDGES = [
+  {
+    matchPrefix: "/comanda-online",
+    targets: ["/catalog", "/constructor", "/designer-ai", "/personalizari"],
+  },
   {
     matchPrefix: "/admin/contabilitate",
     targets: ["/admin/umpluturi", "/admin/production", "/admin/retete", "/admin/notificari", "/admin/comenzi"],

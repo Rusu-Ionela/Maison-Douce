@@ -4,6 +4,7 @@ import { useAuth } from "../context/AuthContext";
 import { useCart } from "../context/CartContext";
 import { getTopNavLinks } from "../lib/siteMap";
 import NotificationBell from "./NotificationBell";
+import OrderOnlineCta from "./order-flow/OrderOnlineCta";
 
 function navLinkClass({ isActive }) {
   return [
@@ -91,6 +92,10 @@ export default function Navbar() {
         </nav>
 
         <div className="flex items-center gap-2">
+          <div className="hidden lg:block">
+            <OrderOnlineCta label="Comanda online" />
+          </div>
+
           {user ? <NotificationBell user={user} /> : null}
 
           {user ? (

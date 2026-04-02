@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { ProductsAPI } from "/src/api/products.js";
 import api from "/src/lib/api.js";
+import OrderOnlineCta from "../components/order-flow/OrderOnlineCta";
 import { useAuth } from "/src/context/AuthContext.jsx";
 import { buttons, cards, containers } from "../lib/tailwindComponents";
 import { getStorefrontCatalogItems } from "../lib/storefrontCatalog";
@@ -230,11 +231,12 @@ export default function Home() {
               </p>
             </div>
             <div className="mt-8 flex flex-wrap gap-3">
-              <Link to="/catalog" className={buttons.primary}>
+              <OrderOnlineCta
+                label="Comanda online"
+                description="Estimare, alegere si draft ghidat"
+              />
+              <Link to="/catalog" className={buttons.outline}>
                 Descopera catalogul
-              </Link>
-              <Link to="/constructor" className={buttons.outline}>
-                Creeaza un tort
               </Link>
             </div>
             <div className="mt-10 grid gap-3 md:grid-cols-3">
@@ -282,6 +284,54 @@ export default function Home() {
       </section>
 
       <section className={`${containers.pageMax} space-y-12`}>
+        <div className="reveal">
+          <div className={`${cards.tinted} overflow-hidden`}>
+            <div className="grid gap-5 xl:grid-cols-[1.05fr_0.95fr]">
+              <div className="space-y-4">
+                <div className="eyebrow">Flux nou pentru clienti</div>
+                <h2 className="section-title">
+                  Nu stii exact de unde sa incepi? Comanda online te ghideaza pas cu pas.
+                </h2>
+                <p className="section-subtitle">
+                  Pornesti cu numarul de persoane, primesti o estimare de kg si alegi apoi cea mai
+                  potrivita directie: catalog, tort personalizat sau generare de idei.
+                </p>
+                <div className="flex flex-wrap gap-3">
+                  <OrderOnlineCta label="Porneste comanda online" />
+                  <Link to="/personalizari" className={buttons.outline}>
+                    Drafturile mele
+                  </Link>
+                </div>
+              </div>
+
+              <div className="grid gap-3 sm:grid-cols-3">
+                {[
+                  {
+                    title: "1. Estimare",
+                    text: "Afli rapid cate kg sunt potrivite pentru evenimentul tau.",
+                  },
+                  {
+                    title: "2. Alegere",
+                    text: "Decizi clar intre tort existent, constructor sau generator de idei.",
+                  },
+                  {
+                    title: "3. Draft",
+                    text: "Salvezi si trimiti spre validare fara sa te simti blocat de decizia finala.",
+                  },
+                ].map((item) => (
+                  <article
+                    key={item.title}
+                    className="rounded-[24px] border border-rose-100 bg-white/78 p-4 shadow-soft"
+                  >
+                    <div className="text-sm font-semibold text-gray-900">{item.title}</div>
+                    <div className="mt-2 text-sm leading-6 text-[#655c53]">{item.text}</div>
+                  </article>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+
         <div className="reveal">
           <SectionHeader
             eyebrow="Selectie asistata"
