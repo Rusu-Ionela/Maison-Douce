@@ -509,6 +509,11 @@ export default function CakeConstructor2D({
     [heightProfile, mesaj, selectedOptions, shape, size, stageHeight, stageWidth, tiers]
   );
 
+  const decorationSummary = useMemo(
+    () => summarizeDecorationElements(decorationElements),
+    [decorationElements]
+  );
+
   const aiPromptPreview = useMemo(
     () =>
       buildCakeAiPrompt({
@@ -588,11 +593,6 @@ export default function CakeConstructor2D({
         category: decorationCategory,
       }),
     [decorationCategory, decorationSearch]
-  );
-
-  const decorationSummary = useMemo(
-    () => summarizeDecorationElements(decorationElements),
-    [decorationElements]
   );
 
   const recommendedDecorationItems = useMemo(() => {
