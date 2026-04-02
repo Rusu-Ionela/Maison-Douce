@@ -1,10 +1,11 @@
 import { useEffect, useMemo, useState } from "react";
-import { Link, useParams } from "react-router-dom";
+import { Link, useLocation, useParams } from "react-router-dom";
 import StatusBanner from "../components/StatusBanner";
 import { ProductsAPI } from "../api/products";
 import api from "../lib/api";
 import { useCart } from "../context/CartContext";
 import { useAuth } from "../context/AuthContext";
+import { buildOrderFlowHref, loadOrderFlowContext, readOrderFlowContextFromSearch } from "../lib/orderFlow";
 import { buttons, cards, inputs } from "../lib/tailwindComponents";
 import {
   getStorefrontCake,
@@ -146,9 +147,14 @@ function SectionPanel({ title, children, defaultOpen = true }) {
 }
 
 export default function TortDetails() {
+  const location = useLocation();
   const { id } = useParams();
   const { add } = useCart();
   const { user } = useAuth() || {};
+  const flowContext = useMemo(
+    () => readOrderFlowContextFromSearch(location.search) || loadOrderFlowContext(),
+    [location.search]
+  );
   const [tort, setTort] = useState(null);
   const [loading, setLoading] = useState(true);
   const [qty, setQty] = useState(1);
@@ -453,9 +459,12 @@ export default function TortDetails() {
                 </div>
                 <div className="mt-4 flex flex-wrap gap-2">
                   <Link
-                    to={`/catalog?selectedTort=${encodeURIComponent(
-                      storefrontTort.slug || storefrontTort._id
-                    )}#umpluturile-mele`}
+                    to={buildOrderFlowHref(
+                      `/catalog?selectedTort=${encodeURIComponent(
+                        storefrontTort.slug || storefrontTort._id
+                      )}#umpluturile-mele`,
+                      flowContext
+                    )}
                     className="inline-flex items-center justify-center rounded-full border border-[#d8c3a7]/60 bg-[#fbf3e8] px-4 py-2.5 text-sm font-semibold text-[#7a6045] transition hover:-translate-y-0.5 hover:border-[#c5ab8b] hover:bg-[#f8eee1]"
                   >
                     Vezi umpluturi compatibile
@@ -583,19 +592,25 @@ export default function TortDetails() {
                     Cere oferta
                   </Link>
                 )}
-                <Link to={`/constructor?from=${storefrontTort._id}`} className={buttons.outline}>
+                <Link
+                  to={buildOrderFlowHref(`/constructor?from=${storefrontTort._id}`, flowContext)}
+                  className={buttons.outline}
+                >
                   Configureaza in constructor
                 </Link>
                 <Link
-                  to={`/catalog?selectedTort=${encodeURIComponent(
-                    storefrontTort.slug || storefrontTort._id
-                  )}#umpluturile-mele`}
+                  to={buildOrderFlowHref(
+                    `/catalog?selectedTort=${encodeURIComponent(
+                      storefrontTort.slug || storefrontTort._id
+                    )}#umpluturile-mele`,
+                    flowContext
+                  )}
                   className="inline-flex items-center justify-center rounded-full border border-[#d8c3a7]/60 bg-[#fbf3e8] px-4 py-2.5 text-sm font-semibold text-[#7a6045] transition hover:-translate-y-0.5 hover:border-[#c5ab8b] hover:bg-[#f8eee1]"
                 >
                   Vezi umpluturi compatibile
                 </Link>
                 <Link
-                  to="/catalog"
+                  to={buildOrderFlowHref("/catalog", flowContext)}
                   className="inline-flex items-center justify-center rounded-full border border-rose-200 bg-white px-4 py-2.5 text-sm font-semibold text-[#675d55] hover:bg-rose-50"
                 >
                   Inapoi la catalog

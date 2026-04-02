@@ -9,6 +9,7 @@ import CakeDecorationLibrary from "./cake-designer/CakeDecorationLibrary";
 import ProviderSelector from "../components/ProviderSelector";
 import StatusBanner from "../components/StatusBanner";
 import { useAuth } from "../context/AuthContext";
+import { cleanOrderFlowForSave } from "../lib/orderFlow";
 import { buttons, cards, inputs } from "../lib/tailwindComponents";
 import { useProviderDirectory } from "../lib/providers";
 import { getStorefrontCake, getStorefrontFallbackCakeById } from "../lib/storefrontCatalog";
@@ -169,6 +170,8 @@ export default function CakeConstructor2D({
   designId: propDesignId,
   prefillFilling = "",
   prefillProductId = "",
+  orderFlowContext = null,
+  prefillGeneratedIdea = null,
 }) {
   const exteriorStageRef = useRef(null);
   const sectionStageRef = useRef(null);
@@ -504,6 +507,56 @@ export default function CakeConstructor2D({
     }
   }, [decorationElements, selectedDecorationId]);
 
+  useEffect(() => {
+    if (!prefillGeneratedIdea || propDesignId) return;
+    if (aiPreview || aiPreviewVariants.length > 0 || aiDecorRequest || inspirationItems.length > 0) {
+      return;
+    }
+
+    const variants = Array.isArray(prefillGeneratedIdea?.variants)
+      ? prefillGeneratedIdea.variants
+          .map((item, index) => ({
+            imageUrl: item?.imageUrl || item?.url || "",
+            prompt: item?.prompt || prefillGeneratedIdea?.prompt || "",
+            source: item?.source || "guided-idea",
+            fallback: item?.fallback === true,
+            label: item?.label || `Varianta ${index + 1}`,
+          }))
+          .filter((item) => item.imageUrl)
+      : [];
+
+    const primaryPreview =
+      variants[0] ||
+      (prefillGeneratedIdea?.imageUrl
+        ? {
+            imageUrl: prefillGeneratedIdea.imageUrl,
+            prompt: prefillGeneratedIdea.prompt || "",
+            source: prefillGeneratedIdea.source || "guided-idea",
+            fallback: prefillGeneratedIdea.fallback === true,
+            label: "Varianta 1",
+          }
+        : null);
+
+    if (!primaryPreview) return;
+
+    setAiDecorRequest(prefillGeneratedIdea?.note || prefillGeneratedIdea?.prompt || "");
+    setAiPreview(primaryPreview);
+    setAiPreviewVariants(variants.length ? variants : [primaryPreview]);
+    setActiveAiPreviewIndex(0);
+    setPreviewMode("exterior");
+    setStatus({
+      type: "info",
+      text: "Am adus in constructor conceptul generat anterior, ca sa il poti rafina manual.",
+    });
+  }, [
+    aiDecorRequest,
+    aiPreview,
+    aiPreviewVariants.length,
+    inspirationItems.length,
+    prefillGeneratedIdea,
+    propDesignId,
+  ]);
+
   const stageWidth = Math.max(320, previewWidth);
   const stageHeight = Math.round(stageWidth * 0.72);
   const floatingPreviewWidth = 220;
@@ -578,6 +631,10 @@ export default function CakeConstructor2D({
   const decorationSummary = useMemo(
     () => summarizeDecorationElements(decorationElements),
     [decorationElements]
+  );
+  const normalizedOrderFlowContext = useMemo(
+    () => cleanOrderFlowForSave(orderFlowContext || {}),
+    [orderFlowContext]
   );
 
   const aiPromptPreview = useMemo(
@@ -1220,6 +1277,7 @@ export default function CakeConstructor2D({
         inspirationImages: uploadedInspirationImages,
         estimatedServings: estimateMetrics.servingsLabel,
         estimatedWeightKg: estimateMetrics.weightLabel,
+        orderFlow: normalizedOrderFlowContext,
       },
       pretEstimat: total,
       timpPreparareOre: timpOre,
@@ -1352,6 +1410,7 @@ export default function CakeConstructor2D({
               .filter((item) => item.url),
             estimatedServings: estimateMetrics.servingsLabel,
             estimatedWeightKg: estimateMetrics.weightLabel,
+            orderFlow: normalizedOrderFlowContext,
           },
           pretEstimat: total,
           timpPreparareOre: timpOre,

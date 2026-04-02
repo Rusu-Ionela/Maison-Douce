@@ -1,6 +1,12 @@
 import { Link, useLocation } from "react-router-dom";
 import CakeConstructor2D from "../components/CakeConstructor2D";
 import ClientOrderFlowGuide from "../components/ClientOrderFlowGuide";
+import OrderFlowContextBanner from "../components/order-flow/OrderFlowContextBanner";
+import {
+  loadGeneratedIdeaSession,
+  loadOrderFlowContext,
+  readOrderFlowContextFromSearch,
+} from "../lib/orderFlow";
 import { buttons, cards, containers } from "../lib/tailwindComponents";
 
 const STEPS = [
@@ -15,6 +21,9 @@ export default function Constructor() {
   const designId = params.get("designId");
   const prefillFilling = params.get("umplutura") || "";
   const prefillProductId = params.get("from") || "";
+  const flowContext = readOrderFlowContextFromSearch(location.search) || loadOrderFlowContext();
+  const generatedIdea =
+    params.get("idea") === "guided" ? loadGeneratedIdeaSession() : null;
 
   return (
     <div className="min-h-screen">
@@ -30,9 +39,9 @@ export default function Constructor() {
                 </h1>
               </div>
               <p className="max-w-2xl text-base leading-8 text-[#655c53]">
-                Aici pornesti fluxul pentru torturi create de la zero sau pentru decoruri care au
-                nevoie de validare manuala. Configurezi structura, interiorul si exteriorul, apoi
-                trimiti cererea catre atelier pentru confirmarea finala a pretului.
+                {flowContext?.hasContext
+                  ? `Pornesti de la o recomandare pentru ${flowContext.persons} persoane si ${flowContext.estimatedKgLabel}, apoi configurezi structura, interiorul si exteriorul tortului in pasi mai usor de urmarit.`
+                  : "Aici pornesti fluxul pentru torturi create de la zero sau pentru decoruri care au nevoie de validare manuala. Configurezi structura, interiorul si exteriorul, apoi trimiti cererea catre atelier pentru confirmarea finala a pretului."}
               </p>
               <div className="flex flex-wrap gap-3">
                 <Link to="/calendar" className={buttons.outline}>
@@ -68,12 +77,29 @@ export default function Constructor() {
           </div>
         </header>
 
+        {flowContext?.hasContext ? (
+          <OrderFlowContextBanner
+            context={flowContext}
+            currentStep="build"
+            eyebrow="Pasul 3 din comanda online"
+            title="Construieste tortul pornind de la brief-ul tau"
+            description="Aici transformi estimarea initiala intr-un draft real: alegi baza tortului, ajustezi interiorul si construiesti decorul liber, fara sa pierzi contextul din pasii anteriori."
+            primaryAction={{ to: "/comanda-online", label: "Schimba brief-ul" }}
+            secondaryActions={[
+              { to: "/catalog", label: "Vezi torturi existente" },
+              { to: "/designer-ai", label: "Genereaza idee" },
+            ]}
+          />
+        ) : null}
+
         <ClientOrderFlowGuide activeFlow="custom" />
 
         <CakeConstructor2D
           designId={designId}
           prefillFilling={prefillFilling}
           prefillProductId={prefillProductId}
+          orderFlowContext={flowContext}
+          prefillGeneratedIdea={generatedIdea}
         />
       </div>
     </div>

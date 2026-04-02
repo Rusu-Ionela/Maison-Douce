@@ -1,11 +1,18 @@
-import { useDeferredValue, useEffect, useMemo, useState } from "react";
+import { useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useLocation } from "react-router-dom";
 import CakeWeightCalculator from "../components/CakeWeightCalculator";
 import CatalogFillingCard from "../components/CatalogFillingCard";
+import OrderFlowContextBanner from "../components/order-flow/OrderFlowContextBanner";
 import { ProductsAPI } from "../api/products";
 import ProductCard from "../components/ProductCard";
 import { useCart } from "../context/CartContext";
 import { CATALOG_FILLINGS } from "../data/catalogFillings";
+import {
+  buildOrderFlowHref,
+  getCatalogPortionBandForPersons,
+  loadOrderFlowContext,
+  readOrderFlowContextFromSearch,
+} from "../lib/orderFlow";
 import { buttons, cards } from "../lib/tailwindComponents";
 import {
   STOREFRONT_ALLERGEN_AVOIDANCE,
@@ -134,9 +141,63 @@ function RatingBadge({ item }) {
   );
 }
 
-function CatalogCard({ item, onAddToCart }) {
+const GUIDED_OCCASION_ALIASES = {
+  aniversare: "aniversare",
+  zi_nastere: "zi de nastere",
+  copii: "zi de nastere",
+  botez: "botez",
+  corporate: "corporate",
+  nunta: "nunta",
+};
+
+function resolveCatalogOccasionFromFlow(eventType = "") {
+  const token = GUIDED_OCCASION_ALIASES[String(eventType || "").trim()] || "";
+  if (!token) return "toate";
+
+  return (
+    STOREFRONT_OCCASIONS.find(
+      (option) => normalizeStorefrontText(option) === normalizeStorefrontText(token)
+    ) || "toate"
+  );
+}
+
+function guidedCatalogRank(item, flowContext) {
+  const targetPersons = Number(flowContext?.persons || 0);
+  const targetOccasion = resolveCatalogOccasionFromFlow(flowContext?.eventType);
+  const itemPersons = Number(item?.portii || 0);
+  let score = 0;
+
+  if (targetPersons > 0 && itemPersons > 0) {
+    score += Math.abs(itemPersons - targetPersons);
+  } else {
+    score += 24;
+  }
+
+  if (targetOccasion !== "toate") {
+    const matchesOccasion = Array.isArray(item?.ocazii)
+      ? item.ocazii.some(
+          (option) =>
+            normalizeStorefrontText(option) === normalizeStorefrontText(targetOccasion)
+        )
+      : false;
+    score += matchesOccasion ? -4 : 4;
+  }
+
+  score += item?.checkoutReady === true ? 0 : 1;
+  score += Number(item?.featuredRank || 999) / 100;
+  return score;
+}
+
+function CatalogCard({ item, onAddToCart, flowContext }) {
   const quoteOnly = item?.requiresManualQuote === true;
   const commerceMeta = getCatalogCommerceMeta(item);
+  const compatibleFillingsHref = buildOrderFlowHref(
+    `/catalog?selectedTort=${encodeURIComponent(item.slug || item._id)}#umpluturile-mele`,
+    flowContext
+  );
+  const detailsHref = buildOrderFlowHref(`/tort/${item._id}`, flowContext);
+  const constructorHref = buildOrderFlowHref(`/constructor?from=${item._id}`, flowContext);
+  const calendarHref = buildOrderFlowHref("/calendar", flowContext);
 
   return (
     <article className="group overflow-hidden rounded-[32px] border border-rose-100 bg-[rgba(255,252,247,0.94)] p-3 shadow-soft transition duration-300 hover:-translate-y-1.5 hover:shadow-card">
@@ -208,22 +269,22 @@ function CatalogCard({ item, onAddToCart }) {
 
         <div className="flex flex-wrap gap-2 pt-1">
           <Link
-            to={`/catalog?selectedTort=${encodeURIComponent(item.slug || item._id)}#umpluturile-mele`}
+            to={compatibleFillingsHref}
             className="inline-flex items-center justify-center rounded-full border border-[#d8c3a7]/60 bg-[#fbf3e8] px-4 py-2.5 text-sm font-semibold text-[#7a6045] transition hover:-translate-y-0.5 hover:border-[#c5ab8b] hover:bg-[#f8eee1]"
           >
             Vezi umpluturi compatibile
           </Link>
-          <Link to={`/tort/${item._id}`} className={buttons.outline}>
+          <Link to={detailsHref} className={buttons.outline}>
             Vezi detalii
           </Link>
           <Link
-            to={`/constructor?from=${item._id}`}
+            to={constructorHref}
             className="inline-flex items-center justify-center gap-2 rounded-full border border-sage-deep/35 bg-sage/30 px-4 py-2.5 text-sm font-semibold text-[#475145] hover:border-sage-deep/45 hover:bg-sage/45"
           >
-            Configureaza in constructor
+            {flowContext?.hasContext ? "Alege si personalizeaza" : "Configureaza in constructor"}
           </Link>
           {quoteOnly ? (
-            <Link to="/calendar" className={buttons.primary}>
+            <Link to={calendarHref} className={buttons.primary}>
               Cere oferta
             </Link>
           ) : (
@@ -246,6 +307,7 @@ function CatalogCard({ item, onAddToCart }) {
 export default function Catalog() {
   const location = useLocation();
   const { add } = useCart();
+  const guidedPrefillAppliedRef = useRef(false);
   const [loading, setLoading] = useState(true);
   const [rawItems, setRawItems] = useState([]);
   const [error, setError] = useState("");
@@ -262,6 +324,9 @@ export default function Catalog() {
   const [onlyDirectCheckout, setOnlyDirectCheckout] = useState(false);
   const [sort, setSort] = useState("recommended");
   const [highlightedFillingId, setHighlightedFillingId] = useState("");
+  const flowContext = useMemo(() => {
+    return readOrderFlowContextFromSearch(location.search) || loadOrderFlowContext();
+  }, [location.search]);
 
   useEffect(() => {
     document.title = "Catalog torturi | Maison-Douce";
@@ -288,6 +353,30 @@ export default function Catalog() {
     const timer = window.setTimeout(scrollToFillings, 80);
     return () => window.clearTimeout(timer);
   }, [location.hash]);
+
+  useEffect(() => {
+    if (!flowContext?.hasContext || guidedPrefillAppliedRef.current) return undefined;
+
+    const nextOccasion = resolveCatalogOccasionFromFlow(flowContext.eventType);
+    if (nextOccasion !== "toate") {
+      setOccasion(nextOccasion);
+    }
+    setPortionBand(getCatalogPortionBandForPersons(flowContext.persons));
+    setSort("recommended");
+    guidedPrefillAppliedRef.current = true;
+
+    if (flowContext.orderType === "catalog" && location.hash !== "#umpluturile-mele") {
+      const timer = window.setTimeout(() => {
+        document.getElementById("catalog-torturi")?.scrollIntoView({
+          behavior: "smooth",
+          block: "start",
+        });
+      }, 120);
+      return () => window.clearTimeout(timer);
+    }
+
+    return undefined;
+  }, [flowContext, location.hash]);
 
   const selectedFillingQuery = useMemo(() => {
     const params = new URLSearchParams(location.search);
@@ -454,6 +543,14 @@ export default function Catalog() {
       });
     }
 
+    if (flowContext?.hasContext) {
+      return [...next].sort((left, right) => {
+        const diff = guidedCatalogRank(left, flowContext) - guidedCatalogRank(right, flowContext);
+        if (diff !== 0) return diff;
+        return Number(right.ratingAvg || 0) - Number(left.ratingAvg || 0);
+      });
+    }
+
     return [...next].sort((left, right) => {
       if (Number(left.featuredRank || 999) !== Number(right.featuredRank || 999)) {
         return Number(left.featuredRank || 999) - Number(right.featuredRank || 999);
@@ -474,6 +571,7 @@ export default function Catalog() {
     priceBand,
     selectedFilling,
     sort,
+    flowContext,
   ]);
 
   const highlightedCount = filteredItems.filter((item) => isPopularCatalogItem(item)).length;
@@ -945,6 +1043,23 @@ export default function Catalog() {
           </div>
         ) : null}
 
+        {flowContext?.hasContext ? (
+          <div className="mt-6">
+            <OrderFlowContextBanner
+              context={flowContext}
+              currentStep="build"
+              eyebrow="Pasul 3 din comanda online"
+              title="Alege un tort existent pornind de la estimarea ta"
+              description={`Ti-am adaptat filtrarea pentru aproximativ ${flowContext.persons} persoane si ${flowContext.estimatedKgLabel}. Poti alege rapid un model din colectie si, daca vrei, il poti rafina apoi in constructor.`}
+              primaryAction={{ to: "/comanda-online", label: "Schimba estimarea" }}
+              secondaryActions={[
+                { to: "/constructor", label: "Mai bine construiesc" },
+                { to: "/designer-ai", label: "Genereaza idee" },
+              ]}
+            />
+          </div>
+        ) : null}
+
         <CakeWeightCalculator />
 
         {selectedFilling ? (
@@ -1062,7 +1177,12 @@ export default function Catalog() {
         {!loading && filteredItems.length > 0 ? (
           <div className="mt-8 grid gap-6 sm:grid-cols-2 xl:grid-cols-3">
             {filteredItems.map((item) => (
-              <CatalogCard key={item._id} item={item} onAddToCart={addToCart} />
+              <CatalogCard
+                key={item._id}
+                item={item}
+                onAddToCart={addToCart}
+                flowContext={flowContext}
+              />
             ))}
           </div>
         ) : null}
