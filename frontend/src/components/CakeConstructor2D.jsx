@@ -268,11 +268,6 @@ export default function CakeConstructor2D({
         return;
       }
 
-      if (window.innerWidth >= 1536) {
-        setShowFloatingPreview(false);
-        return;
-      }
-
       const rect = element.getBoundingClientRect();
       const viewportHeight = window.innerHeight || 0;
       const visibleHeight =
@@ -1558,7 +1553,7 @@ export default function CakeConstructor2D({
         <div
           ref={previewRef}
           data-testid="constructor-preview-panel"
-          className={`${cards.elevated} scroll-mt-28 space-y-4 2xl:sticky 2xl:top-24 2xl:z-20`}
+          className={`${cards.elevated} scroll-mt-28 space-y-4`}
         >
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div className="space-y-2">
@@ -2283,7 +2278,7 @@ export default function CakeConstructor2D({
       </aside>
 
       {showFloatingPreview ? (
-        <div className="fixed bottom-4 right-4 z-40 2xl:hidden lg:bottom-auto lg:right-6 lg:top-28">
+        <div className="fixed bottom-4 right-4 z-40 lg:bottom-auto lg:right-6 lg:top-28">
           <div className="w-[220px] rounded-[26px] border border-rose-200 bg-[rgba(255,251,245,0.96)] p-3 shadow-card backdrop-blur-md lg:w-[320px]">
             <div className="mb-2 flex items-center justify-between gap-2">
               <div>

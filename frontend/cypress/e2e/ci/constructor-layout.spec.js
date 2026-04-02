@@ -32,15 +32,18 @@ describe("constructor layout", () => {
     cy.contains("Preview realist cu AI").scrollIntoView().should("be.visible");
   });
 
-  it("keeps the preview sticky only on very wide desktop screens", () => {
+  it("keeps the main preview in normal flow even on very wide desktop screens", () => {
     cy.viewport(1600, 1000);
     openConstructor();
 
     cy.get('[data-testid="constructor-preview-panel"]').should(($panel) => {
       const style = getComputedStyle($panel[0]);
-      expect(style.position).to.equal("sticky");
+      expect(style.position).to.equal("static");
       expect(style.overflowY).to.equal("visible");
     });
+
+    cy.contains("Preview realist cu AI").scrollIntoView();
+    cy.contains("Tort fixat").should("be.visible");
   });
 
   it("shows the compact floating preview on mobile after the main preview leaves the viewport", () => {
