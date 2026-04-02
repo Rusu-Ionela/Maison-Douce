@@ -6,6 +6,7 @@ import { useAuth } from "../context/AuthContext";
 import {
   buildCustomOrderHighlights,
   getCustomOrderDecorationSummary,
+  getCustomOrderFlowSummary,
 } from "../lib/customOrderSummary";
 import { buttons, cards, containers } from "../lib/tailwindComponents";
 
@@ -84,6 +85,7 @@ export default function VizualizarePersonalizari() {
   const [customOrdersByDesign, setCustomOrdersByDesign] = useState(() => new Map());
   const [loading, setLoading] = useState(false);
   const [status, setStatus] = useState({ type: "", message: "" });
+  const [pendingActionId, setPendingActionId] = useState("");
   const nav = useNavigate();
   const { user, loading: authLoading } = useAuth() || {};
   const clientId = user?._id || user?.id;
@@ -148,6 +150,83 @@ export default function VizualizarePersonalizari() {
     ];
   }, [list]);
 
+  const sendDraftToPastry = async (design) => {
+    const designId = String(design?._id || "").trim();
+    if (!designId) return;
+
+    setPendingActionId(`send-${designId}`);
+    setStatus({ type: "", message: "" });
+
+    try {
+      await api.put(`/personalizare/${designId}`, { status: "trimis" });
+      const response = await api.post("/comenzi-personalizate", {
+        clientId,
+        prestatorId: design?.prestatorId || undefined,
+        numeClient: user?.nume || user?.name || "Client",
+        preferinte: design?.mesaj || "Draft trimis din biblioteca clientului",
+        imagine: design?.imageUrl || "",
+        designId,
+        options: design?.options || {},
+        pretEstimat: Number(design?.pretEstimat || 0),
+        timpPreparareOre: Number(design?.timpPreparareOre || 0),
+      });
+
+      setList((current) =>
+        current.map((item) =>
+          String(item?._id || "") === designId ? { ...item, status: "trimis" } : item
+        )
+      );
+      setCustomOrdersByDesign((current) => {
+        const next = new Map(current);
+        next.set(designId, response?.data?.comanda);
+        return next;
+      });
+      setStatus({
+        type: "success",
+        message: "Draftul a fost trimis catre patiser si apare acum in cererile personalizate.",
+      });
+    } catch (error) {
+      setStatus({
+        type: "error",
+        message:
+          error?.response?.data?.mesaj || "Nu am putut trimite draftul catre atelier.",
+      });
+    } finally {
+      setPendingActionId("");
+    }
+  };
+
+  const deleteDraft = async (design) => {
+    const designId = String(design?._id || "").trim();
+    if (!designId) return;
+    if (!window.confirm("Stergi acest draft din cont?")) return;
+
+    setPendingActionId(`delete-${designId}`);
+    setStatus({ type: "", message: "" });
+
+    try {
+      await api.delete(`/personalizare/${designId}`);
+      setList((current) => current.filter((item) => String(item?._id || "") !== designId));
+      setCustomOrdersByDesign((current) => {
+        const next = new Map(current);
+        next.delete(designId);
+        return next;
+      });
+      setStatus({
+        type: "success",
+        message: "Draftul a fost sters din biblioteca ta.",
+      });
+    } catch (error) {
+      setStatus({
+        type: "error",
+        message:
+          error?.response?.data?.error || "Nu am putut sterge draftul selectat.",
+      });
+    } finally {
+      setPendingActionId("");
+    }
+  };
+
   return (
     <div className="min-h-screen">
       <div className={`${containers.pageMax} max-w-7xl space-y-6`}>
@@ -158,16 +237,17 @@ export default function VizualizarePersonalizari() {
                 Biblioteca clientului
               </div>
               <h1 className="font-serif text-4xl font-semibold text-ink">
-                Designurile mele
+                Drafturile mele
               </h1>
               <p className="text-base leading-7 text-[#655c53]">
-                Aici regasesti toate drafturile salvate din constructor, inclusiv imaginile
-                de inspiratie si variantele AI generate pentru decor.
+                Aici regasesti toate variantele salvate din fluxul ghidat, constructor si generatorul
+                de idei. Le poti redeschide, continua, trimite catre atelier sau sterge daca nu mai
+                ai nevoie de ele.
               </p>
             </div>
             <div className="flex flex-wrap gap-3">
-              <Link to="/constructor" className={buttons.secondary}>
-                Creeaza un design nou
+              <Link to="/comanda-online" className={buttons.secondary}>
+                Porneste o comanda noua
               </Link>
               <Link to="/chat" className={buttons.outline}>
                 Scrie atelierului
@@ -224,6 +304,7 @@ export default function VizualizarePersonalizari() {
             const options = design?.options && typeof design.options === "object" ? design.options : {};
             const highlights = buildCustomOrderHighlights(options);
             const decorationSummary = getCustomOrderDecorationSummary(options);
+            const flowSummary = getCustomOrderFlowSummary(options);
             const gallery = buildDesignGallery(design);
             const linkedCustomOrder = customOrdersByDesign.get(String(design._id || ""));
             const aiVariantCount = Array.isArray(design?.options?.aiPreviewVariants)
@@ -248,6 +329,11 @@ export default function VizualizarePersonalizari() {
                     <div className="mt-2 text-sm text-gray-500">
                       Actualizat: {formatSavedAt(design.updatedAt || design.createdAt)}
                     </div>
+                    {flowSummary ? (
+                      <div className="mt-3 rounded-full border border-sage-deep/15 bg-sage/20 px-3 py-1.5 text-xs font-semibold text-sage-deep">
+                        {flowSummary}
+                      </div>
+                    ) : null}
                   </div>
                   <div className="flex flex-wrap gap-2">
                     <span className="rounded-full border border-rose-200 bg-rose-50 px-3 py-1 text-xs font-semibold text-pink-700">
@@ -364,6 +450,18 @@ export default function VizualizarePersonalizari() {
                   >
                     Continua editarea
                   </button>
+                  {!linkedCustomOrder?._id ? (
+                    <button
+                      type="button"
+                      className={buttons.secondary}
+                      disabled={pendingActionId === `send-${design._id}`}
+                      onClick={() => sendDraftToPastry(design)}
+                    >
+                      {pendingActionId === `send-${design._id}`
+                        ? "Se trimite..."
+                        : "Trimite atelierului"}
+                    </button>
+                  ) : null}
                   {linkedCustomOrder?._id ? (
                     <Link
                       className={buttons.secondary}
@@ -384,6 +482,16 @@ export default function VizualizarePersonalizari() {
                     >
                       Deschide preview-ul
                     </a>
+                  ) : null}
+                  {!linkedCustomOrder?._id ? (
+                    <button
+                      type="button"
+                      className={buttons.outline}
+                      disabled={pendingActionId === `delete-${design._id}`}
+                      onClick={() => deleteDraft(design)}
+                    >
+                      {pendingActionId === `delete-${design._id}` ? "Se sterge..." : "Sterge draftul"}
+                    </button>
                   ) : null}
                 </div>
               </article>

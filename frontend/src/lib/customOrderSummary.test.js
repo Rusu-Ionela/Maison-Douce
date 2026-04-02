@@ -4,6 +4,7 @@ import {
   buildCustomOrderPreviewImages,
   buildCustomOrderSections,
   getCustomOrderDecorationSummary,
+  getCustomOrderFlowSummary,
   getCustomOrderOptionLabel,
   getCustomOrderStatusMeta,
 } from "./customOrderSummary";
@@ -14,6 +15,14 @@ describe("customOrderSummary", () => {
       preferinte: "Vreau un tort elegant",
       statusHistory: [{ status: "noua", note: "abia trimisa" }],
       options: {
+        orderFlow: {
+          orderType: "idea",
+          orderTypeLabel: "Genereaza",
+          persons: 28,
+          eventLabel: "Nunta",
+          estimatedKgLabel: "4.2 kg",
+          portionStyleLabel: "Portii normale",
+        },
         shape: "heart",
         size: "grand",
         tiers: 2,
@@ -35,6 +44,7 @@ describe("customOrderSummary", () => {
     });
 
     expect(sections.map((section) => section.title)).toEqual([
+      "Brief client",
       "Structura",
       "Interior",
       "Exterior",
@@ -43,9 +53,10 @@ describe("customOrderSummary", () => {
       "Imagini inspiratie",
       "Istoric",
     ]);
-    expect(sections[0].items[0]).toEqual({ label: "Forma", value: "Inima" });
-    expect(sections[0].items[1]).toEqual({ label: "Dimensiune", value: "Mare" });
-    expect(sections[2].items.at(-1)).toEqual({
+    expect(sections[0].items[0]).toEqual({ label: "Tip comanda", value: "Tort generat" });
+    expect(sections[1].items[0]).toEqual({ label: "Forma", value: "Inima" });
+    expect(sections[1].items[1]).toEqual({ label: "Dimensiune", value: "Mare" });
+    expect(sections[3].items.at(-1)).toEqual({
       label: "Decor liber",
       value: "2x Trandafiri din zahar, 1x Topper acrilic",
     });
@@ -72,6 +83,12 @@ describe("customOrderSummary", () => {
 
   it("formats highlights and decoration summary for advanced builders", () => {
     const options = {
+      orderFlow: {
+        orderType: "catalog",
+        persons: 14,
+        eventLabel: "Aniversare",
+        estimatedKgLabel: "2.1 kg",
+      },
       shape: "square",
       size: "petite",
       tiers: 2,
@@ -84,6 +101,7 @@ describe("customOrderSummary", () => {
 
     expect(getCustomOrderOptionLabel("shape", options.shape)).toBe("Patrat");
     expect(getCustomOrderDecorationSummary(options)).toBe("2 elemente decorative");
+    expect(getCustomOrderFlowSummary(options)).toBe("Tort existent | 14 persoane | 2.1 kg | Aniversare");
     expect(buildCustomOrderHighlights(options)).toContain("forma Patrat");
     expect(buildCustomOrderHighlights(options)).toContain("2 decoruri libere");
   });

@@ -162,4 +162,31 @@ router.put('/:id', authRequired, async (req, res) => {
     }
 });
 
+router.delete('/:id', authRequired, async (req, res) => {
+    try {
+        const doc = await Personalizare.findById(req.params.id);
+        if (!doc) return res.status(404).json({ error: 'Not found' });
+
+        const role = req.user?.rol || req.user?.role;
+        if (role !== "admin" && role !== "patiser" && String(doc.clientId) !== String(req.user._id)) {
+            return res.status(403).json({ error: "Acces interzis" });
+        }
+
+        try {
+            if (doc.imageUrl && doc.imageUrl.startsWith('/uploads/')) {
+                const filePath = path.join(__dirname, '..', doc.imageUrl.replace('/uploads/', 'uploads/'));
+                if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
+            }
+        } catch (cleanupError) {
+            console.warn('Could not remove draft image:', cleanupError?.message || cleanupError);
+        }
+
+        await doc.deleteOne();
+        res.json({ ok: true });
+    } catch (e) {
+        console.error('DELETE /personalizare/:id error:', e);
+        res.status(500).json({ error: GENERIC_SERVER_MESSAGE });
+    }
+});
+
 module.exports = router;

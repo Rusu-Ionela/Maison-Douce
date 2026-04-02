@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useLocation } from "react-router-dom";
 import AdminShell, {
   AdminMetricGrid,
   AdminPanel,
@@ -153,12 +154,17 @@ function MessageBubble({ message, currentUserId }) {
 }
 
 export default function ChatUtilizatori() {
+  const location = useLocation();
   const { user } = useAuth() || {};
   const normalizedRole = normalizeRole(user?.rol || user?.role);
   const isStaffUser = isStaffRole(normalizedRole);
   const currentUserId = String(user?._id || user?.id || "");
   const currentUserName = user?.nume || user?.name || "Admin";
   const providerState = useProviderDirectory({ user, enabled: isStaffUser });
+  const requestedRoom = useMemo(
+    () => String(new URLSearchParams(location.search).get("room") || "").trim(),
+    [location.search]
+  );
 
   const socketRef = useRef(null);
   const activeRoomRef = useRef("");
@@ -286,10 +292,14 @@ export default function ChatUtilizatori() {
       setActiveRoom("");
       return;
     }
+    if (requestedRoom && visibleRooms.some((item) => item.room === requestedRoom)) {
+      setActiveRoom(requestedRoom);
+      return;
+    }
     if (!visibleRooms.some((item) => item.room === activeRoom)) {
       setActiveRoom(visibleRooms[0].room);
     }
-  }, [activeRoom, visibleRooms]);
+  }, [activeRoom, requestedRoom, visibleRooms]);
 
   useEffect(() => {
     if (!isStaffUser || !activeRoom) return undefined;

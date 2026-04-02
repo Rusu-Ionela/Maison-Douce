@@ -2,8 +2,10 @@ import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import api from "/src/lib/api.js";
 import StatusBanner from "../components/StatusBanner";
+import { buildConversationRoom } from "../lib/providers";
 import { buttons, cards, inputs } from "../lib/tailwindComponents";
 import {
+  getCustomOrderFlowSummary,
   buildCustomOrderPreviewImages,
   buildCustomOrderSections,
   formatCustomOrderDate,
@@ -67,6 +69,11 @@ function DetailSection({ section }) {
       </div>
     </div>
   );
+}
+
+function buildStaffChatLink(comanda) {
+  const room = buildConversationRoom(comanda?.clientId, comanda?.prestatorId);
+  return room ? `/chat/utilizatori?room=${encodeURIComponent(room)}` : "/chat/utilizatori";
 }
 
 export default function AdminComenziPersonalizate() {
@@ -275,6 +282,13 @@ export default function AdminComenziPersonalizate() {
     }
   };
 
+  const guidedBriefCount = comenzi.filter(
+    (item) => Number(item?.options?.orderFlow?.persons || 0) > 0
+  ).length;
+  const generatedIdeaCount = comenzi.filter(
+    (item) => String(item?.options?.orderFlow?.orderType || "") === "idea"
+  ).length;
+
   return (
     <div className="mx-auto max-w-7xl space-y-6 px-4 py-6 sm:px-6">
       <section className={`${cards.tinted} space-y-5`}>
@@ -310,7 +324,7 @@ export default function AdminComenziPersonalizate() {
           </label>
         </div>
 
-        <div className="grid gap-4 md:grid-cols-3">
+        <div className="grid gap-4 md:grid-cols-4">
           <article className="rounded-[24px] border border-rose-100 bg-white/80 p-4 shadow-soft">
             <div className="text-sm font-medium text-pink-700">Total comenzi</div>
             <div className="mt-2 text-2xl font-semibold text-gray-900">{comenzi.length}</div>
@@ -334,6 +348,13 @@ export default function AdminComenziPersonalizate() {
             </div>
             <div className="mt-2 text-sm text-[#655c53]">
               Cereri care au nevoie inca de clarificare sau confirmare de pret.
+            </div>
+          </article>
+          <article className="rounded-[24px] border border-rose-100 bg-white/80 p-4 shadow-soft">
+            <div className="text-sm font-medium text-pink-700">Cu brief ghidat</div>
+            <div className="mt-2 text-2xl font-semibold text-gray-900">{guidedBriefCount}</div>
+            <div className="mt-2 text-sm text-[#655c53]">
+              {generatedIdeaCount} vin direct din generatorul de idei.
             </div>
           </article>
         </div>
@@ -373,6 +394,7 @@ export default function AdminComenziPersonalizate() {
             !(reviewDraft.status === "respinsa" && !String(reviewDraft.statusNote || "").trim());
           const clientApproved = Boolean(comanda.clientApprovedAt);
           const approvalMoment = formatApprovalMoment(comanda.clientApprovedAt);
+          const flowSummary = getCustomOrderFlowSummary(comanda?.options || {});
 
           return (
             <article
@@ -390,6 +412,11 @@ export default function AdminComenziPersonalizate() {
                   <div className="mt-2 text-sm text-gray-500">
                     {formatCustomOrderDate(comanda.data || comanda.createdAt)}
                   </div>
+                  {flowSummary ? (
+                    <div className="mt-3 rounded-full border border-sage-deep/15 bg-sage/20 px-3 py-1.5 text-xs font-semibold text-sage-deep">
+                      {flowSummary}
+                    </div>
+                  ) : null}
                 </div>
 
                 <div
@@ -424,13 +451,15 @@ export default function AdminComenziPersonalizate() {
                 </div>
                 <div className="rounded-[22px] border border-rose-100 bg-white/80 px-4 py-3 shadow-soft">
                   <div className="text-xs font-semibold uppercase tracking-[0.16em] text-pink-500">
-                    Design salvat
+                    Brief client
                   </div>
                   <div className="mt-2 text-sm font-semibold text-gray-900">
-                    {comanda.designId ? `#${String(comanda.designId).slice(-6)}` : "fara draft"}
+                    {flowSummary || "Fara brief ghidat"}
                   </div>
                   <div className="mt-1 text-sm text-gray-500">
-                    Poti redeschide designul pentru verificare.
+                    {comanda.designId
+                      ? `Draft #${String(comanda.designId).slice(-6)} disponibil pentru reverificare.`
+                      : "Cererea nu mai are un draft sursa atasat."}
                   </div>
                 </div>
               </div>
@@ -480,6 +509,9 @@ export default function AdminComenziPersonalizate() {
                           Deschide designul
                         </Link>
                       ) : null}
+                      <Link to={buildStaffChatLink(comanda)} className={buttons.secondary}>
+                        Mesaj client
+                      </Link>
                       {previewImages[0]?.url ? (
                         <a
                           href={previewImages[0].url}
@@ -490,6 +522,22 @@ export default function AdminComenziPersonalizate() {
                           Deschide preview-ul
                         </a>
                       ) : null}
+                      <button
+                        type="button"
+                        className={buttons.outline}
+                        onClick={() => {
+                          setReviewDraftField(comanda, "status", "in_discutie");
+                          if (!String(reviewDraft.statusNote || "").trim()) {
+                            setReviewDraftField(
+                              comanda,
+                              "statusNote",
+                              "Sunt necesare cateva ajustari inainte de aprobarea ofertei."
+                            );
+                          }
+                        }}
+                      >
+                        Propune ajustari
+                      </button>
                     </div>
                   </div>
 

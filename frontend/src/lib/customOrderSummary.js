@@ -40,6 +40,12 @@ const STATUS_META = {
   },
 };
 
+const ORDER_FLOW_TYPE_LABELS = {
+  catalog: "Tort existent",
+  custom: "Tort construit",
+  idea: "Tort generat",
+};
+
 function normalizeText(value) {
   return String(value || "").trim();
 }
@@ -95,11 +101,25 @@ export function getCustomOrderDecorationSummary(options = {}) {
   return count ? `${count} elemente decorative` : "";
 }
 
+export function getCustomOrderFlowSummary(options = {}) {
+  const flow = options?.orderFlow && typeof options.orderFlow === "object" ? options.orderFlow : {};
+  const parts = [
+    ORDER_FLOW_TYPE_LABELS[normalizeText(flow.orderType)] || normalizeText(flow.orderTypeLabel),
+    flow.persons ? `${flow.persons} persoane` : "",
+    normalizeText(flow.estimatedKgLabel),
+    normalizeText(flow.eventLabel),
+  ].filter(Boolean);
+
+  return parts.join(" | ");
+}
+
 export function buildCustomOrderHighlights(options = {}) {
   const decorationSummary = getCustomOrderDecorationSummary(options);
   const decorationCount = Array.isArray(options?.decorations) ? options.decorations.length : 0;
+  const flowSummary = getCustomOrderFlowSummary(options);
 
   return [
+    flowSummary,
     getCustomOrderOptionLabel("shape", options.shape)
       ? `forma ${getCustomOrderOptionLabel("shape", options.shape)}`
       : "",
@@ -132,11 +152,23 @@ export function getCustomOrderStatusMeta(status = "") {
 
 export function buildCustomOrderSections(order) {
   const options = order?.options && typeof order.options === "object" ? order.options : {};
+  const flow = options?.orderFlow && typeof options.orderFlow === "object" ? options.orderFlow : {};
+  const brief = [];
   const structure = [];
   const interior = [];
   const exterior = [];
   const inspiration = [];
   const progress = [];
+
+  appendField(
+    brief,
+    "Tip comanda",
+    ORDER_FLOW_TYPE_LABELS[normalizeText(flow.orderType)] || normalizeText(flow.orderTypeLabel)
+  );
+  appendField(brief, "Eveniment", normalizeText(flow.eventLabel));
+  appendField(brief, "Persoane", flow.persons ? `${flow.persons} persoane` : "");
+  appendField(brief, "Estimare kg", normalizeText(flow.estimatedKgLabel));
+  appendField(brief, "Portii", normalizeText(flow.portionStyleLabel));
 
   appendField(structure, OPTION_LABELS.shape, getCustomOrderOptionLabel("shape", options.shape));
   appendField(structure, OPTION_LABELS.size, getCustomOrderOptionLabel("size", options.size));
@@ -176,6 +208,7 @@ export function buildCustomOrderSections(order) {
   );
 
   const sections = [];
+  if (brief.length > 0) sections.push({ id: "brief", title: "Brief client", items: brief });
   if (structure.length > 0) sections.push({ id: "structure", title: "Structura", items: structure });
   if (interior.length > 0) sections.push({ id: "interior", title: "Interior", items: interior });
   if (exterior.length > 0) sections.push({ id: "exterior", title: "Exterior", items: exterior });
