@@ -71,6 +71,15 @@ const DECOR_PRESETS = {
     flowerClusters: 0,
     pipingScale: 0.8,
   },
+  elegant: {
+    shellThickness: 19,
+    topRows: 1,
+    bottomRows: 1,
+    swagRows: 0,
+    sideBands: 2,
+    flowerClusters: 0,
+    pipingScale: 0.84,
+  },
   lambeth: {
     shellThickness: 22,
     topRows: 3,
@@ -89,9 +98,98 @@ const DECOR_PRESETS = {
     flowerClusters: 3,
     pipingScale: 0.9,
   },
+  romantic: {
+    shellThickness: 20,
+    topRows: 2,
+    bottomRows: 1,
+    swagRows: 1,
+    sideBands: 2,
+    flowerClusters: 4,
+    pipingScale: 0.92,
+  },
+  luxury: {
+    shellThickness: 23,
+    topRows: 2,
+    bottomRows: 2,
+    swagRows: 2,
+    sideBands: 4,
+    flowerClusters: 2,
+    pipingScale: 1.06,
+  },
+  childish: {
+    shellThickness: 18,
+    topRows: 1,
+    bottomRows: 1,
+    swagRows: 0,
+    sideBands: 1,
+    flowerClusters: 1,
+    pipingScale: 0.82,
+  },
+  modern: {
+    shellThickness: 18,
+    topRows: 0,
+    bottomRows: 1,
+    swagRows: 0,
+    sideBands: 3,
+    flowerClusters: 0,
+    pipingScale: 0.76,
+  },
+  vintage: {
+    shellThickness: 22,
+    topRows: 3,
+    bottomRows: 3,
+    swagRows: 1,
+    sideBands: 3,
+    flowerClusters: 1,
+    pipingScale: 1.08,
+  },
+  wedding: {
+    shellThickness: 21,
+    topRows: 1,
+    bottomRows: 1,
+    swagRows: 1,
+    sideBands: 2,
+    flowerClusters: 3,
+    pipingScale: 0.9,
+  },
+  birthday: {
+    shellThickness: 19,
+    topRows: 2,
+    bottomRows: 1,
+    swagRows: 0,
+    sideBands: 2,
+    flowerClusters: 1,
+    pipingScale: 0.88,
+  },
 };
 
 const COLOR_PRESETS = {
+  "#f4d9e6": {
+    label: "Pastel blush",
+    shell: "#f8eaf1",
+    shellTop: "#fff6fb",
+    shadow: "#ddc2cf",
+    accent: "#bf7c98",
+    piping: "#fff7fb",
+    plaque: "#fdf1f7",
+    floral: "#d98ead",
+    leaf: "#8aa17e",
+    pearl: "#fff8fb",
+    chocolate: "#7f5440",
+  },
+  "#e8d6c8": {
+    label: "Nude",
+    shell: "#efe2d7",
+    shellTop: "#fbf3ed",
+    shadow: "#d2bdae",
+    accent: "#bb8e73",
+    piping: "#fff8f4",
+    plaque: "#f8ece3",
+    floral: "#c99087",
+    leaf: "#93a184",
+    pearl: "#fff8f2",
+    chocolate: "#7f5542",
+  },
   "#f6d7c3": {
     label: "Ivoire",
     shell: "#f7eee5",
@@ -106,7 +204,7 @@ const COLOR_PRESETS = {
     chocolate: "#7f543f",
   },
   "#f2c9e5": {
-    label: "Rose",
+    label: "Rose gold",
     shell: "#f4d7e8",
     shellTop: "#f9e6f1",
     shadow: "#d8b6ca",
@@ -132,7 +230,7 @@ const COLOR_PRESETS = {
     chocolate: "#775243",
   },
   "#f7e6c4": {
-    label: "Champagne",
+    label: "Gold",
     shell: "#f7eed6",
     shellTop: "#fff7e8",
     shadow: "#decca8",
@@ -143,6 +241,58 @@ const COLOR_PRESETS = {
     leaf: "#99aa82",
     pearl: "#fff9ee",
     chocolate: "#815641",
+  },
+  "#e5e7ed": {
+    label: "Silver",
+    shell: "#eef1f5",
+    shellTop: "#fafcff",
+    shadow: "#c5ccd5",
+    accent: "#9ea7b4",
+    piping: "#ffffff",
+    plaque: "#f4f6fa",
+    floral: "#c2cad4",
+    leaf: "#92a391",
+    pearl: "#ffffff",
+    chocolate: "#6f737f",
+  },
+  "#7c3046": {
+    label: "Burgundy",
+    shell: "#9d4b63",
+    shellTop: "#bc6980",
+    shadow: "#652235",
+    accent: "#f0cfdb",
+    piping: "#f7edf2",
+    plaque: "#f4dbe4",
+    floral: "#d38ca5",
+    leaf: "#8ea384",
+    pearl: "#fff4f7",
+    chocolate: "#5f2e2f",
+  },
+  "#266b57": {
+    label: "Emerald",
+    shell: "#4c8a78",
+    shellTop: "#75a998",
+    shadow: "#204d40",
+    accent: "#e0efe8",
+    piping: "#f3fbf8",
+    plaque: "#e6f3ee",
+    floral: "#bfd9d0",
+    leaf: "#7d9f71",
+    pearl: "#fbfffd",
+    chocolate: "#4e4138",
+  },
+  "#b8d5f2": {
+    label: "Baby blue",
+    shell: "#d8e8f8",
+    shellTop: "#eef5fc",
+    shadow: "#adc6df",
+    accent: "#6c96c0",
+    piping: "#f6fbff",
+    plaque: "#edf4fb",
+    floral: "#8eb1d8",
+    leaf: "#8fa586",
+    pearl: "#fafdff",
+    chocolate: "#6d5449",
   },
 };
 
@@ -178,6 +328,17 @@ const TOPPING_PRESETS = {
     accent: "#7b513e",
     dark: "#5e3927",
     glaze: "#9a6650",
+  },
+  macarons: {
+    accent: "#f2d2de",
+    second: "#ead9bf",
+    third: "#cdddb8",
+    shadow: "#c3a0b0",
+  },
+  goldleaf: {
+    accent: "#d3b06d",
+    dark: "#9f7f3f",
+    glaze: "#f4e3aa",
   },
 };
 
@@ -251,10 +412,17 @@ export const CAKE_OPTIONS = {
   decor: [
     {
       id: "minimal",
-      label: "Minimal",
+      label: "Minimalist",
       price: 30,
       color: "#f4d6df",
       preview: DECOR_PRESETS.minimal,
+    },
+    {
+      id: "elegant",
+      label: "Elegant",
+      price: 45,
+      color: "#e9d8cf",
+      preview: DECOR_PRESETS.elegant,
     },
     {
       id: "lambeth",
@@ -269,6 +437,55 @@ export const CAKE_OPTIONS = {
       price: 60,
       color: "#f3d7e6",
       preview: DECOR_PRESETS.floral,
+    },
+    {
+      id: "romantic",
+      label: "Romantic",
+      price: 62,
+      color: "#f0cad9",
+      preview: DECOR_PRESETS.romantic,
+    },
+    {
+      id: "luxury",
+      label: "Luxury",
+      price: 95,
+      color: "#e9d3aa",
+      preview: DECOR_PRESETS.luxury,
+    },
+    {
+      id: "childish",
+      label: "Childish",
+      price: 50,
+      color: "#dfe6f6",
+      preview: DECOR_PRESETS.childish,
+    },
+    {
+      id: "modern",
+      label: "Modern",
+      price: 48,
+      color: "#d9e2eb",
+      preview: DECOR_PRESETS.modern,
+    },
+    {
+      id: "vintage",
+      label: "Vintage",
+      price: 72,
+      color: "#ead8e0",
+      preview: DECOR_PRESETS.vintage,
+    },
+    {
+      id: "wedding",
+      label: "Wedding",
+      price: 78,
+      color: "#efe4d7",
+      preview: DECOR_PRESETS.wedding,
+    },
+    {
+      id: "birthday",
+      label: "Birthday",
+      price: 56,
+      color: "#dfe5f5",
+      preview: DECOR_PRESETS.birthday,
     },
   ],
   topping: [
@@ -290,8 +507,30 @@ export const CAKE_OPTIONS = {
       price: 25,
       preview: TOPPING_PRESETS.ciocolata,
     },
+    {
+      id: "macarons",
+      label: "Macarons",
+      price: 34,
+      preview: TOPPING_PRESETS.macarons,
+    },
+    {
+      id: "goldleaf",
+      label: "Accente aurii",
+      price: 36,
+      preview: TOPPING_PRESETS.goldleaf,
+    },
   ],
   culori: [
+    {
+      id: "#f4d9e6",
+      label: "Pastel blush",
+      preview: COLOR_PRESETS["#f4d9e6"],
+    },
+    {
+      id: "#e8d6c8",
+      label: "Nude",
+      preview: COLOR_PRESETS["#e8d6c8"],
+    },
     {
       id: "#f6d7c3",
       label: "Ivoire",
@@ -299,7 +538,7 @@ export const CAKE_OPTIONS = {
     },
     {
       id: "#f2c9e5",
-      label: "Rose",
+      label: "Rose gold",
       preview: COLOR_PRESETS["#f2c9e5"],
     },
     {
@@ -309,8 +548,28 @@ export const CAKE_OPTIONS = {
     },
     {
       id: "#f7e6c4",
-      label: "Champagne",
+      label: "Gold",
       preview: COLOR_PRESETS["#f7e6c4"],
+    },
+    {
+      id: "#e5e7ed",
+      label: "Silver",
+      preview: COLOR_PRESETS["#e5e7ed"],
+    },
+    {
+      id: "#7c3046",
+      label: "Burgundy",
+      preview: COLOR_PRESETS["#7c3046"],
+    },
+    {
+      id: "#266b57",
+      label: "Emerald",
+      preview: COLOR_PRESETS["#266b57"],
+    },
+    {
+      id: "#b8d5f2",
+      label: "Baby blue",
+      preview: COLOR_PRESETS["#b8d5f2"],
     },
   ],
   font: [
@@ -384,6 +643,61 @@ export const CAKE_PRESETS = [
 ];
 
 export const CAKE_STRUCTURE_OPTIONS = {
+  shapes: [
+    {
+      id: "round",
+      label: "Rotund",
+      description: "Clasic de cofetarie, potrivit pentru aproape orice stil.",
+      price: 0,
+      prepHours: 0,
+    },
+    {
+      id: "square",
+      label: "Patrat",
+      description: "Linii mai architecturale si look modern de vitrina premium.",
+      price: 45,
+      prepHours: 1,
+    },
+    {
+      id: "heart",
+      label: "Inima",
+      description: "Silueta statement pentru ceremonii si aniversari.",
+      price: 65,
+      prepHours: 2,
+    },
+  ],
+  sizes: [
+    {
+      id: "petite",
+      label: "Mic",
+      description: "Look delicat pentru celebrari restranse.",
+      detail: "Diametru mai compact si plating fin.",
+      widthScale: 0.88,
+      servingScale: 0.84,
+      price: 0,
+      prepHours: 0,
+    },
+    {
+      id: "standard",
+      label: "Mediu",
+      description: "Format echilibrat pentru cele mai multe comenzi.",
+      detail: "Suprafata suficienta pentru decor premium fara volum exagerat.",
+      widthScale: 1,
+      servingScale: 1,
+      price: 70,
+      prepHours: 1,
+    },
+    {
+      id: "grand",
+      label: "Mare",
+      description: "Mai mult volum si mai mult loc pentru compozitii bogate.",
+      detail: "Recomandat cand vrei multe decoratiuni sau un efect statement.",
+      widthScale: 1.18,
+      servingScale: 1.28,
+      price: 150,
+      prepHours: 3,
+    },
+  ],
   tiers: [
     {
       id: 1,
@@ -475,6 +789,8 @@ export const DEFAULT_CAKE_OPTIONS = {
 };
 
 export const DEFAULT_CAKE_STRUCTURE = {
+  shape: CAKE_STRUCTURE_OPTIONS.shapes[0].id,
+  size: CAKE_STRUCTURE_OPTIONS.sizes[1].id,
   tiers: CAKE_STRUCTURE_OPTIONS.tiers[0].id,
   heightProfile: CAKE_STRUCTURE_OPTIONS.heightProfiles[1].id,
 };
@@ -792,6 +1108,27 @@ function withAlpha(hex, alpha = 1) {
   return `rgba(${r}, ${g}, ${b}, ${clamp(alpha, 0, 1)})`;
 }
 
+function buildColorThemeFromHex(hex, label = "Personalizata") {
+  const base = String(hex || "#f6d7c3").trim();
+  return {
+    label,
+    shell: mixHex(base, "#f7f1ec", 0.42),
+    shellTop: lighten(base, 0.78),
+    shadow: darken(base, 0.18),
+    accent: darken(base, 0.26),
+    piping: lighten(base, 0.9),
+    plaque: lighten(base, 0.82),
+    floral: mixHex(base, "#d89bb1", 0.38),
+    leaf: mixHex(base, "#7f9d6f", 0.64),
+    pearl: lighten(base, 0.94),
+    chocolate: mixHex(base, "#68442f", 0.72),
+  };
+}
+
+function isHexColor(value = "") {
+  return /^#([0-9a-f]{6})$/i.test(String(value || "").trim());
+}
+
 function buildDistributedDots({
   count,
   x,
@@ -956,7 +1293,18 @@ function buildChocolateDecor({ x, y, scale, accent, dark, glaze }) {
 }
 
 export function findCakeOption(section, optionId) {
-  return (CAKE_OPTIONS[section] || []).find((item) => item.id === optionId) || null;
+  const matched = (CAKE_OPTIONS[section] || []).find((item) => item.id === optionId) || null;
+  if (matched) return matched;
+
+  if (section === "culori" && isHexColor(optionId)) {
+    return {
+      id: String(optionId).trim(),
+      label: `Personalizata ${String(optionId).trim().toUpperCase()}`,
+      preview: buildColorThemeFromHex(String(optionId).trim()),
+    };
+  }
+
+  return null;
 }
 
 export function findCakeStructureOption(section, optionId) {
@@ -1069,17 +1417,36 @@ export function estimateCakeOrderMetrics(structureOptions = {}) {
   const tierOption =
     findCakeStructureOption("tiers", structureOptions.tiers) ||
     CAKE_STRUCTURE_OPTIONS.tiers[0];
+  const sizeOption =
+    findCakeStructureOption("sizes", structureOptions.size) ||
+    CAKE_STRUCTURE_OPTIONS.sizes[1];
+  const shapeOption =
+    findCakeStructureOption("shapes", structureOptions.shape) ||
+    CAKE_STRUCTURE_OPTIONS.shapes[0];
   const heightOption =
     findCakeStructureOption("heightProfiles", structureOptions.heightProfile) ||
     CAKE_STRUCTURE_OPTIONS.heightProfiles[1];
   const bodyScale = Number(heightOption?.bodyScale || 1);
+  const sizeScale = Number(sizeOption?.servingScale || 1);
+  const shapeScale =
+    shapeOption?.id === "square" ? 1.04 : shapeOption?.id === "heart" ? 0.96 : 1;
   const minServings = Math.max(
     1,
-    Math.round(Number(tierOption?.minServings || 8) * (bodyScale < 1 ? 0.94 : bodyScale))
+    Math.round(
+      Number(tierOption?.minServings || 8) *
+        (bodyScale < 1 ? 0.94 : bodyScale) *
+        sizeScale *
+        shapeScale
+    )
   );
   const maxServings = Math.max(
     minServings,
-    Math.round(Number(tierOption?.maxServings || 14) * (bodyScale > 1 ? bodyScale : 1))
+    Math.round(
+      Number(tierOption?.maxServings || 14) *
+        (bodyScale > 1 ? bodyScale : 1) *
+        sizeScale *
+        shapeScale
+    )
   );
   const minWeightKg = Number((minServings * 0.14).toFixed(1));
   const maxWeightKg = Number((maxServings * 0.16).toFixed(1));
@@ -1108,6 +1475,8 @@ export function buildCakeInspirationSummary(inspirationItems = []) {
 }
 
 export function getCakeDesignSummary(selectedOptions, structureOptions = {}) {
+  const shapeOption = findCakeStructureOption("shapes", structureOptions.shape);
+  const sizeOption = findCakeStructureOption("sizes", structureOptions.size);
   const tierOption = findCakeStructureOption("tiers", structureOptions.tiers);
   const heightOption = findCakeStructureOption(
     "heightProfiles",
@@ -1116,6 +1485,8 @@ export function getCakeDesignSummary(selectedOptions, structureOptions = {}) {
   const metrics = estimateCakeOrderMetrics(structureOptions);
 
   return [
+    shapeOption?.label || "Rotund",
+    sizeOption ? `format ${sizeOption.label.toLowerCase()}` : "",
     tierOption?.label || "1 etaj",
     heightOption ? `profil ${heightOption.label.toLowerCase()}` : "",
     metrics.servingsLabel,
@@ -1187,6 +1558,7 @@ function buildTierModel({
   message,
   tierIndex,
   includeTopDetails,
+  shapeId = "round",
 }) {
   const {
     sponge,
@@ -1473,6 +1845,7 @@ function buildTierModel({
 
   return {
     cake: {
+      shape: shapeId,
       bodyX,
       bodyY: topY,
       bodyWidth: cakeWidth,
@@ -1506,6 +1879,26 @@ function buildTierModel({
         width: shellThickness * 0.46,
         height: bodyHeight - shellThickness * 0.8,
         fill: withAlpha(darken(colorTheme.shadow, 0.04), 0.22),
+      },
+      surfaces: {
+        top: {
+          type: "top",
+          tierIndex,
+          x: centerX,
+          y: topY,
+          radiusX: (cakeWidth / 2 - shellThickness * 0.72) * (shapeId === "square" ? 0.92 : 1),
+          radiusY:
+            (topHeight / 2 - Math.max(5, shellThickness * 0.12)) *
+            (shapeId === "square" ? 0.92 : shapeId === "heart" ? 1.08 : 1),
+        },
+        front: {
+          type: "front",
+          tierIndex,
+          x: bodyX + shellThickness * 0.32,
+          y: topY + topHeight * 0.26,
+          width: cakeWidth - shellThickness * 0.64,
+          height: bodyHeight - topHeight * 0.36,
+        },
       },
     },
     layers,
@@ -1544,20 +1937,26 @@ export function buildCakeAiPrompt({
   customRequest = "",
   inspirationItems = [],
 }) {
+  const shapeOption =
+    findCakeStructureOption("shapes", structureOptions.shape) ||
+    CAKE_STRUCTURE_OPTIONS.shapes[0];
+  const sizeOption =
+    findCakeStructureOption("sizes", structureOptions.size) ||
+    CAKE_STRUCTURE_OPTIONS.sizes[1];
   const tierOption =
     findCakeStructureOption("tiers", structureOptions.tiers) ||
     CAKE_STRUCTURE_OPTIONS.tiers[0];
   const heightOption =
     findCakeStructureOption("heightProfiles", structureOptions.heightProfile) ||
     CAKE_STRUCTURE_OPTIONS.heightProfiles[1];
+  const metrics = estimateCakeOrderMetrics(structureOptions);
   const trimmedMessage = getCakePreviewMessage(message);
   const trimmedRequest = String(customRequest || "").trim();
-  const metrics = estimateCakeOrderMetrics(structureOptions);
   const inspirationSummary = buildCakeInspirationSummary(inspirationItems);
 
   return [
     "Tort fotorealist de cofetarie artizanala, fotografie de produs premium.",
-    `${tierOption.label}, profil ${heightOption.label.toLowerCase()}, aspect realist de crema si finisaj lucrat manual.`,
+    `${shapeOption.label}, format ${sizeOption.label.toLowerCase()}, ${tierOption.label}, profil ${heightOption.label.toLowerCase()}, aspect realist de crema si finisaj lucrat manual.`,
     `Dimensiune estimata: ${metrics.servingsLabel}, aproximativ ${metrics.weightLabel}.`,
     `Interior: blat ${selectedOptions.blat?.label || "vanilie"}, crema ${selectedOptions.crema?.label || "vanilie"}, umplutura ${selectedOptions.umplutura?.label || "capsuni"}.`,
     `Exterior: stil ${selectedOptions.decor?.label || "minimal"}, culoare ${selectedOptions.culoare?.label || "ivoire"}, topping ${selectedOptions.topping?.label || "perle"}.`,
@@ -1594,12 +1993,19 @@ export function buildCakePreviewModel({
   const topping = selectedOptions.topping?.preview || TOPPING_PRESETS.perle;
   const fontTheme = selectedOptions.font?.preview || FONT_PRESETS.Georgia;
 
+  const shapeOption =
+    findCakeStructureOption("shapes", structureOptions.shape) ||
+    CAKE_STRUCTURE_OPTIONS.shapes[0];
+  const sizeOption =
+    findCakeStructureOption("sizes", structureOptions.size) ||
+    CAKE_STRUCTURE_OPTIONS.sizes[1];
   const tierOption =
     findCakeStructureOption("tiers", structureOptions.tiers) ||
     CAKE_STRUCTURE_OPTIONS.tiers[0];
   const heightOption =
     findCakeStructureOption("heightProfiles", structureOptions.heightProfile) ||
     CAKE_STRUCTURE_OPTIONS.heightProfiles[1];
+  const metrics = estimateCakeOrderMetrics(structureOptions);
 
   if (tierOption && heightOption) {
     const previewCenterX = stageWidth / 2;
@@ -1607,8 +2013,11 @@ export function buildCakePreviewModel({
     const previewBoardHeight = stageHeight * 0.085;
     const previewTierCount = Number(tierOption.id) || 1;
     const widthRatios = getTierWidthRatios(previewTierCount);
+    const sizeWidthScale = Number(sizeOption?.widthScale || 1);
     const previewLargestTierWidth =
-      stageWidth * (previewTierCount === 1 ? 0.46 : previewTierCount === 2 ? 0.52 : 0.56);
+      stageWidth *
+      (previewTierCount === 1 ? 0.46 : previewTierCount === 2 ? 0.52 : 0.56) *
+      sizeWidthScale;
     const previewTierWidths = widthRatios.map((ratio) => previewLargestTierWidth * ratio);
     const previewRawBodyHeights = previewTierWidths.map(
       (width) =>
@@ -1657,6 +2066,7 @@ export function buildCakePreviewModel({
         message,
         tierIndex: index,
         includeTopDetails: index === 0,
+        shapeId: shapeOption.id,
       });
       previewCurrentBottom = previewTopY - previewStackGap;
     }
@@ -1695,9 +2105,13 @@ export function buildCakePreviewModel({
       tiers: previewTiers,
       primaryTier: previewPrimaryTier,
       structure: {
+        shapeId: shapeOption.id,
+        shapeLabel: shapeOption.label,
+        sizeId: sizeOption.id,
+        sizeLabel: sizeOption.label,
         tierCount: previewTierCount,
         tierLabel: tierOption.label,
-        servings: tierOption.servings,
+        servings: metrics.servingsLabel,
         heightLabel: heightOption.label,
         heightDetail: heightOption.detail,
       },

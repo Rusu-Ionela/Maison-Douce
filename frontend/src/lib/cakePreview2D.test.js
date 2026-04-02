@@ -6,6 +6,7 @@ import {
   buildCakePreviewModel,
   estimateCakeOrderMetrics,
   findCakeOption,
+  findCakeStructureOption,
   getCakeDesignSummary,
 } from "./cakePreview2D";
 
@@ -29,21 +30,28 @@ describe("cakePreview2D", () => {
       selectedOptions: buildSelectedOptions(),
       message: "La multi ani",
       structureOptions: {
+        shape: "square",
+        size: "grand",
         tiers: 2,
         heightProfile: "tall",
       },
     });
 
     expect(model.tiers).toHaveLength(2);
+    expect(model.structure.shapeLabel).toBe("Patrat");
+    expect(model.structure.sizeLabel).toBe("Mare");
     expect(model.structure.tierCount).toBe(2);
     expect(model.structure.heightLabel).toBe("Inalt");
     expect(model.primaryTier.layers.length).toBeGreaterThan(0);
+    expect(model.tiers[0].cake.shape).toBe("square");
   });
 
   it("includes structure and free-form request in the AI prompt", () => {
     const prompt = buildCakeAiPrompt({
       selectedOptions: buildSelectedOptions(),
       structureOptions: {
+        shape: "heart",
+        size: "standard",
         tiers: 3,
         heightProfile: "balanced",
       },
@@ -52,6 +60,7 @@ describe("cakePreview2D", () => {
       inspirationItems: [{ label: "dantela fina si flori naturale" }],
     });
 
+    expect(prompt).toContain("Inima");
     expect(prompt).toContain("3 etaje");
     expect(prompt).toContain("trandafiri albi si accente aurii");
     expect(prompt).toContain("Mesaj pe tort");
@@ -60,10 +69,13 @@ describe("cakePreview2D", () => {
 
   it("mentions the chosen structure in the summary", () => {
     const summary = getCakeDesignSummary(buildSelectedOptions(), {
+      shape: "round",
+      size: "grand",
       tiers: 2,
       heightProfile: "balanced",
     });
 
+    expect(summary).toContain("format mare");
     expect(summary).toContain("2 etaje");
     expect(summary).toContain("profil echilibrat");
     expect(summary).toContain("portii");
@@ -71,6 +83,8 @@ describe("cakePreview2D", () => {
 
   it("estimates servings and weight for the selected structure", () => {
     const metrics = estimateCakeOrderMetrics({
+      shape: "square",
+      size: "grand",
       tiers: 3,
       heightProfile: "tall",
     });
@@ -84,6 +98,8 @@ describe("cakePreview2D", () => {
     const prompts = buildCakeAiVariantPrompts({
       selectedOptions: buildSelectedOptions(),
       structureOptions: {
+        shape: "round",
+        size: "petite",
         tiers: 2,
         heightProfile: "balanced",
       },
@@ -102,5 +118,17 @@ describe("cakePreview2D", () => {
 
     expect(summary).toContain("Referinta 1");
     expect(summary).toContain("aurii");
+  });
+
+  it("builds a dynamic custom color option for arbitrary hex values", () => {
+    const option = findCakeOption("culori", "#c8b1ff");
+
+    expect(option.label).toContain("Personalizata");
+    expect(option.preview.shell).toMatch(/^#/);
+  });
+
+  it("exposes the new base structure options", () => {
+    expect(findCakeStructureOption("shapes", "heart")?.label).toBe("Inima");
+    expect(findCakeStructureOption("sizes", "grand")?.label).toBe("Mare");
   });
 });
