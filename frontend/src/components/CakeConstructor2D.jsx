@@ -521,9 +521,20 @@ export default function CakeConstructor2D({
         },
         message: mesaj,
         customRequest: aiDecorRequest,
+        freeDecorSummary: decorationSummary,
         inspirationItems,
       }),
-    [aiDecorRequest, heightProfile, inspirationItems, mesaj, selectedOptions, shape, size, tiers]
+    [
+      aiDecorRequest,
+      decorationSummary,
+      heightProfile,
+      inspirationItems,
+      mesaj,
+      selectedOptions,
+      shape,
+      size,
+      tiers,
+    ]
   );
 
   const aiVariantPrompts = useMemo(
@@ -538,9 +549,20 @@ export default function CakeConstructor2D({
         },
         message: mesaj,
         customRequest: aiDecorRequest,
+        freeDecorSummary: decorationSummary,
         inspirationItems,
       }),
-    [aiDecorRequest, heightProfile, inspirationItems, mesaj, selectedOptions, shape, size, tiers]
+    [
+      aiDecorRequest,
+      decorationSummary,
+      heightProfile,
+      inspirationItems,
+      mesaj,
+      selectedOptions,
+      shape,
+      size,
+      tiers,
+    ]
   );
 
   const estimateMetrics = useMemo(

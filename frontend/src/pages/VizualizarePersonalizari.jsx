@@ -3,6 +3,10 @@ import { Link, useNavigate } from "react-router-dom";
 import api from "/src/lib/api.js";
 import StatusBanner from "../components/StatusBanner";
 import { useAuth } from "../context/AuthContext";
+import {
+  buildCustomOrderHighlights,
+  getCustomOrderDecorationSummary,
+} from "../lib/customOrderSummary";
 import { buttons, cards, containers } from "../lib/tailwindComponents";
 
 function buildDesignChatLink(design) {
@@ -28,17 +32,6 @@ function formatSavedAt(value) {
     hour: "2-digit",
     minute: "2-digit",
   });
-}
-
-function buildDesignHighlights(design) {
-  const options = design?.options && typeof design.options === "object" ? design.options : {};
-  return [
-    options.tiers ? `${options.tiers} etaje` : "",
-    options.heightProfile ? `profil ${options.heightProfile}` : "",
-    options.blat ? `blat ${options.blat}` : "",
-    options.crema ? `crema ${options.crema}` : "",
-    options.umplutura ? `umplutura ${options.umplutura}` : "",
-  ].filter(Boolean);
 }
 
 function buildDesignGallery(design) {
@@ -228,7 +221,9 @@ export default function VizualizarePersonalizari() {
 
         <div className="grid gap-6 xl:grid-cols-2">
           {list.map((design) => {
-            const highlights = buildDesignHighlights(design);
+            const options = design?.options && typeof design.options === "object" ? design.options : {};
+            const highlights = buildCustomOrderHighlights(options);
+            const decorationSummary = getCustomOrderDecorationSummary(options);
             const gallery = buildDesignGallery(design);
             const linkedCustomOrder = customOrdersByDesign.get(String(design._id || ""));
             const aiVariantCount = Array.isArray(design?.options?.aiPreviewVariants)
@@ -319,6 +314,17 @@ export default function VizualizarePersonalizari() {
                         </div>
                       ) : null}
                     </div>
+
+                    {decorationSummary ? (
+                      <div className="rounded-[22px] border border-rose-100 bg-white/85 p-4 shadow-soft">
+                        <div className="text-xs font-semibold uppercase tracking-[0.16em] text-pink-500">
+                          Decor liber
+                        </div>
+                        <div className="mt-2 text-sm leading-6 text-gray-700">
+                          {decorationSummary}
+                        </div>
+                      </div>
+                    ) : null}
 
                     {design?.options?.aiDecorRequest ? (
                       <div className="rounded-[22px] border border-rose-100 bg-white/85 p-4 shadow-soft">

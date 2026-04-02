@@ -11,6 +11,10 @@ import {
   getApiErrorMessage,
   queryKeys,
 } from "../lib/serverState";
+import {
+  buildCustomOrderHighlights,
+  getCustomOrderDecorationSummary,
+} from "../lib/customOrderSummary";
 import { badges, buttons, cards, containers, inputs } from "../lib/tailwindComponents";
 
 function money(value) {
@@ -86,21 +90,6 @@ function buildOfferTimeline(customOrder) {
       at: matched?.at || null,
     };
   });
-}
-
-function buildOfferHighlights(customOrder) {
-  const options = customOrder?.options && typeof customOrder.options === "object"
-    ? customOrder.options
-    : {};
-
-  return [
-    options.tiers ? `${options.tiers} etaje` : "",
-    options.heightProfile ? `profil ${options.heightProfile}` : "",
-    options.blat ? `blat ${options.blat}` : "",
-    options.crema ? `crema ${options.crema}` : "",
-    options.umplutura ? `umplutura ${options.umplutura}` : "",
-    options.decor ? `decor ${options.decor}` : "",
-  ].filter(Boolean);
 }
 
 function buildOfferGallery(customOrder) {
@@ -184,7 +173,14 @@ export default function OfertaPersonalizata() {
   const customOrder = customOrderQuery.data || null;
   const statusMeta = customOrderStatusMeta(customOrder?.status);
   const timeline = useMemo(() => buildOfferTimeline(customOrder), [customOrder]);
-  const highlights = useMemo(() => buildOfferHighlights(customOrder), [customOrder]);
+  const options = customOrder?.options && typeof customOrder.options === "object"
+    ? customOrder.options
+    : {};
+  const highlights = useMemo(() => buildCustomOrderHighlights(options), [options]);
+  const decorationSummary = useMemo(
+    () => getCustomOrderDecorationSummary(options),
+    [options]
+  );
   const gallery = useMemo(() => buildOfferGallery(customOrder), [customOrder]);
   const linkedOrder = customOrder?.comandaId && typeof customOrder.comandaId === "object"
     ? customOrder.comandaId
@@ -369,6 +365,16 @@ export default function OfertaPersonalizata() {
                                 {item}
                               </span>
                             ))}
+                          </div>
+                        </div>
+                      ) : null}
+                      {decorationSummary ? (
+                        <div className="rounded-[22px] border border-rose-100 bg-white/85 p-4 shadow-soft">
+                          <div className="text-xs font-semibold uppercase tracking-[0.16em] text-pink-500">
+                            Decor liber
+                          </div>
+                          <div className="mt-2 text-sm leading-7 text-gray-700">
+                            {decorationSummary}
                           </div>
                         </div>
                       ) : null}

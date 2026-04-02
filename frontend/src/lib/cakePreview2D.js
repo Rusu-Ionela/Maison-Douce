@@ -2002,6 +2002,7 @@ export function buildCakeAiPrompt({
   structureOptions = {},
   message = "",
   customRequest = "",
+  freeDecorSummary = "",
   inspirationItems = [],
 }) {
   const shapeOption =
@@ -2019,6 +2020,7 @@ export function buildCakeAiPrompt({
   const metrics = estimateCakeOrderMetrics(structureOptions);
   const trimmedMessage = getCakePreviewMessage(message);
   const trimmedRequest = String(customRequest || "").trim();
+  const trimmedFreeDecor = String(freeDecorSummary || "").trim();
   const inspirationSummary = buildCakeInspirationSummary(inspirationItems);
 
   return [
@@ -2027,6 +2029,7 @@ export function buildCakeAiPrompt({
     `Dimensiune estimata: ${metrics.servingsLabel}, aproximativ ${metrics.weightLabel}.`,
     `Interior: blat ${selectedOptions.blat?.label || "vanilie"}, crema ${selectedOptions.crema?.label || "vanilie"}, umplutura ${selectedOptions.umplutura?.label || "capsuni"}.`,
     `Exterior: stil ${selectedOptions.decor?.label || "minimal"}, culoare ${selectedOptions.culoare?.label || "ivoire"}, topping ${selectedOptions.topping?.label || "perle"}.`,
+    trimmedFreeDecor ? `Decor liber deja pozitionat manual: ${trimmedFreeDecor}.` : "",
     inspirationSummary ? `Imagini de inspiratie incarcate: ${inspirationSummary}.` : "",
     trimmedMessage ? `Mesaj pe tort: "${trimmedMessage}".` : "",
     "Lumina naturala, textura credibila, detalii elegante, fundal curat de studio, fara elemente desenate sau cartoon.",

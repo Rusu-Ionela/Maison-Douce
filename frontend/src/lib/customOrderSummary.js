@@ -1,4 +1,8 @@
+import { findCakeOption, findCakeStructureOption } from "./cakePreview2D";
+
 const OPTION_LABELS = {
+  shape: "Forma",
+  size: "Dimensiune",
   tiers: "Etaje",
   heightProfile: "Profil inaltime",
   estimatedServings: "Portii estimate",
@@ -10,6 +14,7 @@ const OPTION_LABELS = {
   topping: "Topping",
   culoare: "Culoare",
   font: "Font mesaj",
+  decorationSummary: "Decor liber",
 };
 
 const STATUS_META = {
@@ -45,6 +50,79 @@ function appendField(list, label, value) {
   list.push({ label, value: normalized });
 }
 
+function resolveStructureValue(section, value) {
+  return findCakeStructureOption(section, value)?.label || normalizeText(value);
+}
+
+function resolveOptionValue(section, value) {
+  return findCakeOption(section, value)?.label || normalizeText(value);
+}
+
+export function getCustomOrderOptionLabel(field, value) {
+  switch (field) {
+    case "shape":
+      return resolveStructureValue("shapes", value);
+    case "size":
+      return resolveStructureValue("sizes", value);
+    case "tiers":
+      return resolveStructureValue("tiers", value);
+    case "heightProfile":
+      return resolveStructureValue("heightProfiles", value);
+    case "blat":
+      return resolveOptionValue("blat", value);
+    case "crema":
+      return resolveOptionValue("crema", value);
+    case "umplutura":
+      return resolveOptionValue("umplutura", value);
+    case "decor":
+      return resolveOptionValue("decor", value);
+    case "topping":
+      return resolveOptionValue("topping", value);
+    case "culoare":
+      return resolveOptionValue("culori", value);
+    case "font":
+      return resolveOptionValue("font", value);
+    default:
+      return normalizeText(value);
+  }
+}
+
+export function getCustomOrderDecorationSummary(options = {}) {
+  const summary = normalizeText(options?.decorationSummary);
+  if (summary) return summary;
+
+  const count = Array.isArray(options?.decorations) ? options.decorations.length : 0;
+  return count ? `${count} elemente decorative` : "";
+}
+
+export function buildCustomOrderHighlights(options = {}) {
+  const decorationSummary = getCustomOrderDecorationSummary(options);
+  const decorationCount = Array.isArray(options?.decorations) ? options.decorations.length : 0;
+
+  return [
+    getCustomOrderOptionLabel("shape", options.shape)
+      ? `forma ${getCustomOrderOptionLabel("shape", options.shape)}`
+      : "",
+    getCustomOrderOptionLabel("size", options.size)
+      ? `dimensiune ${getCustomOrderOptionLabel("size", options.size)}`
+      : "",
+    getCustomOrderOptionLabel("tiers", options.tiers),
+    getCustomOrderOptionLabel("heightProfile", options.heightProfile)
+      ? `profil ${getCustomOrderOptionLabel("heightProfile", options.heightProfile).toLowerCase()}`
+      : "",
+    getCustomOrderOptionLabel("blat", options.blat)
+      ? `blat ${getCustomOrderOptionLabel("blat", options.blat)}`
+      : "",
+    getCustomOrderOptionLabel("crema", options.crema)
+      ? `crema ${getCustomOrderOptionLabel("crema", options.crema)}`
+      : "",
+    getCustomOrderOptionLabel("umplutura", options.umplutura)
+      ? `umplutura ${getCustomOrderOptionLabel("umplutura", options.umplutura)}`
+      : "",
+    decorationSummary ? (decorationCount ? `${decorationCount} decoruri libere` : "decor liber") : "",
+  ].filter(Boolean);
+}
+
 export function getCustomOrderStatusMeta(status = "") {
   return STATUS_META[normalizeText(status)] || {
     label: normalizeText(status) || "Noua",
@@ -60,19 +138,42 @@ export function buildCustomOrderSections(order) {
   const inspiration = [];
   const progress = [];
 
-  appendField(structure, OPTION_LABELS.tiers, options.tiers);
-  appendField(structure, OPTION_LABELS.heightProfile, options.heightProfile);
+  appendField(structure, OPTION_LABELS.shape, getCustomOrderOptionLabel("shape", options.shape));
+  appendField(structure, OPTION_LABELS.size, getCustomOrderOptionLabel("size", options.size));
+  appendField(structure, OPTION_LABELS.tiers, getCustomOrderOptionLabel("tiers", options.tiers));
+  appendField(
+    structure,
+    OPTION_LABELS.heightProfile,
+    getCustomOrderOptionLabel("heightProfile", options.heightProfile)
+  );
   appendField(structure, OPTION_LABELS.estimatedServings, options.estimatedServings);
   appendField(structure, OPTION_LABELS.estimatedWeightKg, options.estimatedWeightKg);
 
-  appendField(interior, OPTION_LABELS.blat, options.blat);
-  appendField(interior, OPTION_LABELS.crema, options.crema);
-  appendField(interior, OPTION_LABELS.umplutura, options.umplutura);
+  appendField(interior, OPTION_LABELS.blat, getCustomOrderOptionLabel("blat", options.blat));
+  appendField(interior, OPTION_LABELS.crema, getCustomOrderOptionLabel("crema", options.crema));
+  appendField(
+    interior,
+    OPTION_LABELS.umplutura,
+    getCustomOrderOptionLabel("umplutura", options.umplutura)
+  );
 
-  appendField(exterior, OPTION_LABELS.decor, options.decor);
-  appendField(exterior, OPTION_LABELS.topping, options.topping);
-  appendField(exterior, OPTION_LABELS.culoare, options.culoare);
-  appendField(exterior, OPTION_LABELS.font, options.font);
+  appendField(exterior, OPTION_LABELS.decor, getCustomOrderOptionLabel("decor", options.decor));
+  appendField(
+    exterior,
+    OPTION_LABELS.topping,
+    getCustomOrderOptionLabel("topping", options.topping)
+  );
+  appendField(
+    exterior,
+    OPTION_LABELS.culoare,
+    getCustomOrderOptionLabel("culoare", options.culoare)
+  );
+  appendField(exterior, OPTION_LABELS.font, getCustomOrderOptionLabel("font", options.font));
+  appendField(
+    exterior,
+    OPTION_LABELS.decorationSummary,
+    getCustomOrderDecorationSummary(options)
+  );
 
   const sections = [];
   if (structure.length > 0) sections.push({ id: "structure", title: "Structura", items: structure });

@@ -1,7 +1,10 @@
 import { describe, expect, it } from "vitest";
 import {
+  buildCustomOrderHighlights,
   buildCustomOrderPreviewImages,
   buildCustomOrderSections,
+  getCustomOrderDecorationSummary,
+  getCustomOrderOptionLabel,
   getCustomOrderStatusMeta,
 } from "./customOrderSummary";
 
@@ -11,6 +14,8 @@ describe("customOrderSummary", () => {
       preferinte: "Vreau un tort elegant",
       statusHistory: [{ status: "noua", note: "abia trimisa" }],
       options: {
+        shape: "heart",
+        size: "grand",
         tiers: 2,
         heightProfile: "tall",
         estimatedServings: "20-28 portii",
@@ -20,6 +25,9 @@ describe("customOrderSummary", () => {
         umplutura: "oreo",
         decor: "lambeth",
         topping: "ciocolata",
+        culoare: "#e8e2f2",
+        font: "Times New Roman",
+        decorationSummary: "2x Trandafiri din zahar, 1x Topper acrilic",
         aiDecorRequest: "flori albe si accente aurii",
         aiPrompt: "prompt lung",
         inspirationImages: [{ label: "dantela si perle", url: "/uploads/ref.png" }],
@@ -35,7 +43,12 @@ describe("customOrderSummary", () => {
       "Imagini inspiratie",
       "Istoric",
     ]);
-    expect(sections[0].items[0]).toEqual({ label: "Etaje", value: "2" });
+    expect(sections[0].items[0]).toEqual({ label: "Forma", value: "Inima" });
+    expect(sections[0].items[1]).toEqual({ label: "Dimensiune", value: "Mare" });
+    expect(sections[2].items.at(-1)).toEqual({
+      label: "Decor liber",
+      value: "2x Trandafiri din zahar, 1x Topper acrilic",
+    });
   });
 
   it("deduplicates preview images", () => {
@@ -55,5 +68,23 @@ describe("customOrderSummary", () => {
     expect(getCustomOrderStatusMeta("in_discutie").label).toBe("In discutie");
     expect(getCustomOrderStatusMeta("in_discutie").className).toContain("amber");
     expect(getCustomOrderStatusMeta("comanda_generata").label).toBe("Comanda generata");
+  });
+
+  it("formats highlights and decoration summary for advanced builders", () => {
+    const options = {
+      shape: "square",
+      size: "petite",
+      tiers: 2,
+      heightProfile: "balanced",
+      blat: "ciocolata",
+      crema: "pistachio",
+      umplutura: "oreo",
+      decorations: [{ id: "1" }, { id: "2" }],
+    };
+
+    expect(getCustomOrderOptionLabel("shape", options.shape)).toBe("Patrat");
+    expect(getCustomOrderDecorationSummary(options)).toBe("2 elemente decorative");
+    expect(buildCustomOrderHighlights(options)).toContain("forma Patrat");
+    expect(buildCustomOrderHighlights(options)).toContain("2 decoruri libere");
   });
 });

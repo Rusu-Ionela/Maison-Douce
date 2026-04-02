@@ -57,12 +57,14 @@ describe("cakePreview2D", () => {
       },
       message: "Elena",
       customRequest: "trandafiri albi si accente aurii",
+      freeDecorSummary: "2x Trandafiri din zahar, 1x Topper acrilic",
       inspirationItems: [{ label: "dantela fina si flori naturale" }],
     });
 
     expect(prompt).toContain("Inima");
     expect(prompt).toContain("3 etaje");
     expect(prompt).toContain("trandafiri albi si accente aurii");
+    expect(prompt).toContain("Decor liber deja pozitionat manual");
     expect(prompt).toContain("Mesaj pe tort");
     expect(prompt).toContain("Imagini de inspiratie");
   });
