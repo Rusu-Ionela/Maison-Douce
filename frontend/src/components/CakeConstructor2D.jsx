@@ -176,6 +176,8 @@ export default function CakeConstructor2D({
   const exteriorStageRef = useRef(null);
   const sectionStageRef = useRef(null);
   const previewRef = useRef(null);
+  const decorationStepRef = useRef(null);
+  const aiStepRef = useRef(null);
   const hintTimerRef = useRef(null);
   const manualModeLockRef = useRef(0);
   const inspirationUrlRegistryRef = useRef(new Set());
@@ -248,7 +250,7 @@ export default function CakeConstructor2D({
         return;
       }
 
-      if (window.innerWidth >= 1280) {
+      if (window.innerWidth >= 1536) {
         setShowFloatingPreview(false);
         return;
       }
@@ -557,10 +559,10 @@ export default function CakeConstructor2D({
     propDesignId,
   ]);
 
-  const stageWidth = Math.max(320, previewWidth);
-  const stageHeight = Math.round(stageWidth * 0.72);
-  const floatingPreviewWidth = 220;
-  const floatingPreviewHeight = Math.round(floatingPreviewWidth * 0.72);
+  const stageWidth = Math.max(320, Math.min(previewWidth, 680));
+  const stageHeight = Math.max(260, Math.min(430, Math.round(stageWidth * 0.64)));
+  const floatingPreviewWidth = 200;
+  const floatingPreviewHeight = Math.round(floatingPreviewWidth * 0.64);
 
   const selectedOptions = useMemo(
     () => ({
@@ -859,6 +861,12 @@ export default function CakeConstructor2D({
 
   const scrollToPreview = (behavior = "smooth") => {
     const element = previewRef.current;
+    if (!element) return;
+    element.scrollIntoView({ behavior, block: "start" });
+  };
+
+  const scrollToSection = (targetRef, behavior = "smooth") => {
+    const element = targetRef?.current;
     if (!element) return;
     element.scrollIntoView({ behavior, block: "start" });
   };
@@ -1430,8 +1438,8 @@ export default function CakeConstructor2D({
   };
 
   return (
-    <div className="grid grid-cols-1 gap-6 xl:grid-cols-[1.08fr_0.92fr]">
-      <section className="space-y-6">
+    <div className="grid grid-cols-1 gap-6 2xl:grid-cols-[minmax(0,1.08fr)_minmax(0,0.92fr)]">
+      <section className="space-y-6 2xl:min-w-0">
         <div className={`${cards.elevated} space-y-4`}>
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div>
@@ -1530,7 +1538,8 @@ export default function CakeConstructor2D({
 
         <div
           ref={previewRef}
-          className={`${cards.elevated} space-y-4 xl:sticky xl:top-24 xl:z-20 xl:max-h-[calc(100vh-7rem)] xl:overflow-y-auto`}
+          data-testid="constructor-preview-panel"
+          className={`${cards.elevated} scroll-mt-28 space-y-4 2xl:sticky 2xl:top-24 2xl:z-20`}
         >
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div className="space-y-2">
@@ -1666,9 +1675,39 @@ export default function CakeConstructor2D({
               <div className="text-sm text-gray-600">PNG la 2x pentru confirmare și producție</div>
             </div>
           </div>
+
+          <div className="rounded-[22px] border border-sage-deep/15 bg-[linear-gradient(135deg,rgba(255,252,247,0.96),rgba(233,240,228,0.82))] px-4 py-4 shadow-soft">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <div className="text-xs font-semibold uppercase tracking-[0.16em] text-sage-deep">
+                  Urmeaza in flux
+                </div>
+                <div className="mt-1 text-sm leading-6 text-[#5c524a]">
+                  Dupa preview continui cu decorul liber si apoi cu varianta AI, fara containere
+                  cu scroll intern care sa ascunda pasii urmatori.
+                </div>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  className={buttons.outline}
+                  onClick={() => scrollToSection(decorationStepRef)}
+                >
+                  Mergi la decoruri
+                </button>
+                <button
+                  type="button"
+                  className={buttons.outline}
+                  onClick={() => scrollToSection(aiStepRef)}
+                >
+                  Mergi la AI
+                </button>
+              </div>
+            </div>
+          </div>
         </div>
 
-        <div className={`${cards.elevated} space-y-5`}>
+        <div ref={decorationStepRef} className={`${cards.elevated} scroll-mt-28 space-y-5`}>
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div>
               <div className="text-xs font-semibold uppercase tracking-[0.18em] text-pink-500">
@@ -1705,7 +1744,7 @@ export default function CakeConstructor2D({
             </div>
           </div>
 
-          <div className="grid gap-5 xl:grid-cols-[1.1fr_0.9fr]">
+          <div className="grid gap-5 2xl:grid-cols-[1.1fr_0.9fr]">
             <CakeDecorationLibrary
               query={decorationSearch}
               category={decorationCategory}
@@ -1753,7 +1792,7 @@ export default function CakeConstructor2D({
           </div>
         </div>
 
-        <div className={`${cards.elevated} space-y-4`}>
+        <div ref={aiStepRef} className={`${cards.elevated} scroll-mt-28 space-y-4`}>
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div>
               <div className="text-xs font-semibold uppercase tracking-[0.18em] text-pink-500">
@@ -1938,7 +1977,7 @@ export default function CakeConstructor2D({
         </div>
       </section>
 
-      <aside className="space-y-6">
+      <aside className="space-y-6 2xl:min-w-0">
         <div className={`${cards.elevated} space-y-5`}>
           <div>
             <h2 className="text-xl font-semibold text-gray-900">Compoziție</h2>
@@ -2225,7 +2264,7 @@ export default function CakeConstructor2D({
       </aside>
 
       {showFloatingPreview ? (
-        <div className="fixed bottom-4 right-4 z-40 xl:hidden">
+        <div className="fixed bottom-4 right-4 z-40 2xl:hidden">
           <div className="w-[220px] rounded-[26px] border border-rose-200 bg-[rgba(255,251,245,0.96)] p-3 shadow-card backdrop-blur-md">
             <div className="mb-2 flex items-center justify-between gap-2">
               <div>

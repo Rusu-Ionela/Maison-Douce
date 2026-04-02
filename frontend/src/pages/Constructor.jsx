@@ -29,7 +29,7 @@ export default function Constructor() {
     <div className="min-h-screen">
       <div className={`${containers.pageMax} max-w-editorial space-y-6`}>
         <header className={`${cards.tinted} overflow-hidden`}>
-          <div className="grid gap-6 xl:grid-cols-[1.15fr_0.85fr]">
+          <div className="grid gap-6 2xl:grid-cols-[1.15fr_0.85fr]">
             <div className="space-y-4">
               <div className="eyebrow">Atelier de comenzi speciale</div>
               <div>
