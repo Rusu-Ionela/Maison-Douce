@@ -22,6 +22,7 @@ function setDateInput(selector, value) {
 describe("Reservation flow (CI)", () => {
   it("creates a reservation for an authenticated client", () => {
     const reservationDate = futureDate(2);
+    const providerId = "provider-default-1";
     const user = {
       _id: "reservation-user-1",
       nume: "Client Rezervare",
@@ -31,37 +32,58 @@ describe("Reservation flow (CI)", () => {
       adresa: "Strada Rezervare 9",
     };
 
-    cy.intercept("GET", "**/calendar/disponibilitate/default*", {
+    cy.intercept("GET", "**/utilizatori/providers", {
       statusCode: 200,
       body: {
-        slots: [
+        defaultProviderId: providerId,
+        items: [
           {
-            date: reservationDate,
-            time: "10:30",
-            free: 2,
-            capacity: 2,
-            used: 0,
+            _id: providerId,
+            displayName: "Atelier Maison-Douce",
+            slug: "atelier-maison-douce",
+            isDefaultProvider: true,
+            acceptsOrders: true,
+            isPublic: true,
           },
         ],
       },
+    }).as("providers");
+    cy.intercept("GET", `**/calendar/availability?*providerId=${providerId}*`, {
+      statusCode: 200,
+      body: {
+        availableDates: [reservationDate],
+        slotDetailsByDate: {
+          [reservationDate]: [
+            {
+              time: "10:30",
+              free: 2,
+              capacity: 2,
+              used: 0,
+            },
+          ],
+        },
+      },
     }).as("availability");
-    cy.intercept("POST", "**/calendar/reserve", {
+    cy.intercept("POST", "**/calendar/book", {
       statusCode: 200,
       body: {
         ok: true,
         rezervareId: "rez-e2e-1",
         comandaId: "cmd-rez-e2e-1",
+        requiresPriceConfirmation: false,
+        deliveryMethod: "ridicare",
       },
     }).as("reserveSlot");
 
     cy.visitAsAuthenticatedUser("/calendar", { user });
 
-    cy.contains(/Rezerva un interval/i, { timeout: 10000 }).should("be.visible");
+    cy.wait("@providers");
+    cy.contains(/Rezervi data, ora si modul de predare/i, { timeout: 10000 }).should("be.visible");
     setDateInput('input[type="date"]', reservationDate);
     cy.wait("@availability", { timeout: 10000 });
 
-    cy.contains("Ora").scrollIntoView();
     cy.contains("button", /10:30/, { timeout: 10000 }).scrollIntoView().click();
+    cy.contains("button", "Ridicare personala").click();
     cy.get('input[type="number"]').clear().type("250");
     cy.get("textarea").first().type("Tort aniversar cu decor simplu");
     cy.get("textarea").last().type("Livrare rapida, daca este posibil.");
@@ -69,12 +91,14 @@ describe("Reservation flow (CI)", () => {
 
     cy.wait("@reserveSlot").its("request.body").should((body) => {
       expect(body.clientId).to.eq("reservation-user-1");
+      expect(body.providerId).to.eq(providerId);
       expect(body.date).to.eq(reservationDate);
       expect(body.time).to.eq("10:30");
+      expect(body.metoda).to.eq("ridicare");
       expect(body.subtotal).to.eq(250);
     });
 
-    cy.contains("Rezervare creata").should("be.visible");
+    cy.contains("Rezervarea a fost inregistrata").should("be.visible");
     cy.contains("button", "Continua la plata").should("be.visible");
   });
 });

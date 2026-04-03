@@ -51,10 +51,17 @@ describe("Profile flow (CI)", () => {
       statusCode: 200,
       body: [],
     }).as("photoNotifications");
-    cy.intercept("GET", "**/recenzii/comanda/*", {
+    cy.intercept("GET", "**/comenzi-personalizate", {
       statusCode: 200,
-      body: null,
-    }).as("reviews");
+      body: [],
+    }).as("customOrders");
+    cy.intercept("GET", "**/utilizatori/providers", {
+      statusCode: 200,
+      body: {
+        items: [],
+        defaultProviderId: "",
+      },
+    }).as("providers");
     cy.intercept("PUT", "**/utilizatori/me", (request) => {
       request.reply({
         statusCode: 200,
@@ -72,7 +79,8 @@ describe("Profile flow (CI)", () => {
     cy.wait("@orders");
     cy.wait("@notifications");
     cy.wait("@photoNotifications");
-    cy.wait("@reviews");
+    cy.wait("@customOrders");
+    cy.wait("@providers");
 
     cy.contains("Profil client").should("be.visible");
     cy.contains("Istoric comenzi").should("be.visible");
