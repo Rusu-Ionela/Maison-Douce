@@ -7,15 +7,18 @@ function futureDate(daysAhead = 2) {
 describe("Auth flows (CI)", () => {
   const availableDate = futureDate(2);
   const calendarResponse = {
-    slots: [
-      {
-        date: availableDate,
-        time: "12:00",
-        free: 3,
-        capacity: 3,
-        used: 0,
-      },
-    ],
+    availableDates: [availableDate],
+    slotDetailsByDate: {
+      [availableDate]: [
+        {
+          time: "12:00",
+          free: 3,
+          capacity: 3,
+          used: 0,
+        },
+      ],
+    },
+    message: "",
   };
 
   beforeEach(() => {
@@ -29,7 +32,7 @@ describe("Auth flows (CI)", () => {
       body: {
         token: "login-token",
         user: {
-          _id: "user-login-1",
+          _id: "staff-login-1",
           nume: "Admin Login",
           email: "login@example.com",
           rol: "admin",
@@ -37,6 +40,21 @@ describe("Auth flows (CI)", () => {
         },
       },
     }).as("loginRequest");
+    cy.intercept("GET", "**/utilizatori/providers", {
+      statusCode: 200,
+      body: {
+        items: [
+          {
+            id: "default",
+            displayName: "Atelier principal",
+            acceptsOrders: true,
+            isPublic: true,
+            isDefault: true,
+          },
+        ],
+        defaultProviderId: "default",
+      },
+    }).as("providers");
     cy.intercept("GET", "**/calendar/availability/default*", {
       statusCode: 200,
       body: calendarResponse,
@@ -57,17 +75,18 @@ describe("Auth flows (CI)", () => {
     cy.contains("button", "Intra").click();
 
     cy.wait("@loginRequest");
+    cy.wait("@providers");
     cy.wait("@calendarAvailability");
     cy.wait("@calendarAdmin");
     cy.wait("@dayCapacity");
     cy.location("pathname").should("eq", "/admin/calendar");
-    cy.contains(/Calendar Admin/i).should("be.visible");
-    cy.contains("Logout").should("exist");
+    cy.contains(/Agenda zilnica/i).should("be.visible");
+    cy.contains(/Configurare zi/i).should("be.visible");
   });
 
   it("registers a new client user and lands on the calendar page", () => {
     cy.intercept("POST", "**/utilizatori/register", {
-      statusCode: 200,
+      statusCode: 201,
       body: {
         token: "register-token",
         user: {
@@ -80,7 +99,11 @@ describe("Auth flows (CI)", () => {
         },
       },
     }).as("registerRequest");
-    cy.intercept("GET", "**/calendar/disponibilitate/default*", {
+    cy.intercept("GET", "**/utilizatori/providers", {
+      statusCode: 200,
+      body: calendarResponse,
+    }).as("providers");
+    cy.intercept("GET", "**/calendar/availability*", {
       statusCode: 200,
       body: calendarResponse,
     }).as("calendarAvailability");
@@ -96,9 +119,9 @@ describe("Auth flows (CI)", () => {
     cy.contains("button", /Inregistreaza-te/i).click();
 
     cy.wait("@registerRequest");
-    cy.wait("@calendarAvailability");
+    cy.wait("@providers");
     cy.location("pathname").should("eq", "/calendar");
-    cy.contains(/Rezerva un interval/i).should("be.visible");
-    cy.contains("Logout").should("exist");
+    cy.contains(/Rezervi data, ora si modul de predare/i).should("be.visible");
+    cy.contains(/Disponibilitate/i).should("be.visible");
   });
 });

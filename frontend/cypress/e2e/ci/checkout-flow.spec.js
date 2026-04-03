@@ -65,6 +65,21 @@ describe("Checkout flow (CI)", () => {
       status: "plasata",
     };
 
+    cy.intercept("GET", "**/utilizatori/providers", {
+      statusCode: 200,
+      body: {
+        items: [
+          {
+            id: "default",
+            displayName: "Atelier principal",
+            acceptsOrders: true,
+            isPublic: true,
+            isDefault: true,
+          },
+        ],
+        defaultProviderId: "default",
+      },
+    }).as("providers");
     cy.intercept("GET", "**/calendar/disponibilitate/default*", {
       statusCode: 200,
       body: {
@@ -79,6 +94,10 @@ describe("Checkout flow (CI)", () => {
         ],
       },
     }).as("slotAvailability");
+    cy.intercept("GET", "**/torturi*", {
+      statusCode: 200,
+      body: { items: [] },
+    }).as("upsells");
     cy.intercept("POST", "**/comenzi/creeaza-cu-slot", {
       statusCode: 200,
       body: { _id: "cmd-e2e-1" },
@@ -109,11 +128,13 @@ describe("Checkout flow (CI)", () => {
 
     cy.visitAsAuthenticatedUser("/cart", { user, cartItems });
 
-    cy.contains("Rezumat").should("be.visible");
+    cy.wait("@providers");
+    cy.wait("@upsells");
+    cy.contains("Checkout standard").should("be.visible");
     setDateInput('input[type="date"]', deliveryDate);
     cy.wait("@slotAvailability", { timeout: 10000 });
     cy.contains("button", /12:00/).click();
-    cy.contains("button", "Continua la plata").click();
+    cy.contains("button", "Creeaza comanda si mergi la plata").click();
 
     cy.wait("@createOrder").its("request.body").should((body) => {
       expect(body.clientId).to.eq("checkout-user-1");

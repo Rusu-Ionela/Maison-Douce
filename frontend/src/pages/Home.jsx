@@ -298,9 +298,15 @@ export default function Home() {
                 </p>
                 <div className="flex flex-wrap gap-3">
                   <OrderOnlineCta label="Porneste comanda online" />
-                  <Link to="/personalizari" className={buttons.outline}>
-                    Drafturile mele
-                  </Link>
+                  {user ? (
+                    <Link to="/personalizari" className={buttons.outline}>
+                      Drafturile mele
+                    </Link>
+                  ) : (
+                    <Link to="/login" className={buttons.outline}>
+                      Intra pentru a-ti salva drafturile
+                    </Link>
+                  )}
                 </div>
               </div>
 

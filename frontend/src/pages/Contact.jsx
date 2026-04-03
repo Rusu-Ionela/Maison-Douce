@@ -38,6 +38,18 @@ export default function Contact() {
     [conversations, selectedConversationId]
   );
 
+  useEffect(() => {
+    if (!isAuthenticated || !user) return;
+
+    const fallbackName = [user.nume, user.prenume].filter(Boolean).join(" ").trim();
+    setForm((current) => ({
+      ...current,
+      nume: current.nume || fallbackName,
+      email: current.email || String(user.email || "").trim(),
+      telefon: current.telefon || String(user.telefon || "").trim(),
+    }));
+  }, [isAuthenticated, user]);
+
   const onChange = (key, value) => {
     setForm((prev) => ({ ...prev, [key]: value }));
   };

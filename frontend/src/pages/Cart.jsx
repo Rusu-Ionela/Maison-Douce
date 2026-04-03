@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 import { useCart } from "../context/CartContext";
 import { useAuth } from "../context/AuthContext";
 import { OrdersAPI } from "../api/orders";
@@ -10,6 +10,7 @@ import SlotPicker from "../components/SlotPicker";
 import StatusBanner from "../components/StatusBanner";
 import ProviderSelector from "../components/ProviderSelector";
 import api from "/src/lib/api.js";
+import { buildRedirectState } from "../lib/authRedirects";
 import { buttons, cards, inputs, containers } from "/src/lib/tailwindComponents.js";
 import { formatDateInput, parseDateInput } from "../lib/date";
 import { buildCheckoutNotes } from "../lib/checkoutNotes";
@@ -32,6 +33,7 @@ export default function Cart() {
   const { items, add, updateQty, remove, clear, subtotal } = useCart();
   const { user } = useAuth() || {};
   const nav = useNavigate();
+  const location = useLocation();
 
   const [metodaLivrare, setMetodaLivrare] = useState("ridicare");
   const [adresa, setAdresa] = useState("");
@@ -287,7 +289,7 @@ export default function Cart() {
           "Autentificare necesara"
         )
       );
-      nav("/login");
+      nav("/login", { state: buildRedirectState(location) });
       return false;
     }
     if (items.length === 0) {

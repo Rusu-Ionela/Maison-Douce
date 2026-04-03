@@ -537,21 +537,21 @@ export default function TortDetails() {
                     <div className="text-xs font-semibold uppercase tracking-[0.16em] text-emerald-700">
                       Inclus in varianta standard
                     </div>
-                    <div className="mt-3 space-y-2 text-sm leading-6 text-[#4f5f50]">
-                      {standardChecklist.map((item) => (
-                        <div key={`${storefrontTort._id}-standard-${item}`}>• {item}</div>
-                      ))}
-                    </div>
+                      <div className="mt-3 space-y-2 text-sm leading-6 text-[#4f5f50]">
+                        {standardChecklist.map((item) => (
+                          <div key={`${storefrontTort._id}-standard-${item}`}>- {item}</div>
+                        ))}
+                      </div>
                   </div>
                   <div className="rounded-[20px] border border-amber-200 bg-amber-50/70 p-4">
                     <div className="text-xs font-semibold uppercase tracking-[0.16em] text-amber-800">
                       Cand treci in constructor sau oferta
                     </div>
-                    <div className="mt-3 space-y-2 text-sm leading-6 text-[#6a5646]">
-                      {customTriggers.map((item) => (
-                        <div key={`${storefrontTort._id}-custom-${item}`}>• {item}</div>
-                      ))}
-                    </div>
+                      <div className="mt-3 space-y-2 text-sm leading-6 text-[#6a5646]">
+                        {customTriggers.map((item) => (
+                          <div key={`${storefrontTort._id}-custom-${item}`}>- {item}</div>
+                        ))}
+                      </div>
                   </div>
                 </div>
               </div>

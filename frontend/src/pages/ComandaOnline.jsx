@@ -129,14 +129,28 @@ export default function ComandaOnline() {
                 compact
               />
               <div className="rounded-[22px] border border-rose-100 bg-white/80 px-4 py-3 text-sm leading-6 text-[#655c53]">
-                Daca nu esti hotarat inca, fluxul te ajuta sa decizi. Daca esti deja autentificat,
-                poti continua apoi in <span className="font-semibold text-gray-900">Drafturile mele</span>.
+                {isAuthenticated ? (
+                  <>
+                    Daca nu esti hotarat inca, fluxul te ajuta sa decizi. Dupa ce alegi directia,
+                    poti reveni oricand in{" "}
+                    <span className="font-semibold text-gray-900">Drafturile mele</span>.
+                  </>
+                ) : (
+                  <>
+                    Daca nu esti hotarat inca, fluxul te ajuta sa decizi. Iti poti salva
+                    drafturile imediat dupa autentificare, fara sa pierzi estimarea deja facuta.
+                  </>
+                )}
               </div>
               {isAuthenticated ? (
                 <Link to="/personalizari" className={buttons.secondary}>
                   Drafturile mele
                 </Link>
-              ) : null}
+              ) : (
+                <Link to="/login" className={buttons.secondary}>
+                  Intra pentru a salva drafturi
+                </Link>
+              )}
             </div>
           </div>
         </header>
