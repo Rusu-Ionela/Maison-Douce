@@ -1,7 +1,7 @@
 {
   "name": "tort-app-backend",
   "version": "1.0.0",
-  "description": "Backend pentru platformă vânzare torturi",
+  "description": "Backend pentru platforma de vanzare torturi",
   "private": true,
   "main": "index.js",
   "type": "commonjs",
@@ -12,7 +12,9 @@
     "test:integration": "node test/integration.test.js",
     "quality": "npm test",
     "checklist": "node ../scripts/checklist.js",
-    "vapid": "node scripts/generate-vapid.js"
+    "vapid": "node scripts/generate-vapid.js",
+    "seed:demo-users": "node scripts/seedDemoUsers.js",
+    "seed:patiser": "node scripts/seedPatiser.js"
   },
   "dependencies": {
     "axios": "^1.7.7",

@@ -1,7 +1,7 @@
 {
   "name": "tort-app-backend",
   "version": "1.0.0",
-  "description": "Backend pentru platformă vânzare torturi",
+  "description": "Platforma Maison-Douce pentru comenzi, rezervari si administrare",
   "main": "index.js",
   "scripts": {
     "quality": "npm run quality:backend && npm run quality:frontend",

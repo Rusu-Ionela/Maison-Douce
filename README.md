@@ -80,7 +80,19 @@ Din backend:
 ```powershell
 npm test
 npm run test:integration
+npm run seed:demo-users
 ```
+
+## Credentiale Demo
+
+Pentru demo local sau verificare rapida a fluxurilor interne:
+
+```powershell
+cd backend
+npm run seed:demo-users
+```
+
+Credentialele rezultate sunt documentate in [docs/DEMO-CREDENTIALS.md](docs/DEMO-CREDENTIALS.md).
 
 Din frontend:
 
