@@ -14,6 +14,15 @@ import {
 
 const STATUS_OPTIONS = ["noua", "in_discutie", "aprobata", "comanda_generata", "respinsa"];
 
+function hasAiPreview(comanda) {
+  if (!comanda || typeof comanda !== "object") return false;
+  const options = comanda.options && typeof comanda.options === "object" ? comanda.options : {};
+  return Boolean(
+    String(options.aiPreviewUrl || "").trim() ||
+      (Array.isArray(options.aiPreviewVariants) && options.aiPreviewVariants.length > 0)
+  );
+}
+
 function resolveLinkedOrder(comanda) {
   return comanda?.comandaId && typeof comanda.comandaId === "object" ? comanda.comandaId : null;
 }
@@ -335,10 +344,10 @@ export default function AdminComenziPersonalizate() {
           <article className="rounded-[24px] border border-rose-100 bg-white/80 p-4 shadow-soft">
             <div className="text-sm font-medium text-pink-700">Cu preview AI</div>
             <div className="mt-2 text-2xl font-semibold text-gray-900">
-              {comenzi.filter((item) => item?.options?.aiPreviewUrl).length}
+              {comenzi.filter((item) => hasAiPreview(item)).length}
             </div>
             <div className="mt-2 text-sm text-[#655c53]">
-              Comenzi unde clientul a cerut deja o simulare mai realista.
+              Cereri cu randare AI simpla sau cu variante multiple deja generate.
             </div>
           </article>
           <article className="rounded-[24px] border border-rose-100 bg-white/80 p-4 shadow-soft">

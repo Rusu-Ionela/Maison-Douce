@@ -688,7 +688,7 @@ router.get(
     }
 
     if (!date) {
-      return res.status(400).json({ message: "Data lipsÄƒ" });
+      return res.status(400).json({ message: "Data lipsa" });
     }
     if (requestedPrestatorId && rejectOutsidePrestatorScope(req, res, requestedPrestatorId)) {
       return;

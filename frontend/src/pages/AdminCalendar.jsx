@@ -184,7 +184,7 @@ export default function AdminCalendar() {
         setDayCapacity(dayCap?.capacity != null ? String(dayCap.capacity) : "");
       } catch (err) {
         console.error(err);
-        setError("Eroare la incarcare");
+        setError("Nu am putut incarca agenda si sloturile pentru ziua selectata.");
       } finally {
         setLoading(false);
       }
@@ -222,7 +222,7 @@ export default function AdminCalendar() {
       setNewSlotCapacity(1);
     } catch (err) {
       console.error(err);
-      setError("Eroare la adaugarea slotului");
+      setError("Nu am putut salva intervalul nou in calendar.");
     }
   };
 
@@ -240,7 +240,7 @@ export default function AdminCalendar() {
       await refreshSlots();
     } catch (err) {
       console.error(err);
-      setError("Eroare la blocarea slotului");
+      setError("Nu am putut bloca intervalul selectat.");
     }
   };
 
@@ -260,7 +260,7 @@ export default function AdminCalendar() {
       });
     } catch (err) {
       console.error(err);
-      setError("Eroare la salvarea capacitatii.");
+      setError("Nu am putut salva capacitatea maxima pentru ziua selectata.");
     } finally {
       setSavingCapacity(false);
     }
@@ -276,7 +276,7 @@ export default function AdminCalendar() {
       setReservations(rez);
     } catch (err) {
       console.error(err);
-      setError("Eroare la actualizarea rezervarii.");
+      setError("Nu am putut actualiza statusul rezervarii.");
     }
   };
 
@@ -302,7 +302,7 @@ export default function AdminCalendar() {
       window.URL.revokeObjectURL(href);
     } catch (err) {
       console.error(err);
-      setError("Eroare la export CSV.");
+      setError("Nu am putut exporta agenda zilei in CSV.");
     }
   };
 
@@ -657,9 +657,9 @@ export default function AdminCalendar() {
                         key={step.id}
                         className="rounded-[20px] border border-rose-100 bg-[rgba(255,249,242,0.84)] px-4 py-4"
                       >
-                        <div className="text-sm font-semibold text-gray-900">
-                          {step.time} · {step.handoff}
-                        </div>
+                          <div className="text-sm font-semibold text-gray-900">
+                          {step.time} | {step.handoff}
+                          </div>
                         <div className="mt-2 text-sm font-medium text-pink-700">{step.client}</div>
                         <div className="mt-2 text-sm leading-6 text-gray-600">{step.summary}</div>
                       </div>
